@@ -6,6 +6,11 @@ O aplicativo usa Electron, TypeScript e WebRTC. Oferece perfis até **1080p/60 F
 
 **Situação da distribuição:** este projeto ainda não tem sinalização pública hospedada, serviço TURN, certificado de assinatura ou releases publicadas. O instalador local de teste não tem assinatura e fica com as atualizações desativadas. A configuração desses recursos está explicada abaixo.
 
+<img width="1917" height="1011" alt="Captura de tela 2026-10-14 230554" src="https://github.com/user-attachments/assets/13a6b040-d873-4337-b494-ae7241931d07" />
+<img width="1918" height="1007" alt="Captura de tela 2026-10-14 230619" src="https://github.com/user-attachments/assets/5ec9745b-16bb-48b1-9a0a-e6d50589a1b0" />
+<img width="1348" height="607" alt="Captura de tela 2026-10-14 230629" src="https://github.com/user-attachments/assets/16cb8698-e2c5-48ad-8c44-d552e3db91e7" />
+
+
 ## Índice
 
 - [O que o sistema faz](#o-que-o-sistema-faz)
