@@ -1,0 +1,6 @@
+# Keep text files consistent in Windows and CI checkouts.
+* text=auto eol=lf
+
+# Preserve binary build inputs.
+*.png binary
+*.ico binary
