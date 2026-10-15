@@ -25,7 +25,7 @@ git init -b main
 git status --short
 git add .
 git commit -m "Prepara Discorja para distribuição"
-git remote add origin https://github.com/SEU_USUARIO/Discorja.git
+git remote add origin https://github.com/DevCordeirocf/Discorja.git
 git push -u origin main
 ```
 
@@ -56,7 +56,7 @@ Um caminho local em `CSC_LINK` não funciona no runner, onde esse arquivo não e
 Para cadastrar um PFX sem imprimir seu conteúdo nem gerar um arquivo base64, use o GitHub CLI já autenticado:
 
 ```powershell
-$releaseRepository = 'SEU_USUARIO/Discorja'
+$releaseRepository = 'DevCordeirocf/Discorja'
 $certificatePath = 'C:\segredos\Discorja.pfx'
 
 [Convert]::ToBase64String([IO.File]::ReadAllBytes($certificatePath)) |
@@ -142,7 +142,7 @@ O teste entre duas instalações é necessário para considerar o fluxo validado
 No PowerShell, com certificado real e dados corretos:
 
 ```powershell
-$env:GITHUB_REPOSITORY = 'SEU_USUARIO/Discorja'
+$env:GITHUB_REPOSITORY = 'DevCordeirocf/Discorja'
 $env:DISCORJA_PUBLISHER_NAME = 'CN=Nome do publicador, O=Organização, C=BR'
 $env:CSC_LINK = 'C:\segredos\Discorja.pfx'
 

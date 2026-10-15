@@ -45,3 +45,9 @@ npm run test:e2e -- --packaged
 O relatório completo de cada execução fica em `test-results/smoke-packaged.json`, incluindo `qualityPhases`, os parâmetros dos senders e as medidas observadas. As capturas dos controles e do diagnóstico ficam em `test-results/quality-controls.png` e `test-results/quality-diagnostics.png`. Esses arquivos são locais e não entram no Git.
 
 Antes de afirmar suporte sustentado a 1080p/60, ainda é necessário repetir o ensaio com fonte nativa 1920 × 1080, computadores separados, sessão prolongada, um e quatro espectadores, redes diferentes e TURN quando necessário. Consulte a [análise de qualidade e otimização](qualidade.md) para prioridades, alternativas e a matriz completa.
+
+## Revisão da configuração de distribuição — 15 de outubro de 2026
+
+A revisão para a documentação corrigiu o local do publicador na configuração do electron-builder v26 (`win.signtoolOptions.publisherName`) e removeu a aceitação de `CSC_NAME` como alternativa Windows. O fluxo padrão usa `CSC_LINK`.
+
+Oito testes adicionais verificaram as configurações local e assinada contra o schema instalado, a geração dos metadados e a rejeição de configuração incompleta, usando diretórios temporários e credenciais fictícias. A suíte passou com **63 testes**, e a verificação de tipos passou. Não houve assinatura nem publicação real. Os cenários e amostras de mídia registrados acima pertencem à execução anterior; esta revisão não representa uma nova medição de transmissão nem validação da atualização instalada.
