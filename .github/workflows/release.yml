@@ -27,16 +27,27 @@ jobs:
       DISCORJA_PUBLISHER_NAME: ${{ vars.DISCORJA_PUBLISHER_NAME }}
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
-      - name: Validate signing configuration
+      - name: Validate optional signing configuration
+        id: signing
         shell: pwsh
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
-          foreach ($name in @('CSC_LINK', 'CSC_KEY_PASSWORD', 'DISCORJA_PUBLISHER_NAME')) {
-            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-              throw "Missing required signing configuration: $name"
+          $signingFields = @('CSC_LINK', 'CSC_KEY_PASSWORD', 'DISCORJA_PUBLISHER_NAME')
+          $configured = @($signingFields | Where-Object {
+            -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))
+          })
+          if ($configured.Count -gt 0) {
+            foreach ($name in $signingFields) {
+              if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+                throw "Incomplete optional signing configuration: $name"
+              }
             }
+            'signed=true' >> $env:GITHUB_OUTPUT
+          } else {
+            'signed=false' >> $env:GITHUB_OUTPUT
+            Write-Host 'Building without code signing; GitHub updates remain enabled.'
           }
           if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
             throw 'A stable version tag such as v0.1.0 is required.'
@@ -62,7 +73,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: Build signed Windows installer
+      - name: Build Windows installer
         run: npm run dist:win -- --publish never
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -74,13 +85,15 @@ jobs:
           $installers = @(Get-ChildItem -LiteralPath release -Filter '*.exe' -File)
           if ($installers.Count -eq 0) { throw 'No Windows installer was generated.' }
           foreach ($installer in $installers) {
-            $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
-            if ($signature.Status -ne 'Valid') {
-              throw "Invalid Authenticode signature: $($installer.Name)"
-            }
-            node -e "const {parseDn}=require('builder-util-runtime');const [expected,actual]=process.argv.slice(1);const name=parseDn(expected),subject=parseDn(actual);const matches=name.size?[...name].every(([key,value])=>subject.get(key)===value):subject.get('CN')===expected;if(!matches)process.exitCode=1" $env:DISCORJA_PUBLISHER_NAME $signature.SignerCertificate.Subject
-            if ($LASTEXITCODE -ne 0) {
-              throw "Installer publisher does not match update configuration: $($installer.Name)"
+            if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
+              $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+              if ($signature.Status -ne 'Valid') {
+                throw "Invalid Authenticode signature: $($installer.Name)"
+              }
+              node -e "const {parseDn}=require('builder-util-runtime');const [expected,actual]=process.argv.slice(1);const name=parseDn(expected),subject=parseDn(actual);const matches=name.size?[...name].every(([key,value])=>subject.get(key)===value):subject.get('CN')===expected;if(!matches)process.exitCode=1" $env:DISCORJA_PUBLISHER_NAME $signature.SignerCertificate.Subject
+              if ($LASTEXITCODE -ne 0) {
+                throw "Installer publisher does not match update configuration: $($installer.Name)"
+              }
             }
             if (-not (Test-Path -LiteralPath "$($installer.FullName).blockmap")) {
               throw "Missing blockmap: $($installer.Name)"

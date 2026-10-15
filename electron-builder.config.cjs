@@ -11,7 +11,7 @@ module.exports = {
   files: ['dist/electron/**', 'dist/renderer/**', 'package.json'],
   asar: true,
   artifactName: 'Discorja-Setup-${version}.${ext}',
-  forceCodeSigning: Boolean(release),
+  forceCodeSigning: Boolean(release?.publisherName),
   publish: release
     ? [
         {
@@ -27,7 +27,7 @@ module.exports = {
     icon: 'build/icon.ico',
     target: [{ target: 'nsis', arch: ['x64'] }],
     verifyUpdateCodeSignature: true,
-    ...(release
+    ...(release?.publisherName
       ? { signtoolOptions: { publisherName: release.publisherName } }
       : {}),
   },

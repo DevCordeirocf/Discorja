@@ -44,10 +44,10 @@ let signalingUrl = DEFAULT_SIGNALING_URL;
 let iceServers: RTCIceServer[] = [];
 let updateState: UpdateState = {
   status: 'disabled',
-  message: 'Atualizações disponíveis após a publicação de uma versão assinada.',
+  message: 'Atualizações disponíveis em versões com distribuição configurada.',
 };
 let updater: import('electron-updater').AppUpdater | undefined;
-let release: { owner: string; repo: string; publisherName: string } | null =
+let release: { owner: string; repo: string; publisherName?: string } | null =
   null;
 const devUrl =
   !app.isPackaged && process.env.DISCORJA_DEV_URL === 'http://127.0.0.1:5173'
@@ -117,8 +117,8 @@ async function checkUpdates() {
 
 async function configureUpdates() {
   if (!app.isPackaged || process.platform !== 'win32' || !release) return;
-  // The NSIS provider reads publisherName from the immutable app-update.yml in the signed package.
-  // electron-updater checks SHA-512 and the Authenticode publisher before accepting the installer.
+  // electron-updater checks the download hash. When a publisher is configured in
+  // app-update.yml, it also verifies the Windows signature before accepting it.
   const { default: updaterModule } = await import('electron-updater');
   const { autoUpdater } = updaterModule;
   updater = autoUpdater;

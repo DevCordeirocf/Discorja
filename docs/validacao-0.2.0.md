@@ -51,3 +51,11 @@ Antes de afirmar suporte sustentado a 1080p/60, ainda é necessário repetir o e
 A revisão para a documentação corrigiu o local do publicador na configuração do electron-builder v26 (`win.signtoolOptions.publisherName`) e removeu a aceitação de `CSC_NAME` como alternativa Windows. O fluxo padrão usa `CSC_LINK`.
 
 Oito testes adicionais verificaram as configurações local e assinada contra o schema instalado, a geração dos metadados e a rejeição de configuração incompleta, usando diretórios temporários e credenciais fictícias. A suíte passou com **63 testes**, e a verificação de tipos passou. Não houve assinatura nem publicação real. Os cenários e amostras de mídia registrados acima pertencem à execução anterior; esta revisão não representa uma nova medição de transmissão nem validação da atualização instalada.
+
+## Assinatura opcional — 15 de outubro de 2026
+
+A distribuição passou a permitir atualizações sem certificado, mantendo assinatura e publicador obrigatórios somente quando esse modo é configurado. A suíte completa passou com **68 testes**, incluindo os modos local, GitHub sem assinatura, GitHub assinado e a execução da validação PowerShell do workflow com configurações ausentes, completas e parciais. Tipos e formatação também passaram.
+
+Foi gerado um instalador 0.2.0 sem publicar arquivos, com destino `DevCordeirocf/Discorja`. Authenticode informou `NotSigned`; o manifesto `latest.yml` correspondeu ao hash SHA-512 do instalador e o pacote incluiu o destino GitHub sem exigir publicador. O executável foi aberto com perfil de teste e retornou `updatesConfigured=true`, com a interface de consulta disponível. O relatório local está em `test-results/updater-unsigned.json`.
+
+A consulta não encontrou uma atualização utilizável durante esse ensaio. Nenhuma instalação ou atualização foi aplicada. A troca completa entre duas versões publicadas continua pendente; os resultados de mídia anteriores não foram medidos novamente nesta revisão.

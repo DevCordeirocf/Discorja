@@ -117,7 +117,7 @@ A sinalização aplica validação e limites de carga/tentativas e verifica `Ori
 
 Não coloque segredos em `DISCORJA_ICE_SERVERS` esperando ocultá-los do usuário do computador. Credenciais de TURN precisam ter duração e consumo limitados. Não registre códigos, SDP, ICE ou conteúdo capturado para diagnosticar problemas comuns.
 
-O atualizador de produção exige metadados de release e verifica a assinatura Windows. A integração de distribuição é descrita em [releases](releases.md). O fluxo de captura e as regras de conexão não comprovam, sozinhos, funcionamento de uma atualização assinada real.
+O atualizador de produção exige metadados de release e verifica o hash do download. A assinatura é opcional: quando há publicador configurado no pacote, também exige a assinatura Windows correspondente. A integração dos dois modos é descrita em [releases](releases.md). O fluxo de captura e as regras de conexão não comprovam, sozinhos, funcionamento de uma atualização instalada real.
 
 ## Falhas e evolução
 

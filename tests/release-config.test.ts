@@ -55,6 +55,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await rm(join(directory, 'github-output'), { force: true });
   await rm(join(directory, 'build', 'release.json'), { force: true });
   await rmdir(join(directory, 'build')).catch(
     (error: NodeJS.ErrnoException) => {
@@ -116,9 +117,34 @@ describe('Configuração de distribuição', () => {
     ]);
   });
 
+  it('habilita atualizações do GitHub sem certificado nem publicador', async () => {
+    await prepare({ GITHUB_REPOSITORY: 'example/discorja' });
+    expect(
+      JSON.parse(
+        await readFile(join(directory, 'build', 'release.json'), 'utf8'),
+      ),
+    ).toEqual({ owner: 'example', repo: 'discorja' });
+    const config = await readBuilderConfiguration();
+    await expect(
+      validateConfiguration(config, new DebugLogger()),
+    ).resolves.toBeUndefined();
+    expect(config.forceCodeSigning).toBe(false);
+    expect(config.win?.signtoolOptions).toBeUndefined();
+    expect(config.win?.verifyUpdateCodeSignature).toBe(true);
+    expect(config.publish).toEqual([
+      {
+        provider: 'github',
+        owner: 'example',
+        repo: 'discorja',
+        private: false,
+        releaseType: 'draft',
+      },
+    ]);
+  });
+
   it.each([
-    { GITHUB_REPOSITORY: 'example/discorja' },
     { DISCORJA_PUBLISHER_NAME: 'Example Publisher' },
+    { CSC_LINK: 'configuration-test-only.pfx' },
     {
       GITHUB_REPOSITORY: 'https://github.com/example/discorja',
       DISCORJA_PUBLISHER_NAME: 'Example Publisher',
@@ -136,7 +162,7 @@ describe('Configuração de distribuição', () => {
   );
 
   it.each([{}, { CSC_NAME: 'Unsupported Windows Name' }, { CSC_LINK: '   ' }])(
-    'exige CSC_LINK preenchido e não aceita CSC_NAME como substituto: %j',
+    'rejeita publicador sem certificado e não aceita CSC_NAME como substituto: %j',
     async (certificate) => {
       await expect(
         prepare({
@@ -144,10 +170,73 @@ describe('Configuração de distribuição', () => {
           DISCORJA_PUBLISHER_NAME: 'Example Publisher',
           ...certificate,
         }),
-      ).rejects.toThrow(/configure CSC_LINK/);
+      ).rejects.toThrow(/CSC_LINK e DISCORJA_PUBLISHER_NAME/);
       await expect(
         readFile(join(directory, 'build', 'release.json')),
       ).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
+
+  it('rejeita certificado sem publicador em vez de desativar a verificação silenciosamente', async () => {
+    await expect(
+      prepare({
+        GITHUB_REPOSITORY: 'example/discorja',
+        CSC_LINK: 'configuration-test-only.pfx',
+      }),
+    ).rejects.toThrow(/CSC_LINK e DISCORJA_PUBLISHER_NAME/);
+  });
+
+  it.each([
+    { label: 'sem assinatura', values: {}, expected: 'false' },
+    {
+      label: 'com assinatura',
+      values: {
+        CSC_LINK: 'test-only.pfx',
+        CSC_KEY_PASSWORD: 'test-only-password',
+        DISCORJA_PUBLISHER_NAME: 'Test Publisher',
+      },
+      expected: 'true',
+    },
+    {
+      label: 'configuração parcial',
+      values: { DISCORJA_PUBLISHER_NAME: 'Test Publisher' },
+      expected: null,
+    },
+  ])(
+    'valida o caminho real do workflow: $label',
+    async ({ values, expected }) => {
+      const workflow = await readFile(
+        resolve('.github/workflows/release.yml'),
+        'utf8',
+      );
+      const step = workflow.match(
+        /name: Validate optional signing configuration[\s\S]*?run: \|\r?\n([\s\S]*?)(?=      - uses:)/,
+      );
+      if (!step)
+        throw new Error('Etapa de validação de assinatura não encontrada.');
+      const script = step[1].replace(/^          /gm, '');
+      const output = join(directory, 'github-output');
+      const validation = execFileAsync(
+        'pwsh',
+        ['-NoProfile', '-NonInteractive', '-Command', script],
+        {
+          env: releaseEnvironment({
+            ...values,
+            GITHUB_OUTPUT: output,
+            RELEASE_TAG: 'v0.2.0',
+          }),
+        },
+      );
+      if (expected === null) {
+        await expect(validation).rejects.toThrow(
+          /Incomplete optional signing configuration/,
+        );
+      } else {
+        await validation;
+        expect((await readFile(output, 'utf8')).trim()).toBe(
+          `signed=${expected}`,
+        );
+      }
     },
   );
 });
