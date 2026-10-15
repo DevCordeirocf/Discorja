@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR">
+  <meta charset="utf-8" />
+  <title>Discorja - janela de teste</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #12131a;
+    }
+    canvas {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+  </style>
+  <canvas width="1920" height="1080"></canvas>
+  <script>
+    const canvas = document.querySelector('canvas');
+    const context = canvas.getContext('2d', { alpha: false });
+    window.sourceFrames = 0;
+    function draw(time) {
+      context.fillStyle = '#12131a';
+      context.fillRect(0, 0, 1920, 1080);
+      context.strokeStyle = '#303043';
+      context.lineWidth = 1;
+      for (let x = 0; x < 1920; x += 60) {
+        context.beginPath();
+        context.moveTo(x, 0);
+        context.lineTo(x, 1080);
+        context.stroke();
+      }
+      for (let y = 0; y < 1080; y += 60) {
+        context.beginPath();
+        context.moveTo(0, y);
+        context.lineTo(1920, y);
+        context.stroke();
+      }
+      for (let i = 0; i < 14; i++) {
+        context.fillStyle = `hsl(${(i * 24 + time / 100) % 360} 60% 60%)`;
+        const x = ((time * (0.13 + i * 0.008) + i * 173) % 2200) - 220;
+        const y = 340 + (i % 4) * 155 + Math.sin(time / 700 + i) * 28;
+        context.fillRect(x, y, 220, 100);
+      }
+      context.fillStyle = '#b8a0ff';
+      context.font = 'bold 76px Segoe UI';
+      context.fillText('Discorja · qualidade em movimento', 80, 130);
+      context.fillStyle = '#e7e4ee';
+      context.font = '32px Segoe UI';
+      context.fillText(
+        'Fonte de teste: 1920 × 1080 · animação por requestAnimationFrame',
+        80,
+        200,
+      );
+      context.font = '24px Consolas';
+      context.fillText(
+        `Quadro ${window.sourceFrames} · ${(time / 1000).toFixed(2)} s`,
+        80,
+        255,
+      );
+      context.fillText(
+        'Texto fino: ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789',
+        80,
+        1015,
+      );
+      window.sourceFrames++;
+      requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+  </script>
+</html>

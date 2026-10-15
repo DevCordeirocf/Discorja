@@ -1,0 +1,75 @@
+# Dependencias, compilacao, pacotes e caches reproduziveis.
+node_modules/
+dist/
+out/
+release/
+artifacts/
+coverage/
+.nyc_output/
+.cache/
+.vite/
+*.tsbuildinfo
+
+# Em build/, somente os icones sao entradas do projeto.
+/build/*
+!/build/icon.svg
+!/build/icon.png
+!/build/icon.ico
+
+# Configuracao local e material de autenticacao/assinatura.
+.env
+.env.*
+!.env.example
+*.local
+.npmrc
+secrets/
+credentials/
+certs/
+certificates/
+*.pfx
+*.p12
+*.pem
+*.key
+*.keystore
+*.jks
+id_rsa
+id_ed25519
+
+# Instaladores e executaveis nao pertencem ao codigo-fonte.
+*.exe
+*.dll
+*.msi
+*.msix
+*.appx
+*.blockmap
+
+# Resultados de testes, perfis locais e diagnosticos.
+test-results/
+playwright-report/
+playwright/.cache/
+*.log
+logs/
+*.dmp
+*.hprof
+
+# Temporarios, backups e configuracoes pessoais de editores.
+tmp/
+temp/
+.tmp/
+*.tmp
+*.temp
+*.bak
+*.old
+.vscode/
+.idea/
+.vs/
+*.suo
+*.user
+*.swp
+*~
+
+# Metadados do sistema operacional.
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
