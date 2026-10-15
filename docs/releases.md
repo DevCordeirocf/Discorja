@@ -20,6 +20,8 @@ Envie o código e os workflows para `main` e habilite GitHub Actions. O workflow
 
 `GITHUB_REPOSITORY` e `secrets.GITHUB_TOKEN` são fornecidos pelo GitHub automaticamente. O token é usado somente para enviar os artefatos no Actions; não o inclua no aplicativo.
 
+A validação inicial de assinatura e formato da tag usa `scripts/validate-release.mjs`, executado com Node.js após o checkout e a preparação do runtime no workflow. Os testes dessa validação também usam Node.js e não exigem instalar PowerShell 7 (`pwsh`) no computador de desenvolvimento.
+
 ## Publicar sem certificado
 
 Não cadastre `DISCORJA_PUBLISHER_NAME`, `CSC_LINK` ou `CSC_KEY_PASSWORD` no Actions para este modo. Se já cadastrou parte desses dados, remova a configuração incompleta ou complete o conjunto para usar assinatura.

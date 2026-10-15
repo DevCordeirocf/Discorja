@@ -203,29 +203,32 @@ describe('Configuração de distribuição', () => {
       expected: null,
     },
   ])(
-    'valida o caminho real do workflow: $label',
+    'valida o caminho real do workflow sem PowerShell no PATH: $label',
     async ({ values, expected }) => {
       const workflow = await readFile(
         resolve('.github/workflows/release.yml'),
         'utf8',
       );
       const step = workflow.match(
-        /name: Validate optional signing configuration[\s\S]*?run: \|\r?\n([\s\S]*?)(?=      - uses:)/,
+        /name: Validate optional signing configuration[\s\S]*?run: node ([^\r\n]+)/,
       );
       if (!step)
         throw new Error('Etapa de validação de assinatura não encontrada.');
-      const script = step[1].replace(/^          /gm, '');
+      expect(step[1].trim()).toBe('scripts/validate-release.mjs');
       const output = join(directory, 'github-output');
+      const env = releaseEnvironment({
+        ...values,
+        GITHUB_OUTPUT: output,
+        RELEASE_TAG: 'v0.2.0',
+      });
+      for (const key of Object.keys(env)) {
+        if (key.toUpperCase() === 'PATH') delete env[key];
+      }
+      env.PATH = directory;
       const validation = execFileAsync(
-        'pwsh',
-        ['-NoProfile', '-NonInteractive', '-Command', script],
-        {
-          env: releaseEnvironment({
-            ...values,
-            GITHUB_OUTPUT: output,
-            RELEASE_TAG: 'v0.2.0',
-          }),
-        },
+        process.execPath,
+        [resolve(step[1].trim())],
+        { env },
       );
       if (expected === null) {
         await expect(validation).rejects.toThrow(
@@ -237,6 +240,26 @@ describe('Configuração de distribuição', () => {
           `signed=${expected}`,
         );
       }
+    },
+  );
+
+  it.each(['', '0.2.0', 'v0.2.0-beta.1'])(
+    'rejeita tag não estável sem emitir sucesso no workflow: %j',
+    async (tag) => {
+      const output = join(directory, 'github-output');
+      await expect(
+        execFileAsync(
+          process.execPath,
+          [resolve('scripts/validate-release.mjs')],
+          {
+            env: releaseEnvironment({
+              GITHUB_OUTPUT: output,
+              RELEASE_TAG: tag,
+            }),
+          },
+        ),
+      ).rejects.toThrow(/A stable version tag/);
+      await expect(readFile(output)).rejects.toMatchObject({ code: 'ENOENT' });
     },
   );
 });

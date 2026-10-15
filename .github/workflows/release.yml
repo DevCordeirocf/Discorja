@@ -27,35 +27,20 @@ jobs:
       DISCORJA_PUBLISHER_NAME: ${{ vars.DISCORJA_PUBLISHER_NAME }}
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
-      - name: Validate optional signing configuration
-        id: signing
-        shell: pwsh
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        run: |
-          $signingFields = @('CSC_LINK', 'CSC_KEY_PASSWORD', 'DISCORJA_PUBLISHER_NAME')
-          $configured = @($signingFields | Where-Object {
-            -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))
-          })
-          if ($configured.Count -gt 0) {
-            foreach ($name in $signingFields) {
-              if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-                throw "Incomplete optional signing configuration: $name"
-              }
-            }
-            'signed=true' >> $env:GITHUB_OUTPUT
-          } else {
-            'signed=false' >> $env:GITHUB_OUTPUT
-            Write-Host 'Building without code signing; GitHub updates remain enabled.'
-          }
-          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
-            throw 'A stable version tag such as v0.1.0 is required.'
-          }
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
           fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Validate optional signing configuration
+        id: signing
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: node scripts/validate-release.mjs
       - name: Validate tag version
         shell: pwsh
         run: |
@@ -65,10 +50,6 @@ jobs:
           }
           git show-ref --verify --quiet "refs/tags/$env:RELEASE_TAG"
           if ($LASTEXITCODE -ne 0) { throw 'The requested tag does not exist.' }
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
