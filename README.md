@@ -13,6 +13,12 @@ Aplicativo de compartilhamento de tela para **Windows 10/11 x64**, feito para pe
 - Instalador Windows e suporte a atualizações por GitHub Releases, mediante configuração da distribuição.
 
 O MVP transmite somente o vídeo da tela. Áudio, câmera e gravação não estão disponíveis nesta versão. A qualidade recebida depende da fonte, do computador e da conexão.
+<img width="1917" height="1011" alt="Captura de tela 2026-10-14 230554" src="https://github.com/user-attachments/assets/13a6b040-d873-4337-b494-ae7241931d07" />
+<img width="1918" height="1007" alt="Captura de tela 2026-10-14 230619" src="https://github.com/user-attachments/assets/5ec9745b-16bb-48b1-9a0a-e6d50589a1b0" />
+<img width="1348" height="607" alt="Captura de tela 2026-10-14 230629" src="https://github.com/user-attachments/assets/16cb8698-e2c5-48ad-8c44-d552e3db91e7" />
+
+
+## Índice
 
 ## Tecnologias
 
