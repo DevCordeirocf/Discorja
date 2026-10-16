@@ -118,22 +118,66 @@ async function join(page, code, name) {
 }
 
 async function startCapture(page) {
+  await applications[0].evaluate(() => {
+    const fixture = globalThis.discorjaTestWindow;
+    if (fixture && !fixture.isDestroyed()) {
+      fixture.restore();
+      fixture.show();
+      fixture.focus();
+      fixture.setTitle('Discorja - janela de teste');
+    }
+  });
+  await expect
+    .poll(
+      () =>
+        applications[0].evaluate(async ({ desktopCapturer }) => {
+          const fixture = globalThis.discorjaTestWindow;
+          const sources = await desktopCapturer.getSources({
+            types: ['window'],
+            thumbnailSize: { width: 0, height: 0 },
+          });
+          return sources.some(
+            (source) =>
+              source.id.split(':').slice(0, 2).join(':') ===
+              fixture.getMediaSourceId().split(':').slice(0, 2).join(':'),
+          );
+        }),
+      {
+        timeout: 10000,
+        message: 'Windows must enumerate the purpose-built capture window',
+      },
+    )
+    .toBe(true);
   await page.locator('[data-action=choose-source]').click();
-  const option = page
-    .locator('.source-option')
-    .filter({ hasText: 'Discorja - janela de teste' });
+  const sourceId = await applications[0].evaluate(() =>
+    globalThis.discorjaTestWindow.getMediaSourceId(),
+  );
+  const sourcePrefix = sourceId.split(':').slice(0, 2).join(':') + ':';
+  const option = page.locator(`.source-option[data-source^="${sourcePrefix}"]`);
+  await expect(page.locator('[data-action=refresh-sources]')).toBeEnabled();
+  if (!(await option.count())) {
+    environment.sourceListRefreshes =
+      (environment.sourceListRefreshes ?? 0) + 1;
+    await page.locator('[data-action=refresh-sources]').click();
+  }
   await expect(option).toHaveCount(1);
   await option.click();
   await page.locator('[data-action=start-share]').click();
   await expect(page.locator('[data-action=stop]')).toBeVisible({
     timeout: 15000,
   });
-  await page.waitForFunction(
-    () => document.querySelector('#stream-video')?.videoWidth > 0,
-  );
+  // The local preview is intentionally detached when this window loses focus.
+  await expect(page.locator('#stream-video')).toHaveCount(1);
 }
 
 async function expectVideo(page) {
+  const watch = page
+    .locator('[data-action=watch-screen][aria-pressed=false]')
+    .first();
+  if (!(await page.locator('[data-action=stop-watching]').count())) {
+    await expect(watch).toBeVisible();
+    await watch.click();
+  }
   await page.waitForFunction(
     () => {
       const video = document.querySelector('#stream-video');
@@ -155,6 +199,12 @@ async function expectVideo(page) {
 }
 
 async function chooseQuality(page, preset) {
+  if (
+    !(await page
+      .locator('#quality-details')
+      .evaluate((element) => element.open))
+  )
+    await page.locator('#quality-details > summary').click();
   await expect(page.locator('#quality-preset')).toBeEnabled();
   await page.locator('#quality-preset').selectOption(preset);
   await expect(page.locator('#quality-preset')).toBeEnabled();
@@ -317,6 +367,7 @@ try {
   );
   assert.match(code, /^[A-Z2-9]{8}$/);
   console.log('Room created');
+  await host.locator('#quality-details > summary').click();
   await expect(host.locator('#adaptive-quality')).toBeChecked();
   await host.locator('#adaptive-quality').uncheck();
   await chooseQuality(host, '1080p60');
@@ -369,6 +420,7 @@ try {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath });
   }, diagnosticPath);
   try {
+    await host.locator('#diagnostics-details > summary').click();
     await host.locator('[data-action=export-diagnostics]').click();
     await expect
       .poll(async () => {
@@ -379,12 +431,14 @@ try {
           return 0;
         }
       })
-      .toBe(1);
+      .toBe(2);
     const exported = JSON.parse(await readFile(diagnosticPath, 'utf8'));
     assert.deepEqual(Object.keys(exported).sort(), [
       'generatedAt',
       'preferences',
+      'runtime',
       'schemaVersion',
+      'session',
       'streams',
       'version',
     ]);
@@ -477,6 +531,37 @@ try {
     'Live 1080p30 and 720p30 changes preserve the stream, room and video element',
   );
   await chooseQuality(host, '1080p60');
+  await host.locator('#video-bitrate').fill('24');
+  await host.locator('#video-bitrate').press('Tab');
+  await expect
+    .poll(async () => {
+      const snapshot = await qualitySnapshot(host);
+      const senders = snapshot.peers.flatMap((peer) => peer.senders);
+      return (
+        senders.length > 0 &&
+        senders.every((sender) =>
+          sender.encodings.every(
+            (encoding) => encoding.maxBitrate === 24_000_000,
+          ),
+        )
+      );
+    })
+    .toBe(true);
+  recordQuality({
+    profile: '1080p60-custom-ceiling-24Mbps',
+    host: await qualitySnapshot(host),
+    receiver: await collectQuality(viewer, 2500),
+  });
+  await host.locator('[data-action=reset-bitrate]').click();
+  await expectSenderProfile(host, {
+    width: 1920,
+    height: 1080,
+    fps: 60,
+    cap: 12_000_000,
+  });
+  checks.push(
+    'A 24Mbps per-viewer video ceiling applies to real RTP parameters and resets without restarting capture',
+  );
   await expectSenderProfile(host, {
     width: 1920,
     height: 1080,
@@ -685,14 +770,15 @@ try {
     checks.push(
       `Completed ${soakMinutes} minute(s) of additional local two-viewer transmission`,
     );
+  await host.locator('summary[aria-label="Ações de Amigo"]').click();
   await host
     .getByRole('button', { name: 'Remover Amigo da sala', exact: true })
     .click();
-  await expect(viewer.locator('.notice')).toContainText('removeu');
+  await expect(viewer.locator('.notice')).toContainText('removido');
   await expect(viewer.locator('#stream-video')).toHaveCount(0);
   checks.push('Host removal stops the selected viewer');
   await host.locator('[data-action=leave]').click();
-  await expect(lateViewer.locator('.notice')).toContainText('encerrou');
+  await expect(lateViewer.locator('.notice')).toContainText('encerrada');
   await expect(lateViewer.locator('#stream-video')).toHaveCount(0);
   checks.push(
     'Closing the room stops capture and disconnects remaining viewers',

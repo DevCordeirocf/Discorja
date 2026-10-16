@@ -49,24 +49,38 @@ export function isServerMessage(v: unknown): v is ServerMessage {
   const session = () => v.resumeToken === undefined || token(v.resumeToken);
   switch (v.type) {
     case 'hello':
-      return keys(v, ['type', 'protocol']) && v.protocol === 2;
+      return (
+        keys(v, ['type', 'protocol']) && (v.protocol === 2 || v.protocol === 3)
+      );
     case 'room-state': {
       if (
-        !keys(v, [
-          'type',
-          'reason',
-          'protocol',
-          'code',
-          'name',
-          'selfId',
-          'ownerId',
-          'publisherId',
-          'maxParticipants',
-          'participants',
-          'sharing',
-          'resumeToken',
-        ]) ||
-        v.protocol !== 2 ||
+        !keys(
+          v,
+          [
+            'type',
+            'reason',
+            'protocol',
+            'code',
+            'name',
+            'selfId',
+            'ownerId',
+            'publisherId',
+            'maxParticipants',
+            'participants',
+            'sharing',
+            'resumeToken',
+          ],
+          v.protocol === 3
+            ? [
+                'publications',
+                'maxPublishers',
+                'watching',
+                'watchRequestId',
+                'subscribers',
+              ]
+            : [],
+        ) ||
+        (v.protocol !== 2 && v.protocol !== 3) ||
         !['created', 'joined', 'resumed', 'updated'].includes(
           String(v.reason),
         ) ||
@@ -99,6 +113,68 @@ export function isServerMessage(v: unknown): v is ServerMessage {
       )
         return false;
       const members = v.participants as { peerId: string; role: string }[];
+      if (v.protocol === 3) {
+        if (
+          !Number.isInteger(v.maxPublishers) ||
+          Number(v.maxPublishers) < 1 ||
+          Number(v.maxPublishers) > 4 ||
+          Number(v.maxPublishers) > Number(v.maxParticipants) ||
+          !Array.isArray(v.publications) ||
+          v.publications.length > Number(v.maxPublishers) ||
+          !Array.isArray(v.subscribers) ||
+          v.subscribers.length > Number(v.maxParticipants) - 1 ||
+          !v.subscribers.every(
+            (id) =>
+              peerId(id) &&
+              id !== v.selfId &&
+              members.some((member) => member.peerId === id),
+          ) ||
+          new Set(v.subscribers).size !== v.subscribers.length ||
+          (v.watchRequestId !== null && !peerId(v.watchRequestId))
+        )
+          return false;
+        if (
+          !v.publications.every(
+            (entry) =>
+              object(entry) &&
+              keys(entry, [
+                'publicationId',
+                'publisherId',
+                'audio',
+                'connected',
+                'watchers',
+              ]) &&
+              peerId(entry.publicationId) &&
+              peerId(entry.publisherId) &&
+              members.some((member) => member.peerId === entry.publisherId) &&
+              typeof entry.audio === 'boolean' &&
+              typeof entry.connected === 'boolean' &&
+              Number.isInteger(entry.watchers) &&
+              Number(entry.watchers) >= 0 &&
+              Number(entry.watchers) < Number(v.maxParticipants),
+          )
+        )
+          return false;
+        const publications = v.publications as {
+          publicationId: string;
+          publisherId: string;
+        }[];
+        if (
+          new Set(publications.map((entry) => entry.publicationId)).size !==
+            publications.length ||
+          new Set(publications.map((entry) => entry.publisherId)).size !==
+            publications.length ||
+          (v.watching !== null &&
+            !publications.some(
+              (entry) =>
+                entry.publicationId === v.watching &&
+                entry.publisherId !== v.selfId,
+            )) ||
+          (v.subscribers.length > 0 &&
+            !publications.some((entry) => entry.publisherId === v.selfId))
+        )
+          return false;
+      }
       return (
         new Set(members.map((entry) => entry.peerId)).size === members.length &&
         members.some((entry) => entry.peerId === v.selfId) &&
@@ -173,6 +249,13 @@ export function isServerMessage(v: unknown): v is ServerMessage {
     case 'signal':
       return (
         keys(v, ['type', 'peerId', 'signal']) &&
+        peerId(v.peerId) &&
+        signal(v.signal)
+      );
+    case 'stream-signal':
+      return (
+        keys(v, ['type', 'publicationId', 'peerId', 'signal']) &&
+        peerId(v.publicationId) &&
         peerId(v.peerId) &&
         signal(v.signal)
       );

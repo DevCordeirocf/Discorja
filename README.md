@@ -6,12 +6,16 @@ Aplicativo de compartilhamento de tela para **Windows 10/11 x64**, feito para pe
 
 - Salas por convite com código de oito caracteres.
 - Salas nomeadas, convites recentes e troca com encerramento da mídia anterior.
-- Dono e moderadores separados de quem transmite; uma tela ativa por sala.
+- Duas pessoas podem transmitir ao mesmo tempo no piloto P2P; cada participante assiste a uma tela por vez.
+- Cartões para escolher quem assistir e controles independentes para compartilhar sua própria tela.
+- Prévia local pausada em segundo plano, preservando a captura enviada aos amigos.
 - Captura de janela ou monitor com prévia e controles para iniciar e parar.
 - Som do computador opcional no Windows, com controle de envio e volume recebido.
-- Até quatro espectadores por sala na configuração padrão.
+- Até cinco participantes por sala na configuração padrão, com dono e moderadores.
 - Perfis de **720p/30 FPS**, **1080p/30 FPS** e **1080p/60 FPS**.
 - Prioridade para detalhes ou movimento, adaptação por espectador e limite de envio.
+- Teto de vídeo ajustável até 30 Mbps por espectador, com indicação em MB/s e orçamento total compartilhado.
+- Navegação por teclado com foco preservado durante atualizações da sala.
 - Indicadores de qualidade da transmissão e controle de participantes.
 - Diagnóstico exportável, preferência de formato de vídeo e recuperação de quedas breves.
 - Aviso de atualização ao abrir, com opção de atualizar ou adiar.
@@ -22,11 +26,9 @@ Microfone, câmera e gravação não fazem parte do aplicativo. O som compartilh
 <img width="1918" height="1007" alt="Captura de tela 2026-10-14 230619" src="https://github.com/user-attachments/assets/5ec9745b-16bb-48b1-9a0a-e6d50589a1b0" />
 <img width="1348" height="607" alt="Captura de tela 2026-10-14 230629" src="https://github.com/user-attachments/assets/16cb8698-e2c5-48ad-8c44-d552e3db91e7" />
 
-## Índice
-
 ## Tecnologias
 
-**Electron** e **TypeScript** no aplicativo, **WebRTC** para vídeo e áudio e **Node.js/WebSocket** para a sinalização das salas. A mídia sai do computador do anfitrião para cada espectador, diretamente ou por TURN quando configurado.
+**Electron** e **TypeScript** no aplicativo, **WebRTC** para vídeo e áudio e **Node.js/WebSocket** para a sinalização das salas. Cada transmissor envia mídia somente para quem escolheu assistir à sua tela, diretamente ou por TURN quando configurado.
 
 ## Requisitos
 
@@ -65,11 +67,12 @@ O endereço local padrão é `ws://127.0.0.1:8787`. Para testar com outro comput
 2. Informe seu nome e crie uma sala.
 3. Escolha a qualidade e a janela ou monitor que deseja transmitir.
 4. Se quiser transmitir som, marque a opção e confira o aviso antes de iniciar. Durante chamadas no Discord, prefira somente vídeo até validar uma saída de som isolada.
-5. Inicie a transmissão e compartilhe o código com os amigos. Quem assiste pode clicar em **Ouvir transmissão** e ajustar o volume.
-6. Use os controles para silenciar ou encerrar a captura de som, parar o vídeo, remover espectadores ou encerrar a sala.
-7. Abra **Salas** para criar outra sala ou entrar por um convite salvo. O dono ou moderador pode usar **Permitir tela** para autorizar outro transmissor, que inicia sua própria captura.
+5. Inicie a transmissão e compartilhe o código com os amigos. Eles entram na sala e escolhem **Assistir** no cartão desejado.
+6. Outra pessoa pode usar **Compartilhar minha tela** enquanto houver espaço. Você pode transmitir e assistir a outra pessoa simultaneamente; trocar de cartão encerra a recepção anterior.
+7. Quem recebe pode usar **Ouvir transmissão** e ajustar o volume. O som recebido fica bloqueado enquanto captura o som do próprio computador, para evitar retorno.
+8. Use **Parar de compartilhar** e **Parar de assistir** de forma independente. Abra **Salas** para alternar de sala; o menu de cada participante oferece os controles de moderação autorizados.
 
-Na versão 0.5.0, atualize primeiro o servidor e use clientes compatíveis na mesma sala. A troca encerra a sessão anterior; se o dono trocar ou sair, sua sala é encerrada para todos. Veja o [guia de salas](docs/salas.md).
+Na versão 0.8.0, atualize primeiro o servidor e use clientes com protocolo 3 na mesma sala. `MAX_PUBLISHERS=2` é o limite padrão de telas simultâneas. A troca de sala encerra a sessão anterior; se o dono trocar ou sair, sua sala é encerrada para todos. Veja o [guia de salas](docs/salas.md).
 
 ## Documentação
 
@@ -77,6 +80,9 @@ Na versão 0.5.0, atualize primeiro o servidor e use clientes compatíveis na me
 - [Segurança](docs/seguranca.md) — revisão, melhorias propostas e operação sem serviços pagos.
 - [Áudio e Discord](docs/audio.md) — uso, controles e configurações suportadas.
 - [Salas e permissões](docs/salas.md) — navegação, troca, moderação e migração de versões.
+- [Validação da versão 0.7.0](docs/validacao-0.7.0.md) — várias telas, prévia e verificações locais.
+- [Validação da versão 0.8.0](docs/validacao-0.8.0.md) — consolidação, acessibilidade, bitrate e distribuição.
+- [Operação e validação com o grupo](docs/operacao.md) — diagnóstico do servidor e próximos ensaios.
 - [Validação da versão 0.5.0](docs/validacao-0.5.0.md) — testes e pendências desta etapa.
 - [Validação da versão 0.4.0](docs/validacao-0.4.0.md) — testes de áudio e verificações pendentes.
 - [Validação da versão 0.3.0](docs/validacao-0.3.0.md) — entregas, testes e verificações de implantação pendentes.

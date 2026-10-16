@@ -54,11 +54,11 @@ describe('Compatibilidade da sinalização', () => {
     const socket = Socket.current;
     socket.open();
     expect(socket.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: 'hello', protocol: 2 }),
+      JSON.stringify({ type: 'hello', protocol: 3 }),
     );
     await Promise.resolve();
     expect(connected).toBe(false);
-    socket.message({ type: 'hello', protocol: 2 });
+    socket.message({ type: 'hello', protocol: 3 });
     await pending;
     expect(connected).toBe(true);
     socket.message({ type: 'host-state', sharing: false });

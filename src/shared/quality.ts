@@ -8,6 +8,8 @@ export interface StreamPreferences {
   adaptive: boolean;
   /** Total media budget shared by viewers, including audio and transport headroom. */
   maxUploadMbps: number;
+  /** Optional video ceiling per viewer; absent uses the selected preset. */
+  videoBitrateMbps?: number;
 }
 
 export const QUALITY_PRESETS = {
@@ -47,6 +49,11 @@ export function normalizePreferences(input: unknown): StreamPreferences {
       ? (input as Partial<StreamPreferences>)
       : {};
   return {
+    ...(typeof value.videoBitrateMbps === 'number' &&
+    Number.isFinite(value.videoBitrateMbps) &&
+    value.videoBitrateMbps > 0
+      ? { videoBitrateMbps: Math.max(1, Math.min(30, value.videoBitrateMbps)) }
+      : {}),
     ...(value.preferredCodec &&
     ['H264', 'VP8', 'VP9', 'AV1'].includes(value.preferredCodec)
       ? { preferredCodec: value.preferredCodec }

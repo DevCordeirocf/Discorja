@@ -8,6 +8,28 @@ import {
 } from '../src/shared/quality';
 
 describe('preferências e limites de qualidade', () => {
+  it('permite teto de vídeo personalizado sem ultrapassar o upload disponível', () => {
+    const preference = normalizePreferences({
+      preset: '1080p60',
+      videoBitrateMbps: 24,
+      maxUploadMbps: 80,
+    });
+    const controller = new AdaptiveQuality(preference);
+    expect(controller.target(50_000_000).bitrate).toBe(24_000_000);
+    expect(controller.target(7_000_000).bitrate).toBe(7_000_000);
+    expect(
+      normalizePreferences({ videoBitrateMbps: 200 }).videoBitrateMbps,
+    ).toBe(30);
+    expect(
+      normalizePreferences({ videoBitrateMbps: 0.1 }).videoBitrateMbps,
+    ).toBe(1);
+    for (const invalid of [0, -1, NaN, Infinity, '24'])
+      expect(
+        normalizePreferences({ videoBitrateMbps: invalid }).videoBitrateMbps,
+      ).toBeUndefined();
+    controller.configure({ ...preference, videoBitrateMbps: undefined });
+    expect(controller.target(50_000_000).bitrate).toBe(12_000_000);
+  });
   it('valida preferências persistidas e limita o orçamento de upload', () => {
     expect(normalizePreferences(null)).toEqual(DEFAULT_STREAM_PREFERENCES);
     expect(

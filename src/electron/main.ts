@@ -40,6 +40,8 @@ let window: BrowserWindow | null = null;
 const captureAuthorization = new CaptureAuthorization();
 let knownSources = new Set<string>();
 let sourcesExpire = 0;
+let sourceQueue: Promise<void> = Promise.resolve();
+let sourceRequests = 0;
 let sharing = false;
 let powerBlock: number | undefined;
 let signalingUrl = DEFAULT_SIGNALING_URL;
@@ -148,6 +150,16 @@ async function configureUpdates() {
   setTimeout(() => void checkUpdates(), 5000).unref();
 }
 
+function foreground(): boolean {
+  return Boolean(
+    window &&
+    !window.isDestroyed() &&
+    window.isVisible() &&
+    !window.isMinimized() &&
+    window.isFocused(),
+  );
+}
+
 function registerIpc() {
   const handle = (channel: string, callback: (...args: any[]) => unknown) => {
     ipcMain.handle(channel, (event, ...args) => {
@@ -155,6 +167,7 @@ function registerIpc() {
       return callback(...args);
     });
   };
+  handle('window:foreground', foreground);
   handle('config:get', (): AppConfig => ({
     signalingUrl,
     iceServers,
@@ -178,18 +191,34 @@ function registerIpc() {
     signalingUrl = next;
   });
   handle('capture:sources', async () => {
-    const sources = await desktopCapturer.getSources({
-      types: ['screen', 'window'],
-      thumbnailSize: { width: 360, height: 210 },
+    if (sourceRequests >= 2)
+      throw new Error('Aguarde a lista de janelas terminar de atualizar.');
+    sourceRequests++;
+    // Electron may coalesce simultaneous enumerations. After cancel/reopen,
+    // wait for the older request and take a fresh snapshot, with a bounded queue.
+    const request = sourceQueue.then(async () => {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 360, height: 210 },
+      });
+      knownSources = new Set(sources.map((source) => source.id));
+      sourcesExpire = Date.now() + 60000;
+      return sources.map((source) => ({
+        id: source.id,
+        name: source.name,
+        kind: source.id.startsWith('screen:') ? 'screen' : 'window',
+        thumbnail: source.thumbnail.toDataURL(),
+      }));
     });
-    knownSources = new Set(sources.map((source) => source.id));
-    sourcesExpire = Date.now() + 60000;
-    return sources.map((source) => ({
-      id: source.id,
-      name: source.name,
-      kind: source.id.startsWith('screen:') ? 'screen' : 'window',
-      thumbnail: source.thumbnail.toDataURL(),
-    }));
+    sourceQueue = request.then(
+      () => undefined,
+      () => undefined,
+    );
+    try {
+      return await request;
+    } finally {
+      sourceRequests--;
+    }
   });
   handle('capture:select', (id: unknown, audio: unknown = false) => {
     captureAuthorization.cancel();
@@ -234,7 +263,21 @@ function registerIpc() {
   });
   handle('diagnostics:export', async (report: unknown) => {
     const { sanitizeDiagnostics } = await import('../shared/diagnostics');
-    const safe = sanitizeDiagnostics(report, app.getVersion());
+    const rendererMemory = app
+      .getAppMetrics()
+      .find(
+        (metric) => metric.pid === window?.webContents.getOSProcessId(),
+      )?.memory;
+    const safe = sanitizeDiagnostics(report, app.getVersion(), {
+      platform: process.platform,
+      architecture: process.arch,
+      electron: process.versions.electron,
+      chromium: process.versions.chrome,
+      node: process.versions.node,
+      updateStatus: updateState.status,
+      workingSetKiB: rendererMemory?.workingSetSize,
+      privateKiB: rendererMemory?.privateBytes,
+    });
     const result = await dialog.showSaveDialog(window!, {
       title: 'Salvar diagnóstico',
       defaultPath: 'discorja-diagnostico.json',
@@ -379,6 +422,16 @@ async function main() {
       spellcheck: false,
     },
   });
+  // Native visibility remains reliable while backgroundThrottling is disabled
+  // for capture. This signal controls only the local preview player.
+  const publishForeground = (active: boolean) =>
+    window?.webContents.send('window:foreground', active);
+  window.on('focus', () => publishForeground(true));
+  window.on('blur', () => publishForeground(false));
+  window.on('minimize', () => publishForeground(false));
+  window.on('restore', () => publishForeground(foreground()));
+  window.on('show', () => publishForeground(foreground()));
+  window.on('hide', () => publishForeground(false));
   window.removeMenu();
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => {

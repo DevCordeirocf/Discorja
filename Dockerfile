@@ -6,6 +6,7 @@ COPY scripts/install-electron.mjs scripts/install-electron.mjs
 RUN npm ci
 COPY src/server src/server
 COPY src/shared src/shared
+COPY src/electron/config.ts src/electron/config.ts
 COPY tsconfig.server.json ./
 RUN npm run server:build
 
@@ -16,6 +17,7 @@ COPY package.json package-lock.json ./
 COPY scripts/install-electron.mjs scripts/install-electron.mjs
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
+COPY scripts/check-server.mjs scripts/check-server.mjs
 USER node
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["node", "-e", "fetch('http://127.0.0.1:'+process.env.PORT+'/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]

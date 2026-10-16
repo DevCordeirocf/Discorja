@@ -1,8 +1,8 @@
 # Plano de evolução do Discorja
 
-**Referência:** evolução da 0.2.4 para a implementação local 0.5.0.
+**Referência:** evolução da 0.2.4 para a implementação local 0.8.0.
 
-**Status:** implementação local da 0.5.0 preparada; a 0.4.0 foi enviada separadamente ao GitHub. Validação operacional depende da implantação e ensaios externos indicados nos registros. Versões posteriores continuam sendo propostas de organização, sem datas garantidas.
+**Status:** código e pacote Windows 0.8.0 preparados localmente: acessibilidade, estados de conexão, diagnóstico de suporte, bitrate por espectador e integridade da distribuição. O piloto continua P2P, com duas telas e uma recepção por pessoa; SFU adiada. A homologação externa da 0.8-A exige grupo, endpoint real e atualização entre instalações e permanece pendente. Não há release publicada por esta entrega.
 
 ## Objetivo
 
@@ -40,7 +40,7 @@ Manter Electron + TypeScript para o aplicativo e WebRTC para mídia. A base ser�
 
 Uma SFU recebe os fluxos publicados e encaminha aos assinantes. Isso reduz a necessidade de cada transmissor enviar uma cópia para cada espectador. O servidor passa a transportar vídeo e áudio, com exigências próprias de rede, operação e banda.
 
-**Proposta de limites iniciais para validação:** até seis participantes por sala, uma tela por pessoa, duas telas simultâneas no primeiro piloto e expansão para quatro somente após medições. São metas de teste, não capacidades garantidas. O participante deve escolher quais telas assistir; abrir uma sala não deve iniciar a decodificação de todos os vídeos em qualidade máxima.
+**Limites iniciais do piloto:** cinco participantes totais por padrão, uma tela por pessoa, duas telas simultâneas e expansão para quatro somente após medições. Cada participante escolhe **uma única transmissão para assistir por vez**; entrar na sala não recebe vídeos automaticamente. São limites de configuração, não capacidades garantidas. Captura própria e recepção escolhida são independentes.
 
 ## Sequência de entregas
 
@@ -85,14 +85,14 @@ Essa organização reduz o risco de perder o ponto de retomada, mas não garante
 | 0.6-A  | Viabilidade de SFU própria, opcional       | Medir máquina/rede já disponíveis e confirmar ausência de contratação. Sem capacidade gratuita adequada, marcar como adiada e seguir com P2P limitado.                                                                                                                     | 0.3-C2 e 0.5-A                             |
 | 0.6-B  | Piloto da SFU, opcional                    | Validar tokens por sala/papel, limites de mídia, portas e credenciais administrativas restritas; não liberar serviço de retransmissão aberto.                                                                                                                              | 0.6-A aprovada                             |
 | 0.7-A  | Publicações simultâneas e assinaturas      | Implementar duas telas no piloto P2P, com IDs independentes, limites e autorização por publicador. Parar uma tela não encerra a outra. SFU só entra se validada sem contratação.                                                                                           | 0.5-B; 0.6-B apenas para modo SFU          |
-| 0.7-B  | Grade, destaque e orçamento de mídia       | Priorizar tela escolhida, suspender/reduzir assinaturas inativas e controlar áudio; medir CPU/GPU/banda e validar limites contra abuso de publicações.                                                                                                                     | 0.7-A                                      |
+| 0.7-B  | Cartões, destaque e orçamento de mídia     | Receber apenas uma tela por pessoa, encerrar a recepção anterior ao trocar, pausar prévia própria em segundo plano, controlar áudio e medir recursos.                                                                                                                      | 0.7-A                                      |
 | 0.8-A  | Operação e consolidação                    | Testar com o grupo, conferir atualização/protocolo, limites gratuitos, logs e procedimento de incidente. Nenhum serviço pago é requisito.                                                                                                                                  | Etapas obrigatórias anteriores             |
 
 Configuração externa necessária deve ser listada ao final da subetapa com instruções concretas. Não marcar como validado um servidor, conta ou atualização instalada que não tenha sido efetivamente testado. Trabalho independente pode avançar em outra solicitação se não depender dessa verificação; o item pendente permanece explícito.
 
 ### Registro de progresso e retomada
 
-**Estado atual:** implementação local da **0.5.0 preparada**, incluindo 0.5-A e 0.5-B. A 0.4.0 foi enviada ao GitHub no commit `cc0c79a` antes da continuação. Os ensaios locais de salas, papéis, vídeo e áudio passaram; implantação do novo servidor e clientes ainda está pendente. A 0.3.0 mantém verificações operacionais em C2/E1/E2/F; G2 continua adiada. A validação nativa de áudio/Discord da 0.4.0 permanece pendente. As etapas 0.6 em diante não foram iniciadas. Testes locais não certificam segurança ou capacidade de todo o ambiente.
+**Estado atual:** implementação local 0.8.0 preparada sobre a base 0.5.0 do commit `cac0121`, incluindo as entregas 0.7-A/B e a consolidação de interface, diagnóstico, bitrate e distribuição. A 0.4 foi enviada separadamente em `cc0c79a`; a SFU 0.6-B continua adiada. Resultados atuais em [validacao-0.8.0.md](validacao-0.8.0.md). A homologação externa da 0.8-A permanece pendente conforme [operacao.md](operacao.md): endpoint real, grupo em redes diferentes, áudio nativo/Discord e atualização entre instalações. Código e pacote locais não certificam as contas ou o host da hospedagem.
 
 Ao terminar ou interromper uma subetapa, atualizar este registro no próprio arquivo. Manter uma entrada por subetapa trabalhada; não sobrescrever o histórico de entregas anteriores.
 
@@ -162,6 +162,44 @@ Ao terminar ou interromper uma subetapa, atualizar este registro no próprio arq
 - **Configuração externa:** implantar servidor 0.5.0 primeiro, conferir WSS/origens/limites e distribuir cliente 0.5.0; nenhuma variável ou contratação nova. Clientes antigos continuam somente em salas do protocolo anterior. Reiniciar o servidor encerra salas em memória.
 - **Pendências:** instalação/atualização real e testes com máquinas/redes diferentes; continuam os ensaios de áudio nativo/Discord das entregas anteriores. Não houve publicação da 0.5.0 nesta rodada.
 - **Retomada:** seguir [salas.md](salas.md) e [validacao-0.5.0.md](validacao-0.5.0.md). As alterações 0.5.0 estão locais, separadas do commit publicado da 0.4.0. Não iniciar a etapa seguinte automaticamente.
+
+#### Avaliação 0.6-A — Viabilidade de SFU própria
+
+**Data:** 16 de outubro de 2026. **Estado:** avaliação encerrada; SFU adiada por decisão do responsável. Não há hospedagem disponível e o uso ocasional pelo grupo pequeno não justifica a estrutura.
+
+- **Entregue:** análise da topologia, orçamento ilustrativo de banda, inventário básico do PC de desenvolvimento e conferência da documentação oficial do LiveKit/Render. Registro em [viabilidade-0.6.0.md](viabilidade-0.6.0.md).
+- **Constatação:** SFU precisa estar disponível durante suas sessões. Na mesma conexão do transmissor, a distribuição continua consumindo o upload daquela conexão. Render Free permanece apenas como sinalização nesta proposta.
+- **Decisão:** manter P2P e não implementar 0.6-B no escopo atual. Não há definição de host pendente; a análise de infraestrutura fica como referência para eventual reconsideração.
+- **Limites:** sem instalação, contratação, abertura de portas, serviço persistente ou nova dependência. Pacote permanece 0.5.0. A próxima implementação, quando solicitada, é a 0.7-A em P2P limitado.
+
+#### Entrega 0.7-A e 0.7-B — Publicações e interface dinâmica
+
+**Data:** 16 de outubro de 2026. **Estado:** implementação local preparada; aguardando distribuição e homologação externa.
+
+- **Escopo:** protocolo 3, até duas publicações no piloto, uma tela própria e uma recepção escolhida por pessoa; cartões sem vídeo oculto; captura e recepção em controladores separados; parada e moderação individuais. Áudio recebido bloqueado durante captura de som próprio, sem microfone/câmera. Prévia própria pausada e desconectada do player em segundo plano, sem reconfigurar a captura enviada.
+- **Estabilidade e segurança:** autorização por sala/publicação/assinatura; IDs e limites validados nos dois lados; confirmação da seleção antes de aceitar ofertas; repetição da mesma seleção renova a conexão; limpeza de tracks, peers e contadores. Enumeração de fontes serializada com fila limitada para evitar lista antiga ao cancelar/reabrir rapidamente.
+- **Verificações:** resultados dos testes automatizados e ensaios integrados registrados em [validacao-0.7.0.md](validacao-0.7.0.md), com limitações de memória, áudio nativo e ambiente descritas.
+- **Configuração externa:** implantar o servidor primeiro, manter `MAX_PUBLISHERS=2`, conferir limites e WSS e distribuir clientes compatíveis. Não há contratação, SFU ou nova dependência. Assinatura opcional e fluxo de GitHub Releases preservados.
+- **Referência:** versão do pacote 0.7.0; alterações locais sem commit ou publicação por esta entrega.
+
+#### Início 0.8-A — Operação e consolidação (registro anterior)
+
+**Estado:** em andamento. **Autorização:** pedido para continuar e partir para o próximo passo.
+
+- **Entregue localmente:** `npm run server:check` verifica saúde, protocolo 3 e estatísticas opcionais sem criar sala, capturar mídia ou expor segredos. TLS permanece obrigatório fora de localhost, sem redirecionamentos. Respostas e tempos são limitados. Guia separado em [operacao.md](operacao.md), mantendo o README focado no produto.
+- **Validação:** testes cobrem sucesso, protocolo antigo, estatísticas desabilitadas/token inválido e endpoints inseguros. Nenhuma conta ou servidor remoto foi modificado.
+- **Ponto de retomada:** implantar e rodar o diagnóstico no endpoint real; executar o roteiro com o grupo por pelo menos 30 minutos; validar áudio junto ao Discord e uma atualização entre duas instalações publicadas. Essas verificações exigem o ambiente real e não estão concluídas.
+
+#### Entrega 0.8.0 — Consolidação local
+
+**Data:** 16 de outubro de 2026. **Estado:** código e pacote local concluídos; homologação externa da 0.8-A pendente. **Autorização:** pedido explícito para finalizar a 0.8; ajuste de bitrate incluído após a solicitação para permitir maior tráfego de vídeo.
+
+- **Interface e acessibilidade:** preservação de foco/caret e menus em snapshots; Tab/Shift+Tab nos controles visíveis de diálogos; Escape e retorno de foco; atalho para o conteúdo; anunciador persistente sem repetições por renderização; estados de conexão/recuperação claros e atualização explícita da lista de janelas.
+- **Qualidade:** teto de vídeo personalizado de 1 a 30 Mbps por espectador, conversão para MB/s, retorno ao padrão do perfil e alteração durante a captura. O orçamento total, áudio e adaptação continuam limitando o envio. Não há bitrate mínimo nem tráfego artificial para consumir toda a banda.
+- **Operação e segurança:** relatório de suporte schema 2 com contexto validado e runtime fornecido pelo processo principal, sem identificadores/segredos/conteúdo. Diagnóstico do servidor mantido. Validador de manifesto/tamanho/SHA-512/blockmap no workflow, que seleciona somente os artefatos da versão atual. Assinatura continua opcional.
+- **Verificação e distribuição:** testes automatizados e integrados, ensaio contínuo local e pacote NSIS registrados em [validacao-0.8.0.md](validacao-0.8.0.md). Executável empacotado e atualizador real exercitados em perfis/cache de teste; nenhuma instalação existente foi substituída.
+- **Configuração externa:** nenhum serviço pago ou variável de servidor nova. Confirmar endpoint WSS, protocolo 3, limites gratuitos e implantação; publicar a release somente pelo procedimento revisado em [releases.md](releases.md).
+- **Referência:** versão 0.8.0 local, sem commit/push ou release publicados por esta entrega. Não iniciar a 1.0 automaticamente.
 
 ## 0.3.0 — Performance, conexão e monitoramento
 
@@ -302,6 +340,8 @@ O servidor já pode manter salas de grupos diferentes. A evolução aqui é torn
 
 ## 0.6.0 — Servidor de mídia e integração experimental
 
+**Decisão atual:** SFU adiada. O responsável não possui hospedagem disponível e considera desnecessária a estrutura para o grupo pequeno e uso ocasional. A proposta abaixo fica como referência futura; não é requisito para implementar a 0.7 em P2P.
+
 **Etapa opcional, sem contratação.** Avaliar **LiveKit open source auto-hospedado** como primeira opção de SFU para o piloto, mantendo Electron. Usar apenas computador já disponível, com portas, conexão e TLS adequados. Não incluir LiveKit Cloud, VPS, domínio pago ou serviços de mídia cobrados por consumo. Se a rede exigir contratar IP público, hardware ou hospedagem, adiar esta etapa e manter P2P limitado. Não assumir que CGNAT pode ser resolvido gratuitamente em qualquer rede.
 
 ```mermaid
@@ -404,7 +444,7 @@ Executar primeiro amostras curtas para encontrar falhas e depois sessões de pel
 
 ## Próxima entrega recomendada
 
-A implementação local da **0.5.0 está preparada**. Priorizar a implantação, a distribuição e os ensaios operacionais descritos nos registros. A etapa **0.6-A** avalia SFU própria somente se houver máquina e rede existentes, sem contratação; pode ser adiada. A próxima ampliação obrigatória é **0.7-A — Publicações simultâneas**, mediante solicitação. Nenhuma etapa depende de contratar serviços.
+A implementação e o pacote local **0.8.0 estão preparados**. A próxima ação é homologar no ambiente real conforme [operacao.md](operacao.md): endpoint atualizado, grupo em redes distintas, sessão de pelo menos 30 minutos e atualização entre instalações. Manter duas publicações no piloto até medir a capacidade. A **0.6 permanece adiada**, sem serviço de mídia adicional ou contratação obrigatória. A 1.0 depende desses critérios externos e não foi iniciada.
 
 ## Referências técnicas
 

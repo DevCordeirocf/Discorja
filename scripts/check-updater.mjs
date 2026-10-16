@@ -130,6 +130,28 @@ try {
         await expect(
           page.locator('[data-action=confirm-install-update]'),
         ).toHaveCount(0);
+      if (scenario === 'valid') {
+        await page.evaluate(() => window.discorja.setSharing(true));
+        try {
+          const refused = await page.evaluate(async () => {
+            try {
+              await window.discorja.installUpdate();
+              return false;
+            } catch {
+              return true;
+            }
+          });
+          assert.equal(refused, true);
+          await expect(
+            page.locator('[data-action=confirm-install-update]'),
+          ).toBeVisible();
+          checks.push(
+            'Privileged install guard refuses restart while the native sharing state is active',
+          );
+        } finally {
+          await page.evaluate(() => window.discorja.setSharing(false));
+        }
+      }
       await page.locator('[data-action=defer-update]').click();
       await expect(page.locator('[data-action=create]')).toBeEnabled();
       checks.push(

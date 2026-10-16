@@ -1,5 +1,23 @@
 # Segurança e operação sem serviços pagos
 
+## Consolidação 0.8.0
+
+O diagnóstico schema 2 permite apenas estados, contagens, métricas numéricas e versões previstas. O processo principal fornece o runtime; nomes, tokens, endpoint, dados brutos de ICE/SDP e conteúdo não são exportados. Testes tentam inserir esses campos e verificam seu descarte. O novo teto de vídeo é limitado de 1 a 30 Mbps por espectador e continua sujeito ao orçamento total; não altera permissões de captura ou papéis.
+
+O workflow de distribuição confere versão, nomes de arquivos, tamanho, SHA-512 e blockmap antes de selecionar os artefatos enviados. Rejeita manifesto incompatível e caminhos externos. A assinatura de código permanece opcional; quando configurada, sua validação continua obrigatória. Testes locais do atualizador usam um provedor de fixtures e não executam o instalador baixado.
+
+A navegação acessível não amplia a ponte IPC. Modais mantêm o fundo inativo, menus continuam sujeitos à autorização do servidor e a atualização da lista de janelas não inicia captura. A homologação do host, contas, cotas e duas instalações reais segue separada dos testes locais, conforme [operacao.md](operacao.md).
+
+## Publicações simultâneas e proteção de recursos — 0.7.0
+
+No protocolo 3, a sinalização associa cada ID de publicação a um membro da sala e cada participante a no máximo uma seleção. SDP/ICE só é encaminhado entre publicador e assinante autorizado, com formato, tamanho e frequência limitados. Autoassinatura, IDs obsoletos, sinalização entre salas e ofertas de quem apenas assiste são rejeitados. Parar uma tela remove sua seleção nos receptores e os contadores de negociação correspondentes.
+
+O limite padrão é duas publicações e cinco participantes. O aplicativo não decodifica os demais cartões; trocar de tela encerra a recepção anterior. Snapshots recebidos do servidor são validados antes de gerar a interface, incluindo unicidade, vínculos entre IDs, limites e papéis. Nomes continuam escapados como texto. A pausa da prévia não altera a autorização da captura nem expõe APIs de janela ao renderer: a ponte recebe somente um estado booleano de primeiro plano.
+
+Dono/moderador podem interromper uma publicação individual; a autoridade é verificada no servidor. O participante não pode encerrar a tela de outro ou inventar papel. Captura continua exigindo escolha e consentimento locais. O som recebido pelo Discorja fica bloqueado enquanto houver captura de áudio do computador para evitar recaptura; isso não isola vozes do Discord.
+
+O novo diagnóstico `server:check` confirma saúde, protocolo e estatísticas opcionais sem criar salas, iniciar mídia ou imprimir segredos. Não segue redirecionamentos, não ignora TLS e limita mensagens e respostas. É uma ferramenta administrativa de operação, sem varredura ou exploração do host; consulte [operacao.md](operacao.md). A segurança do Windows, proxy e conta da hospedagem ainda depende das verificações no ambiente real.
+
 ## Permissões e troca de salas na 0.5.0
 
 O protocolo de salas é confirmado antes da sessão. O servidor mantém dono, moderação e transmissor separadamente e verifica autorização em cada operação. Não aceita escolher um participante de outra sala, ofertas de um receptor, remoção do dono por moderador ou concessão de moderação pelo próprio participante. Sessões retomadas herdam somente o estado guardado no backend e recebem um token novo. Snapshots são validados no cliente, com limites de participantes, IDs únicos e dono/transmissor presentes na sala.

@@ -95,6 +95,11 @@ async function start(host, audio = true) {
 }
 
 async function video(page) {
+  if (!(await page.locator('[data-action=stop-watching]').count())) {
+    const watch = page.locator('[data-action=watch-screen]').first();
+    await expect(watch).toBeVisible();
+    await watch.click();
+  }
   await expect
     .poll(
       () =>
@@ -401,7 +406,7 @@ try {
   await start(host);
   await expect(host.locator('[data-action=stop]')).toHaveCount(0);
   await expect(
-    host.getByText(/O compartilhamento foi cancelado/),
+    host.locator('.notice').getByText(/O compartilhamento foi cancelado/),
   ).toBeVisible();
   checks.push('Permission denial leaves capture stopped');
   await host.evaluate(() => {

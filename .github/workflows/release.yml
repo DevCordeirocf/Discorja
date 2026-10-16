@@ -66,7 +66,10 @@ jobs:
       - name: Verify installer signatures and updater artifacts
         shell: pwsh
         run: |
-          $installers = @(Get-ChildItem -LiteralPath release -Filter '*.exe' -File)
+          node scripts/verify-release.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Release artifact integrity validation failed.' }
+          $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          $installers = @(Get-Item -LiteralPath "release/Discorja-Setup-$version.exe")
           if ($installers.Count -eq 0) { throw 'No Windows installer was generated.' }
           foreach ($installer in $installers) {
             if ('${{ steps.signing.outputs.signed }}' -eq 'true') {
@@ -98,8 +101,8 @@ jobs:
             gh release create $env:RELEASE_TAG --verify-tag --draft --title "Discorja $env:RELEASE_TAG" --generate-notes
             if ($LASTEXITCODE -ne 0) { throw 'Failed to create draft release.' }
           }
-          $artifacts = @(Get-ChildItem -LiteralPath release -File | Where-Object {
-            $_.Name -match '\.(exe|blockmap)$' -or $_.Name -eq 'latest.yml'
-          } | ForEach-Object { $_.FullName })
+          $validated = node scripts/verify-release.mjs | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Refusing to upload invalid release artifacts.' }
+          $artifacts = @($validated.files | ForEach-Object { (Get-Item -LiteralPath (Join-Path release $_)).FullName })
           gh release upload $env:RELEASE_TAG @artifacts --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Failed to upload release artifacts.' }

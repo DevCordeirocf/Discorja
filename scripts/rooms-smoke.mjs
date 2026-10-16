@@ -72,6 +72,11 @@ async function capture(page) {
   await expect(page.locator('[data-action=stop]')).toBeVisible();
 }
 async function video(page) {
+  if (!(await page.locator('[data-action=stop-watching]').count())) {
+    const watch = page.locator('[data-action=watch-screen]').first();
+    await expect(watch).toBeVisible();
+    await watch.click();
+  }
   await expect
     .poll(
       () =>
@@ -179,13 +184,6 @@ try {
   checks.push(
     'Saved rooms retain invitations only, without background connections or media',
   );
-  await owner
-    .getByRole('button', {
-      name: 'Permitir transmissão de Publicador',
-      exact: true,
-    })
-    .click();
-  await expect(owner.locator('[data-action=stop]')).toHaveCount(0);
   await expect(
     nextPublisher.locator('[data-action=choose-source]'),
   ).toBeVisible();
@@ -193,16 +191,16 @@ try {
     await nextPublisher.evaluate(() => window.__roomCaptureTracks.length),
     0,
   );
-  assert.equal(
-    await owner.evaluate(() =>
-      window.__roomCaptureTracks.every((track) => track.readyState === 'ended'),
-    ),
-    true,
-  );
   checks.push(
-    'Publisher permission moves independently of ownership, stops the previous capture and never starts capture remotely',
+    'Every participant may explicitly share; room membership never starts capture remotely',
   );
   await capture(nextPublisher);
+  await owner
+    .getByRole('button', {
+      name: 'Assistir transmissão de Publicador',
+      exact: true,
+    })
+    .click();
   await video(owner);
   await video(friend);
   checks.push(
@@ -219,21 +217,24 @@ try {
   checks.push(
     'Returning through a saved invitation creates a fresh membership and removes the inactive room connection',
   );
+  await owner.locator('summary[aria-label="Ações de Amigo"]').click();
   await owner
     .getByRole('button', { name: 'Tornar moderador Amigo', exact: true })
     .click();
   await expect(
     friend.getByRole('button', {
-      name: 'Permitir transmissão de Dono',
+      name: 'Encerrar tela de Dono',
       exact: true,
+      includeHidden: true,
     }),
-  ).toBeVisible();
+  ).toHaveCount(1);
+  await expect(owner.locator('.member-menu[open]')).toHaveCount(1);
   await owner
     .getByRole('button', { name: 'Retirar moderação de Amigo', exact: true })
     .click();
   await expect(
     friend.getByRole('button', {
-      name: 'Permitir transmissão de Dono',
+      name: 'Encerrar tela de Dono',
       exact: true,
     }),
   ).toHaveCount(0);
@@ -267,7 +268,9 @@ try {
   await switchByCode(friend, 'ABCDEFGH');
   await friend.locator('[data-action=confirm-switch]').click();
   await expect(
-    friend.getByText('Sala não encontrada ou expirada.', { exact: true }),
+    friend
+      .locator('.notice')
+      .getByText('Sala não encontrada ou expirada.', { exact: true }),
   ).toBeVisible();
   await expect(friend.locator('#stream-video')).toHaveCount(0);
   assert.equal(await activePeers(friend), 0);

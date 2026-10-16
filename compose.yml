@@ -17,6 +17,7 @@ services:
       MAX_ROOMS: 5
       MAX_CLIENTS: 20
       MAX_VIEWERS: 4
+      MAX_PUBLISHERS: 2
       RESUME_GRACE_MS: 20000
       STATS_TOKEN: ${STATS_TOKEN:-}
     logging:

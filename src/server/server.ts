@@ -12,6 +12,7 @@ import type {
   IceCandidate,
   ServerMessage,
   SignalPayload,
+  LegacyRoomState,
 } from '../shared/protocol.js';
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -35,6 +36,7 @@ export interface SignalingOptions {
   /** Exact WebSocket Origin allowlist; defaults to the desktop app and local Vite development. */
   allowedOrigins?: readonly string[];
   maxViewers?: number;
+  maxPublishers?: number;
   roomTtlMs?: number;
   maxRooms?: number;
   maxClients?: number;
@@ -66,7 +68,9 @@ interface IpState {
   joins: Counter;
 }
 interface Client {
-  protocol: 1 | 2;
+  protocol: 1 | 2 | 3;
+  watching: string | null;
+  watchRequestId: string | null;
   id: string;
   socket: WebSocket;
   ip: string;
@@ -82,7 +86,11 @@ interface Client {
   signals: Map<string, Counter>;
 }
 interface Room {
-  protocol: 1 | 2;
+  protocol: 1 | 2 | 3;
+  publications: Map<
+    string,
+    { publicationId: string; publisherId: string; audio: boolean }
+  >;
   name: string;
   owner: Client;
   moderators: Set<string>;
@@ -162,6 +170,36 @@ function validSignal(value: unknown): value is SignalPayload {
 function parseMessage(value: unknown): ClientMessage | undefined {
   if (!plainObject(value)) return;
   switch (value.type) {
+    case 'publish-state':
+      if (
+        exactKeys(value, ['type', 'publicationId', 'sharing', 'audio']) &&
+        validPeerId(value.publicationId) &&
+        typeof value.sharing === 'boolean' &&
+        typeof value.audio === 'boolean'
+      )
+        return value as ClientMessage;
+      break;
+    case 'watch-publication':
+      if (
+        exactKeys(value, ['type', 'publicationId', 'requestId']) &&
+        (value.publicationId === null || validPeerId(value.publicationId)) &&
+        validPeerId(value.requestId)
+      )
+        return value as ClientMessage;
+      break;
+    case 'stop-publication':
+      if (exactKeys(value, ['type', 'peerId']) && validPeerId(value.peerId))
+        return { type: 'stop-publication', peerId: value.peerId };
+      break;
+    case 'stream-signal':
+      if (
+        exactKeys(value, ['type', 'publicationId', 'peerId', 'signal']) &&
+        validPeerId(value.publicationId) &&
+        validPeerId(value.peerId) &&
+        validSignal(value.signal)
+      )
+        return value as ClientMessage;
+      break;
     case 'hello':
       if (
         exactKeys(value, ['type', 'protocol']) &&
@@ -264,6 +302,15 @@ export function createSignalingServer(options: SignalingOptions = {}): {
   const now = options.now ?? Date.now;
   const origins = new Set(options.allowedOrigins ?? DEFAULT_ORIGINS);
   const maxViewers = positiveInteger(options.maxViewers, 4, 'maxViewers');
+  const maxPublishers = positiveInteger(
+    options.maxPublishers,
+    2,
+    'maxPublishers',
+  );
+  if (maxPublishers > 4 || maxPublishers > maxViewers + 1)
+    throw new Error(
+      'maxPublishers deve ser no máximo 4 e não exceder os participantes.',
+    );
   if (maxViewers > 100) throw new Error('maxViewers deve ser no máximo 100.');
   const grace = options.resumeGraceMs ?? 20_000;
   if (!Number.isSafeInteger(grace) || grace < 0 || grace > 60_000)
@@ -349,9 +396,9 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     target?: Client,
     reason: 'created' | 'joined' | 'resumed' | 'updated' = 'updated',
   ) => {
-    if (room.protocol !== 2) return;
-    for (const member of target ? [target] : members(room))
-      send(member, {
+    if (room.protocol === 1) return;
+    for (const member of target ? [target] : members(room)) {
+      const snapshot: LegacyRoomState = {
         type: 'room-state',
         protocol: 2,
         reason,
@@ -374,7 +421,52 @@ export function createSignalingServer(options: SignalingOptions = {}): {
                 : 'participant',
           connected: client.socket.readyState === WebSocket.OPEN,
         })),
-      });
+      };
+      if (room.protocol === 2) send(member, snapshot);
+      else {
+        const ownPublication = room.publications.get(member.id);
+        send(member, {
+          ...snapshot,
+          protocol: 3,
+          maxPublishers,
+          watching: member.watching,
+          watchRequestId: member.watchRequestId,
+          subscribers: ownPublication
+            ? members(room)
+                .filter(
+                  (other) =>
+                    other.watching === ownPublication.publicationId &&
+                    other.socket.readyState === WebSocket.OPEN,
+                )
+                .map((other) => other.id)
+            : [],
+          publications: [...room.publications.values()].map((publication) => ({
+            ...publication,
+            connected: members(room).some(
+              (other) =>
+                other.id === publication.publisherId &&
+                other.socket.readyState === WebSocket.OPEN,
+            ),
+            watchers: members(room).filter(
+              (other) =>
+                other.watching === publication.publicationId &&
+                other.socket.readyState === WebSocket.OPEN,
+            ).length,
+          })),
+        });
+      }
+    }
+  };
+  const removePublication = (room: Room, publisherId: string) => {
+    const publication = room.publications.get(publisherId);
+    if (!publication) return;
+    room.publications.delete(publisherId);
+    for (const member of members(room)) {
+      if (member.watching === publication.publicationId) member.watching = null;
+      for (const key of member.signals.keys())
+        if (key.startsWith(`${publication.publicationId}:`))
+          member.signals.delete(key);
+    }
   };
   const closeRoom = (
     room: Room,
@@ -384,9 +476,12 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     for (const member of [room.host, ...room.viewers.values()]) {
       sessions.delete(member.resumeToken);
       member.room = undefined;
+      member.watching = null;
+      member.signals.clear();
       send(member, { type: 'room-closed', reason });
     }
     room.viewers.clear();
+    room.publications.clear();
   };
   const leave = (client: Client) => {
     sessions.delete(client.resumeToken);
@@ -398,6 +493,17 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     }
     client.room = undefined;
     room.moderators.delete(client.id);
+    if (room.protocol === 3) {
+      removePublication(room, client.id);
+      client.watching = null;
+      client.signals.clear();
+      for (const member of members(room))
+        for (const key of member.signals.keys())
+          if (key.includes(`:${client.id}:`)) member.signals.delete(key);
+      room.viewers.delete(client.id);
+      roomState(room);
+      return;
+    }
     if (room.protocol === 2) {
       if (room.host === client) {
         room.host = room.owner;
@@ -476,8 +582,10 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           participantSessions: connected.filter((c) => c.room).length,
           roomMemberships: connected.filter((c) => c.room).length,
           activeRooms: rooms.size,
-          reportedScreenPublishers: connected.filter(
-            (c) => c.room?.host === c && c.room.sharing,
+          reportedScreenPublishers: connected.filter((c) =>
+            c.room?.protocol === 3
+              ? c.room.publications.has(c.id)
+              : c.room?.host === c && c.room.sharing,
           ).length,
           generatedAt: new Date(now()).toISOString(),
         }),
@@ -546,6 +654,8 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     wss.handleUpgrade(request, socket, head, (websocket) => {
       const client: Client = {
         protocol: 1,
+        watching: null,
+        watchRequestId: null,
         id: randomUUID(),
         socket: websocket,
         ip,
@@ -579,7 +689,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         sessions.get(client.resumeToken) === client
       ) {
         client.disconnectedAt = now();
-        if (client.room.protocol === 2) {
+        if (client.room.protocol !== 1) {
           roomState(client.room);
           return;
         }
@@ -620,16 +730,16 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         return;
       }
       if (message.type === 'hello') {
-        if (client.room || message.protocol !== 2) {
+        if (client.room || (message.protocol !== 2 && message.protocol !== 3)) {
           error(
             client,
             'PROTOCOL_MISMATCH',
-            'Protocolo incompatível. Use aplicativo e servidor 0.5.0.',
+            'Protocolo incompatível. Atualize aplicativo e servidor para versões compatíveis.',
           );
           return;
         }
-        client.protocol = 2;
-        send(client, { type: 'hello', protocol: 2 });
+        client.protocol = message.protocol;
+        send(client, { type: 'hello', protocol: message.protocol });
         return;
       }
       if (message.type === 'resume-room') {
@@ -661,6 +771,8 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         sessions.delete(previous.resumeToken);
         client.id = previous.id;
         client.name = previous.name;
+        client.watching = previous.watching;
+        client.watchRequestId = previous.watchRequestId;
         client.room = room;
         previous.room = undefined;
         const host = room.host === previous;
@@ -668,7 +780,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         else room.viewers.set(client.id, client);
         if (room.owner === previous) room.owner = client;
         sessions.set(client.resumeToken, client);
-        if (room.protocol === 2) {
+        if (room.protocol !== 1) {
           roomState(room, client, 'resumed');
           for (const member of members(room))
             if (member !== client) roomState(room, member);
@@ -739,6 +851,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           } while (rooms.has(code));
           const room: Room = {
             protocol: client.protocol,
+            publications: new Map(),
             name: message.roomName ?? `Sala de ${message.name}`.slice(0, 40),
             owner: client,
             moderators: new Set(),
@@ -753,7 +866,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           client.room = room;
           client.name = message.name;
           sessions.set(client.resumeToken, client);
-          if (room.protocol === 2) {
+          if (room.protocol !== 1) {
             roomState(room, client, 'created');
             return;
           }
@@ -791,7 +904,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         client.room = room;
         client.name = message.name;
         sessions.set(client.resumeToken, client);
-        if (room.protocol === 2) {
+        if (room.protocol !== 1) {
           roomState(room, client, 'joined');
           for (const member of members(room))
             if (member !== client) roomState(room, member);
@@ -822,10 +935,170 @@ export function createSignalingServer(options: SignalingOptions = {}): {
       const isOwner = room.owner === client;
       const canModerate = isOwner || room.moderators.has(client.id);
       switch (message.type) {
+        case 'publish-state': {
+          if (room.protocol !== 3) {
+            error(
+              client,
+              'PROTOCOL_MISMATCH',
+              'Atualize o aplicativo para compartilhar várias telas.',
+            );
+            return;
+          }
+          const existing = room.publications.get(client.id);
+          if (existing && existing.publicationId !== message.publicationId) {
+            error(
+              client,
+              'STALE_PUBLICATION',
+              'A transmissão já foi substituída.',
+            );
+            return;
+          }
+          if (message.sharing) {
+            if (!existing && room.publications.size >= maxPublishers) {
+              error(
+                client,
+                'PUBLICATION_LIMIT',
+                'O limite de telas simultâneas desta sala foi atingido.',
+              );
+              return;
+            }
+            if (
+              [...room.publications.values()].some(
+                (publication) =>
+                  publication.publicationId === message.publicationId &&
+                  publication.publisherId !== client.id,
+              )
+            ) {
+              error(
+                client,
+                'INVALID_PUBLICATION',
+                'Identificador de transmissão indisponível.',
+              );
+              return;
+            }
+            room.publications.set(client.id, {
+              publicationId: message.publicationId,
+              publisherId: client.id,
+              audio: message.audio,
+            });
+          } else removePublication(room, client.id);
+          roomState(room);
+          break;
+        }
+        case 'watch-publication': {
+          if (room.protocol !== 3) {
+            error(
+              client,
+              'PROTOCOL_MISMATCH',
+              'Atualize o aplicativo para escolher uma transmissão.',
+            );
+            return;
+          }
+          const publication = [...room.publications.values()].find(
+            (entry) => entry.publicationId === message.publicationId,
+          );
+          if (
+            message.publicationId !== null &&
+            (!publication || publication.publisherId === client.id)
+          ) {
+            error(
+              client,
+              'PUBLICATION_NOT_FOUND',
+              'Esta transmissão não está mais disponível.',
+            );
+            return;
+          }
+          // Retrying the same selection must also replace the publisher's old PC.
+          // First revoke that send; the acknowledgement below precedes a fresh offer.
+          if (
+            message.publicationId !== null &&
+            client.watching === message.publicationId
+          ) {
+            client.watching = null;
+            for (const member of members(room))
+              if (member !== client) roomState(room, member);
+          }
+          client.watching = message.publicationId;
+          client.watchRequestId = message.requestId;
+          // Queue the acknowledgement before any publisher can generate a new offer.
+          roomState(room, client);
+          for (const member of members(room))
+            if (member !== client) roomState(room, member);
+          break;
+        }
+        case 'stop-publication': {
+          if (room.protocol !== 3 || !canModerate) {
+            error(
+              client,
+              'FORBIDDEN',
+              'Somente o dono ou moderador pode interromper outra transmissão.',
+            );
+            return;
+          }
+          if (!members(room).some((member) => member.id === message.peerId)) {
+            error(
+              client,
+              'PEER_NOT_FOUND',
+              'Participante não encontrado nesta sala.',
+            );
+            return;
+          }
+          removePublication(room, message.peerId);
+          roomState(room);
+          break;
+        }
+        case 'stream-signal': {
+          const publication = [...room.publications.values()].find(
+            (entry) => entry.publicationId === message.publicationId,
+          );
+          const peer = members(room).find(
+            (member) => member.id === message.peerId,
+          );
+          const publishing = publication?.publisherId === client.id;
+          if (
+            room.protocol !== 3 ||
+            !publication ||
+            !peer ||
+            peer === client ||
+            (publishing
+              ? peer.watching !== publication.publicationId
+              : client.watching !== publication.publicationId ||
+                peer.id !== publication.publisherId) ||
+            (message.signal.type === 'offer' && !publishing) ||
+            (message.signal.type === 'answer' && publishing)
+          ) {
+            error(
+              client,
+              'FORBIDDEN_SIGNAL',
+              'Negociação não autorizada para esta transmissão.',
+            );
+            return;
+          }
+          const key = `${publication.publicationId}:${peer.id}:${message.signal.type === 'ice' ? 'ice' : 'sdp'}`;
+          const counter = client.signals.get(key) ?? freshCounter();
+          client.signals.set(key, counter);
+          if (
+            !consume(counter, {
+              max: message.signal.type === 'ice' ? 128 : 8,
+              windowMs: 10000,
+            })
+          ) {
+            error(client, 'RATE_LIMITED', 'Limite de negociação atingido.');
+            return;
+          }
+          send(peer, {
+            type: 'stream-signal',
+            publicationId: publication.publicationId,
+            peerId: client.id,
+            signal: message.signal,
+          });
+          break;
+        }
         case 'set-publisher':
         case 'set-moderator': {
           if (
-            room.protocol !== 2 ||
+            room.protocol === 1 ||
+            (message.type === 'set-publisher' && room.protocol !== 2) ||
             (message.type === 'set-moderator' ? !isOwner : !canModerate)
           ) {
             error(
@@ -875,6 +1148,14 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           closeRoom(room, 'host-closed');
           break;
         case 'host-state':
+          if (room.protocol === 3) {
+            error(
+              client,
+              'PROTOCOL_MISMATCH',
+              'Use o controle de publicação desta versão.',
+            );
+            return;
+          }
           if (!isHost) {
             error(
               client,
@@ -901,11 +1182,11 @@ export function createSignalingServer(options: SignalingOptions = {}): {
             return;
           }
           const viewer =
-            room.protocol === 2
+            room.protocol !== 1
               ? members(room).find((member) => member.id === message.peerId)
               : room.viewers.get(message.peerId);
           if (
-            room.protocol === 2 &&
+            room.protocol !== 1 &&
             viewer &&
             (viewer === room.owner ||
               viewer === client ||
@@ -931,6 +1212,14 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           break;
         }
         case 'signal': {
+          if (room.protocol === 3) {
+            error(
+              client,
+              'PROTOCOL_MISMATCH',
+              'A negociação exige identificar a transmissão.',
+            );
+            return;
+          }
           if (room.protocol === 2 && !room.sharing) {
             error(client, 'NOT_SHARING', 'Não há publicação ativa nesta sala.');
             return;

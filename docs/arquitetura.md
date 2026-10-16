@@ -1,5 +1,23 @@
 # Arquitetura e privacidade
 
+## Consolidação na 0.8.0
+
+O protocolo de salas permanece 3. A interface preserva foco, seleção de texto e menus abertos usando identificadores estáveis de ação/participante/publicação; a remoção do controle leva o foco a um ponto visível da sala. Diálogos limitam Tab aos controles visíveis e habilitados, incluindo selects. Um anunciador persistente informa mudanças de estado sem repetir a mesma mensagem a cada renderização.
+
+O diagnóstico exportado usa `schemaVersion: 2`: preferências e métricas permitidas, estado resumido da sessão e runtime fornecido pelo processo principal. Versões do Electron/Chromium/Node, arquitetura, estado do updater e memória do renderer podem aparecer; nomes, convites, tokens, endpoint, SDP, ICE e conteúdo da tela continuam fora do relatório. O renderer não escolhe os valores de runtime. `ageMs` identifica a idade da amostra exportada; medições antigas são descartadas.
+
+O teto opcional `videoBitrateMbps` é validado de 1 a 30 e aplica um limite por espectador ao controlador de envio. Sua ausência preserva o bitrate padrão do perfil. O orçamento total e a adaptação continuam limitando o alvo; não há configuração de bitrate mínimo ou preenchimento artificial para forçar tráfego.
+
+## Publicação e seleção na versão 0.7.0
+
+O protocolo 3 usa `publish-state` para a captura própria e `watch-publication` para a única tela escolhida. `stream-signal` identifica a publicação e o peer. O servidor só encaminha SDP/ICE entre o dono da publicação e seu assinante atual, na mesma sala. Respostas da seleção têm `watchRequestId`; o aplicativo aguarda essa confirmação antes de aceitar ofertas para a nova recepção. Ao repetir uma seleção para tentar novamente, o publicador substitui sua conexão anterior.
+
+Os snapshots incluem publicações, limite, seleção atual e assinantes da própria publicação. Cada cliente recebe apenas seu token de retomada. O renderer mantém controladores WebRTC separados para envio e recepção: dois publicadores podem assistir um ao outro sem confundir os peers. Os cartões de `stage.ts` não criam recepções; trocar de destaque descarta a anterior.
+
+`preview.ts` pausa e desconecta apenas o player local quando o processo principal informa perda de foco, minimização ou ocultação. Esse evento nativo continua disponível mesmo com os temporizadores da captura ativos em segundo plano. A ponte fornece somente um booleano, sem expor janela ou APIs genéricas do sistema. A captura não é clonada, interrompida ou reconfigurada para essa economia.
+
+A sinalização permanece sem mídia e sem SFU. Papéis administrativos não determinam quem pode capturar no protocolo 3: cada pessoa publica sua tela dentro do limite, com autorização local explícita. Detalhes de migração em [salas.md](salas.md). A seção seguinte descreve o protocolo anterior.
+
 ## Salas na versão 0.5.0
 
 O protocolo 2 confirma compatibilidade por `hello` e mantém dono e moderadores separados do transmissor autorizado. O servidor envia snapshots `room-state` com os participantes, o dono, o transmissor e o estado da publicação; cada conexão recebe somente seu próprio token. `set-publisher` e `set-moderator` são operações restritas e validadas no backend. Uma pessoa transmite por sala; receber permissão não inicia captura.

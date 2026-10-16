@@ -32,7 +32,8 @@ export class AdaptiveQuality {
     if (
       next.preset !== this.preferences.preset ||
       next.content !== this.preferences.content ||
-      next.adaptive !== this.preferences.adaptive
+      next.adaptive !== this.preferences.adaptive ||
+      next.videoBitrateMbps !== this.preferences.videoBitrateMbps
     ) {
       this.level = 0;
       this.bad = this.good = 0;
@@ -88,7 +89,12 @@ export class AdaptiveQuality {
     const bitrate = Math.max(
       1,
       Math.floor(
-        Math.min(fairBitrate, profile.bitrate * [1, 0.65, 0.4, 0.25][level]),
+        Math.min(
+          fairBitrate,
+          (this.preferences.videoBitrateMbps
+            ? this.preferences.videoBitrateMbps * 1_000_000
+            : profile.bitrate) * [1, 0.65, 0.4, 0.25][level],
+        ),
       ),
     );
     return {

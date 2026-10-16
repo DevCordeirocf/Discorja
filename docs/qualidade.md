@@ -1,5 +1,31 @@
 # Qualidade de vídeo e estabilidade
 
+## Bitrate ajustável — 0.8.0
+
+Em **Qualidade da sua transmissão**, o campo **Teto de vídeo por espectador** aceita de 1 a 30 Mbps. O valor padrão acompanha o perfil: 4 Mbps em 720p/30, 8 Mbps em 1080p/30 e 12 Mbps em 1080p/60. Ao editar, o teto personalizado permanece durante trocas de perfil até clicar em **Usar padrão do perfil**. A preferência é salva no computador e pode ser alterada enquanto transmite, sem iniciar nova captura.
+
+**Mbps significa megabits por segundo; MB/s significa megabytes por segundo.** Divida por oito: 12 Mbps = 1,5 MB/s, 24 Mbps = 3 MB/s e 30 Mbps = 3,75 MB/s. Esses valores são tetos de vídeo por espectador, antes de considerar o orçamento total e o áudio.
+
+O **Limite total de envio** continua independente, de 4 a 100 Mbps. Reserva 15% de folga, divide o restante entre quem assiste à sua tela e desconta a reserva de áudio quando ele está ativo. O menor limite prevalece: configurar 24 Mbps por pessoa não permite ultrapassar o orçamento total.
+
+| Exemplo de configuração                                               | Resultado máximo antes da adaptação                                       |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Uma pessoa assistindo, teto de 24 Mbps e orçamento total de 40 Mbps   | O teto individual pode chegar a 24 Mbps.                                  |
+| Duas pessoas assistindo, teto de 24 Mbps e orçamento total de 40 Mbps | O orçamento limita cada uma a cerca de 17 Mbps, um pouco menos com áudio. |
+| Duas pessoas assistindo, teto de 24 Mbps e orçamento total de 60 Mbps | Há orçamento para o teto individual de 24 Mbps.                           |
+
+Defina o total dentro do upload disponível no computador, deixando espaço para o Discord e outros programas. A adaptação e o controle de congestionamento continuam ativos quando habilitados. O campo aumenta a permissão de envio; **não força consumo constante**. Uma tela parada ou fácil de comprimir pode usar pouco tráfego mesmo com teto alto, e limitações de CPU ou do receptor podem impedir ganho de qualidade.
+
+No teste local 0.8, o parâmetro de envio de vídeo aceitou 24.000.000 bits/s e o receptor mediu aproximadamente 6,25 Mbps naquela amostra, a cerca de 51,7 FPS e 1920 × 1032. Isso confirma o ajuste de teto, sem prometer 3 MB/s reais ou 1080p/60 sustentado. Detalhes em [validacao-0.8.0.md](validacao-0.8.0.md).
+
+## Prévia local e várias telas — 0.7.0
+
+A prévia da sua tela é pausada a 0 FPS e seu player fica sem `srcObject` quando o Discorja perde o foco, é ocultado ou minimizado. Ao voltar, ele retoma o mesmo stream. As tracks, o perfil de captura, os parâmetros de envio e o áudio autorizado permanecem independentes dessa pausa. Não se aplica `frameRate: 1` à captura compartilhada, pois isso prejudicaria os espectadores.
+
+Essa economia evita reprodução local desnecessária; não libera toda a memória da transmissão. Captura, codificador, drivers e a tela remota escolhida continuam usando recursos. Na amostra local registrada na [validação 0.7](validacao-0.7.0.md), houve continuidade de vídeo com a janela minimizada, mas não uma redução comprovada de RAM. Compare CPU/GPU/RAM na mesma máquina em sessão sustentada antes de anunciar percentuais.
+
+Cada pessoa recebe no máximo uma publicação. Cartões sem vídeo evitam download e decodificação das demais telas. Ao trocar a seleção ou parar de assistir, a recepção anterior é encerrada. O limite de upload configurado continua sendo dividido somente entre os assinantes efetivos da própria publicação. Duas telas são o piloto padrão; ampliar o limite exige testes com a rede do grupo.
+
 ## Áudio na versão 0.4.0
 
 Som do computador opcional, com limite solicitado de 128 kbps por espectador e reserva de 160 kbps por conexão com áudio antes do orçamento de vídeo. O orçamento mantém 15% de folga. A negociação fica com o navegador, sem alterações manuais de SDP. Microfone e câmera continuam bloqueados.

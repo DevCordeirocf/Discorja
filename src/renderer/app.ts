@@ -5,11 +5,21 @@ import type {
   ServerMessage,
   UpdateState,
   RoomState,
+  MultiRoomState,
+  Publication,
 } from '../shared/protocol';
 import { SignalConnection } from './signal';
 import { RoomPeers } from './rtc';
 import { SYSTEM_AUDIO_CONSTRAINTS } from '../shared/audio';
 import { knownRooms, rememberRoom, type KnownRoom } from './rooms';
+import { renderStage } from './stage';
+import { syncLocalPreview } from './preview';
+import {
+  focusable,
+  rememberInteraction,
+  restoreInteraction,
+  trapDialogTab,
+} from './accessibility';
 import {
   QUALITY_PRESETS,
   DEFAULT_STREAM_PREFERENCES,
@@ -64,7 +74,15 @@ const escape = (value: unknown): string =>
       ]!,
   );
 const root = document.querySelector<HTMLDivElement>('#app')!;
+const announcements = document.createElement('div');
+announcements.id = 'session-announcement';
+announcements.className = 'sr-only';
+announcements.setAttribute('role', 'status');
+announcements.setAttribute('aria-live', 'polite');
+announcements.setAttribute('aria-atomic', 'true');
+document.body.append(announcements);
 const api = window.discorja;
+let nativeForeground = !api;
 let config: AppConfig = {
   signalingUrl: 'ws://127.0.0.1:8787',
   iceServers: [],
@@ -191,6 +209,145 @@ let sharing = false;
 let remoteSharing = false;
 let connectionIssue = '';
 let roomState: RoomState | null = null;
+let watching: Publication | null = null;
+let watchRequest: string | null = null;
+let watchPeers: RoomPeers | null = null;
+let watchEpoch = 0;
+let localPublicationId = '';
+let publicationConfirmed = false;
+let incomingMetrics: PeerMetrics[] = [];
+let incomingMetricsStartedAt = 0;
+let qualityOpen = false;
+let diagnosticsOpen = false;
+const multiState = (): MultiRoomState | null =>
+  roomState?.protocol === 3 ? roomState : null;
+
+function clearWatchMedia(): void {
+  watchEpoch++;
+  watchPeers?.dispose();
+  watchPeers = null;
+  stopTracks(remoteStream);
+  remoteStream = null;
+  incomingMetrics = [];
+  incomingMetricsStartedAt = 0;
+  remoteSharing = false;
+  connectionIssue = '';
+  connectionReconnecting = false;
+  clearTimeout(remoteTimer);
+}
+
+function createWatchPeers(): void {
+  if (!watching || !watching.connected) return;
+  incomingMetricsStartedAt = Date.now();
+  const publication = watching;
+  const epoch = sessionEpoch;
+  const generation = watchEpoch;
+  const current = () =>
+    epoch === sessionEpoch &&
+    generation === watchEpoch &&
+    watching?.publicationId === publication.publicationId;
+  watchPeers = new RoomPeers(
+    config.iceServers,
+    (peerId, signal) => {
+      if (current())
+        send({
+          type: 'stream-signal',
+          publicationId: publication.publicationId,
+          peerId,
+          signal,
+        });
+    },
+    (stream) => {
+      if (!current()) {
+        stopTracks(stream);
+        return;
+      }
+      if (remoteStream && remoteStream !== stream) stopTracks(remoteStream);
+      remoteStream = stream;
+      connectionIssue = '';
+      connectionReconnecting = false;
+      clearTimeout(remoteTimer);
+      for (const track of stream.getVideoTracks())
+        track.onended = () => {
+          if (current()) {
+            stopTracks(remoteStream);
+            remoteStream = null;
+            render();
+          }
+        };
+      for (const track of stream.getAudioTracks())
+        track.onended = () => {
+          if (current()) render();
+        };
+      render();
+    },
+    (_peerId, state) => {
+      if (!current()) return;
+      connectionReconnecting = state === 'reconnecting';
+      if (state === 'failed') {
+        stopTracks(remoteStream);
+        remoteStream = null;
+        connectionIssue =
+          'Não foi possível receber esta tela. Tente novamente ou escolha outra transmissão.';
+      }
+      render();
+    },
+    {
+      preferences,
+      onMetrics: (metrics) => {
+        if (current()) {
+          incomingMetrics = metrics;
+          patchMetrics();
+        }
+      },
+    },
+  );
+  remoteSharing = true;
+  waitForVideo();
+}
+
+function selectPublication(id: string | null): void {
+  const state = multiState();
+  if (!state || signalRecovering) return;
+  const publication = state.publications.find(
+    (entry) => entry.publicationId === id && entry.publisherId !== state.selfId,
+  );
+  if (id !== null && !publication) return;
+  clearWatchMedia();
+  watching = publication ?? null;
+  receiveMuted = true;
+  watchRequest = crypto.randomUUID();
+  createWatchPeers();
+  send({
+    type: 'watch-publication',
+    publicationId: id,
+    requestId: watchRequest,
+  });
+  render();
+}
+
+function refreshAudioPublication(): void {
+  if (multiState() && sharing && localPublicationId)
+    send({
+      type: 'publish-state',
+      publicationId: localPublicationId,
+      sharing: true,
+      audio: liveAudio(localStream).length > 0,
+    });
+}
+
+function syncPreviews(): void {
+  if (!localStream) return;
+  const foreground =
+    nativeForeground &&
+    document.visibilityState === 'visible' &&
+    (api ? true : document.hasFocus());
+  const main = root.querySelector<HTMLVideoElement>('#stream-video');
+  if (main && (multiState() ? !watching : room?.role === 'host'))
+    syncLocalPreview(main, localStream, foreground);
+  const small = root.querySelector<HTMLVideoElement>('#local-preview');
+  if (small) syncLocalPreview(small, localStream, foreground);
+}
 let includeSystemAudio = false;
 let audioScopeAccepted = false;
 let audioCaptureIssue = '';
@@ -203,7 +360,9 @@ const liveAudio = (stream: MediaStream | null): MediaStreamTrack[] =>
 function updatePlayback(): void {
   const video = root.querySelector<HTMLVideoElement>('#stream-video');
   if (!video) return;
-  video.muted = room?.role !== 'viewer' || receiveMuted;
+  video.muted = multiState()
+    ? !watching || receiveMuted || liveAudio(localStream).length > 0
+    : room?.role !== 'viewer' || receiveMuted;
   video.volume = receiveVolume;
 }
 
@@ -215,21 +374,26 @@ function stopSystemAudio(): void {
   audioCaptureIssue =
     'Som encerrado. Para capturar novamente, pare e inicie o compartilhamento.';
   void peers?.stopAudio().catch(() => undefined);
+  refreshAudioPublication();
   render();
 }
 
 function renderAudioControls(): string {
   if (!room) return '';
-  if (room.role === 'host') {
-    if (!sharing) return '';
+  let own = '';
+  if (room.role === 'host' && sharing) {
     const tracks = liveAudio(localStream);
     const silenced =
       tracks.length > 0 && tracks.every((track) => !track.enabled);
-    return `<section class="audio-panel" aria-label="Som da transmissão"><strong>Som da transmissão</strong><p role="status">${escape(audioCaptureIssue || (tracks.length ? (silenced ? 'Envio silenciado. A captura continua ativa.' : 'Capturando o som geral do computador, incluindo outros aplicativos.') : 'Transmissão somente de vídeo.'))}</p>${tracks.length ? `<div class="audio-actions"><button class="button subtle" data-action="toggle-send-audio" aria-pressed="${silenced}">${silenced ? 'Reativar envio de som' : 'Silenciar envio de som'}</button><button class="button subtle" data-action="stop-audio">Encerrar captura de som</button></div>` : ''}</section>`;
+    own = `<section class="audio-panel" aria-label="Som da transmissão"><strong>Som da transmissão</strong><p role="status">${escape(audioCaptureIssue || (tracks.length ? (silenced ? 'Envio silenciado. A captura continua ativa.' : 'Capturando o som geral do computador, incluindo outros aplicativos.') : 'Transmissão somente de vídeo.'))}</p>${tracks.length ? `<div class="audio-actions"><button class="button subtle" data-action="toggle-send-audio" aria-pressed="${silenced}">${silenced ? 'Reativar envio de som' : 'Silenciar envio de som'}</button><button class="button subtle" data-action="stop-audio">Encerrar captura de som</button></div>` : ''}</section>`;
   }
-  if (!remoteStream) return '';
+  if ((!multiState() && room.role === 'host') || !remoteStream) return own;
   const available = liveAudio(remoteStream).length > 0;
-  return `<section class="audio-panel" aria-label="Reprodução da transmissão"><strong>Som recebido</strong><p>${available ? 'O som pode estar em silêncio ou ter sido interrompido pelo anfitrião.' : 'Esta transmissão não tem uma faixa de áudio ativa.'}</p>${available ? `<div class="audio-actions"><button class="button subtle" data-action="toggle-receive-audio" aria-pressed="${!receiveMuted}">${receiveMuted ? 'Ouvir transmissão' : 'Silenciar recepção'}</button><label for="receive-volume">Volume <output id="volume-value">${Math.round(receiveVolume * 100)}%</output></label><input id="receive-volume" type="range" min="0" max="100" value="${Math.round(receiveVolume * 100)}" aria-label="Volume da transmissão"></div><small>O som começa silenciado. Evite ouvir esta transmissão em um computador que também capture seu som.</small>` : ''}</section>`;
+  const blocked = multiState() && liveAudio(localStream).length > 0;
+  return (
+    own +
+    `<section class="audio-panel" aria-label="Reprodução da transmissão"><strong>Som recebido</strong><p>${blocked ? 'Som recebido bloqueado enquanto você captura o áudio do computador, para evitar retorno. Encerre sua captura de som para ouvir.' : available ? 'Só o som da tela escolhida será reproduzido.' : 'Esta transmissão não tem uma faixa de áudio ativa.'}</p>${available ? `<div class="audio-actions"><button class="button subtle" data-action="toggle-receive-audio" aria-pressed="${!receiveMuted && !blocked}" ${blocked ? 'disabled' : ''}>${receiveMuted || blocked ? 'Ouvir transmissão' : 'Silenciar recepção'}</button><label for="receive-volume">Volume <output id="volume-value">${Math.round(receiveVolume * 100)}%</output></label><input id="receive-volume" type="range" min="0" max="100" value="${Math.round(receiveVolume * 100)}" aria-label="Volume da transmissão"></div><small>Ao trocar de transmissão, o som começa silenciado.</small>` : ''}</section>`
+  );
 }
 
 function notify(
@@ -260,6 +424,9 @@ function stopTracks(stream: MediaStream | null): void {
 }
 
 function stopSharing(announce = true): void {
+  const stoppedPublication = localPublicationId;
+  localPublicationId = '';
+  publicationConfirmed = false;
   captureEpoch++;
   qualityEpoch++;
   applyingPreferences = false;
@@ -278,8 +445,17 @@ function stopSharing(announce = true): void {
   if (modal === 'sources') modal = null;
   void api?.cancelCapture().catch(() => undefined);
   void api?.setSharing(false).catch(() => undefined);
-  if (announce && room?.role === 'host')
-    send({ type: 'host-state', sharing: false });
+  if (announce && room?.role === 'host') {
+    if (multiState()) {
+      if (stoppedPublication)
+        send({
+          type: 'publish-state',
+          publicationId: stoppedPublication,
+          sharing: false,
+          audio: false,
+        });
+    } else send({ type: 'host-state', sharing: false });
+  }
 }
 
 function leaveRoom(
@@ -305,6 +481,9 @@ function leaveRoom(
   clearPending();
   clearTimeout(remoteTimer);
   stopSharing(false);
+  clearWatchMedia();
+  watching = null;
+  watchRequest = null;
   peers?.dispose();
   peers = null;
   socket?.disconnect();
@@ -341,7 +520,11 @@ function send(message: Parameters<SignalConnection['send']>[0]): boolean {
 function waitForVideo(): void {
   clearTimeout(remoteTimer);
   remoteTimer = setTimeout(() => {
-    if (room?.role === 'viewer' && remoteSharing && !remoteStream) {
+    if (
+      (room?.role === 'viewer' || watching) &&
+      remoteSharing &&
+      !remoteStream
+    ) {
       connectionIssue =
         'O vídeo não chegou. Entre novamente na sala. Algumas redes precisam de um servidor TURN configurado pelo administrador.';
       render();
@@ -355,7 +538,17 @@ function createPeers(): void {
   peers = new RoomPeers(
     config.iceServers,
     (peerId, signal) => {
-      if (epoch === sessionEpoch) send({ type: 'signal', peerId, signal });
+      if (epoch === sessionEpoch) {
+        if (multiState()) {
+          if (localPublicationId)
+            send({
+              type: 'stream-signal',
+              publicationId: localPublicationId,
+              peerId,
+              signal,
+            });
+        } else send({ type: 'signal', peerId, signal });
+      }
     },
     (stream) => {
       if (epoch !== sessionEpoch || room?.role !== 'viewer' || !remoteSharing) {
@@ -412,7 +605,118 @@ function createPeers(): void {
   );
 }
 
+function applyMultiRoomState(message: MultiRoomState): void {
+  const initial = message.reason === 'created' || message.reason === 'joined';
+  if (
+    initial &&
+    pending?.kind !== (message.reason === 'created' ? 'create' : 'join')
+  )
+    return;
+  if (
+    !initial &&
+    (!room || room.code !== message.code || room.selfId !== message.selfId)
+  )
+    return;
+  const resumed = message.reason === 'resumed';
+  if (resumed && !signalRecovering) return;
+  if (initial) {
+    clearPending();
+    busy = null;
+  }
+  if (resumed) {
+    clearTimeout(resumeTimer);
+    clearTimeout(resumeDeadline);
+    signalRecovering = false;
+    connectionReconnecting = false;
+  }
+  roomState = message;
+  resumeToken = message.resumeToken;
+  const owner = message.participants.find(
+    (entry) => entry.peerId === message.ownerId,
+  )!;
+  room = {
+    role: 'host',
+    code: message.code,
+    selfId: message.selfId,
+    hostId: message.ownerId,
+    hostName: owner.name,
+    maxViewers: message.maxParticipants - 1,
+  };
+  savedRooms = rememberRoom(savedRooms, {
+    code: message.code,
+    name: message.name,
+    server: config.signalingUrl,
+  });
+  saveKnownRooms();
+  const own = message.publications.find(
+    (entry) => entry.publisherId === message.selfId,
+  );
+  if (own?.publicationId === localPublicationId) publicationConfirmed = true;
+  else if (sharing && publicationConfirmed) {
+    stopSharing(false);
+    notice = {
+      text: 'Sua transmissão foi encerrada. As outras telas continuam na sala.',
+      kind: 'info',
+    };
+  }
+  const oldSubscribers = new Set(viewers.keys());
+  for (const id of viewers.keys())
+    if (!message.subscribers.includes(id)) {
+      peers?.remove(id);
+      viewers.delete(id);
+    }
+  for (const id of message.subscribers)
+    if (!viewers.has(id))
+      viewers.set(id, {
+        name: message.participants.find((person) => person.peerId === id)!.name,
+        connected: false,
+        failed: false,
+        reconnecting: false,
+      });
+  if (initial || resumed || !peers) createPeers();
+  if (sharing && localStream && own?.publicationId === localPublicationId)
+    for (const id of message.subscribers)
+      if (resumed || !oldSubscribers.has(id))
+        void peers?.offer(id, localStream);
+
+  if (!watchRequest || watchRequest === message.watchRequestId) {
+    watchRequest = null;
+    const selected =
+      message.publications.find(
+        (entry) => entry.publicationId === message.watching,
+      ) ?? null;
+    if (
+      selected?.publicationId !== watching?.publicationId ||
+      selected?.connected !== watching?.connected ||
+      resumed
+    ) {
+      clearWatchMedia();
+      watching = selected;
+      if (watching) createWatchPeers();
+    } else watching = selected;
+  } else if (resumed) {
+    const selected =
+      message.publications.find(
+        (entry) => entry.publicationId === watching?.publicationId,
+      ) ?? null;
+    clearWatchMedia();
+    watching = selected;
+    createWatchPeers();
+    send({
+      type: 'watch-publication',
+      publicationId: selected?.publicationId ?? null,
+      requestId: watchRequest,
+    });
+  }
+  if (resumed) notify('Conexão com a sala recuperada.', 'success', true);
+  else render();
+}
+
 function applyRoomState(message: RoomState): void {
+  if (message.protocol === 3) {
+    applyMultiRoomState(message);
+    return;
+  }
   const initial = message.reason === 'created' || message.reason === 'joined';
   if (
     initial &&
@@ -514,6 +818,25 @@ function applyRoomState(message: RoomState): void {
 
 function onMessage(message: ServerMessage): void {
   switch (message.type) {
+    case 'stream-signal':
+      if (!multiState()) return;
+      if (
+        sharing &&
+        message.publicationId === localPublicationId &&
+        viewers.has(message.peerId)
+      )
+        void peers
+          ?.receive(message.peerId, message.signal, false)
+          .catch(() => undefined);
+      else if (
+        !watchRequest &&
+        watching?.publicationId === message.publicationId &&
+        watching.publisherId === message.peerId
+      )
+        void watchPeers
+          ?.receive(message.peerId, message.signal, true)
+          .catch(() => undefined);
+      break;
     case 'room-state':
       applyRoomState(message);
       break;
@@ -654,6 +977,21 @@ function onMessage(message: ServerMessage): void {
       leaveRoom('Você foi removido da sala.', 'info', false);
       break;
     case 'error': {
+      if (multiState() && !signalRecovering) {
+        if (
+          [
+            'PUBLICATION_LIMIT',
+            'STALE_PUBLICATION',
+            'INVALID_PUBLICATION',
+          ].includes(message.code)
+        )
+          stopSharing(false);
+        if (message.code === 'PUBLICATION_NOT_FOUND') {
+          clearWatchMedia();
+          watching = null;
+          watchRequest = null;
+        }
+      }
       if (signalRecovering) {
         leaveRoom(message.message, 'error', false);
         break;
@@ -680,6 +1018,7 @@ function recoverSignaling(): void {
   latestMetrics = [];
   peers?.dispose();
   peers = null;
+  clearWatchMedia();
   stopTracks(remoteStream);
   remoteStream = null;
   socket?.disconnect();
@@ -862,6 +1201,16 @@ async function startSharing(): Promise<void> {
   if (!source) return;
   const captureAudio = includeSystemAudio && config.systemAudioSupported;
   if (captureAudio && !audioScopeAccepted) return;
+  const multi = multiState();
+  if (multi && multi.publications.length >= multi.maxPublishers) {
+    cancelSources();
+    notify('Os espaços de transmissão estão ocupados.', 'info');
+    return;
+  }
+  if (multi && captureAudio) {
+    receiveMuted = true;
+    updatePlayback();
+  }
   const current = (): boolean =>
     epoch === sessionEpoch && attempt === captureEpoch && room?.role === 'host';
   busy = 'capture';
@@ -925,6 +1274,7 @@ async function startSharing(): Promise<void> {
         audioCaptureIssue =
           'A captura de som foi interrompida. O vídeo continua; reinicie o compartilhamento para tentar novamente.';
         void peers?.stopAudio().catch(() => undefined);
+        refreshAudioPublication();
         render();
       };
       track.onmute = () => {
@@ -938,6 +1288,18 @@ async function startSharing(): Promise<void> {
         audioCaptureIssue = '';
         render();
       };
+    }
+    if (multiState()) {
+      localPublicationId = crypto.randomUUID();
+      publicationConfirmed = false;
+      send({
+        type: 'publish-state',
+        publicationId: localPublicationId,
+        sharing: true,
+        audio: liveAudio(stream).length > 0,
+      });
+      render();
+      return;
     }
     if (!send({ type: 'host-state', sharing: true })) return;
     for (const [peerId, viewer] of viewers) {
@@ -1112,8 +1474,11 @@ async function applyPreferences(next: StreamPreferences): Promise<void> {
   }
 }
 
-function readQualityControls(): StreamPreferences {
+function readQualityControls(bitrateChanged = false): StreamPreferences {
   return normalizePreferences({
+    videoBitrateMbps: bitrateChanged
+      ? Number(root.querySelector<HTMLInputElement>('#video-bitrate')?.value)
+      : preferences.videoBitrateMbps,
     preferredCodec:
       document.querySelector<HTMLSelectElement>('#preferred-codec')?.value,
     preset: document.querySelector<HTMLSelectElement>('#quality-preset')?.value,
@@ -1139,16 +1504,32 @@ function renderQualityPanel(): string {
     )
     .join(
       '',
-    )}</select></div><div class="quality-field"><label for="content-mode">O que vai aparecer?</label><select id="content-mode" ${disabled ? 'disabled' : ''}><option value="detail" ${selected.content === 'detail' ? 'selected' : ''}>Textos e detalhes</option><option value="motion" ${selected.content === 'motion' ? 'selected' : ''}>Vídeos e jogos</option></select></div><div class="quality-field"><label for="preferred-codec">Formato na próxima transmissão</label><select id="preferred-codec" ${disabled ? 'disabled' : ''}>${['auto', 'H264', 'VP8', 'VP9', 'AV1'].map((codec) => `<option value="${codec}" ${(selected.preferredCodec ?? 'auto') === codec ? 'selected' : ''}>${codec === 'auto' ? 'Automático' : codec}</option>`).join('')}</select></div><label class="adaptive-control" for="adaptive-quality"><input id="adaptive-quality" type="checkbox" ${selected.adaptive ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>Ajustar à conexão</strong><small>Reduz quando necessário e recupera aos poucos.</small></span></label><div class="quality-field budget-field"><label for="upload-budget">Limite total de envio</label><div class="budget-input"><input id="upload-budget" type="number" min="4" max="100" step="1" inputmode="numeric" value="${selected.maxUploadMbps}" aria-describedby="upload-budget-help" ${disabled ? 'disabled' : ''}><span>Mbps</span></div></div></div>
-  <p id="upload-budget-help" class="quality-help">O orçamento reserva 15% de folga e é dividido entre todos os espectadores. A tela, o computador e a rede podem entregar menos resolução, quadros ou velocidade que o perfil escolhido.</p><p class="quality-status" role="status">${escape(qualityStatus)}</p></section>`;
+    )}</select></div><div class="quality-field"><label for="content-mode">O que vai aparecer?</label><select id="content-mode" ${disabled ? 'disabled' : ''}><option value="detail" ${selected.content === 'detail' ? 'selected' : ''}>Textos e detalhes</option><option value="motion" ${selected.content === 'motion' ? 'selected' : ''}>Vídeos e jogos</option></select></div><div class="quality-field"><label for="preferred-codec">Formato na próxima transmissão</label><select id="preferred-codec" ${disabled ? 'disabled' : ''}>${['auto', 'H264', 'VP8', 'VP9', 'AV1'].map((codec) => `<option value="${codec}" ${(selected.preferredCodec ?? 'auto') === codec ? 'selected' : ''}>${codec === 'auto' ? 'Automático' : codec}</option>`).join('')}</select></div><label class="adaptive-control" for="adaptive-quality"><input id="adaptive-quality" type="checkbox" ${selected.adaptive ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>Ajustar à conexão</strong><small>Reduz quando necessário e recupera aos poucos.</small></span></label><div class="quality-field budget-field"><label for="upload-budget">Limite total de envio</label><div class="budget-input"><input id="upload-budget" type="number" min="4" max="100" step="1" inputmode="numeric" value="${selected.maxUploadMbps}" aria-describedby="upload-budget-help" ${disabled ? 'disabled' : ''}><span>Mbps</span></div></div><div class="quality-field bitrate-field"><label for="video-bitrate">Teto de vídeo por espectador</label><div class="budget-input"><input id="video-bitrate" type="number" min="1" max="30" step="1" value="${selected.videoBitrateMbps ?? QUALITY_PRESETS[selected.preset].bitrate / 1_000_000}" aria-describedby="video-bitrate-help" ${disabled ? 'disabled' : ''}><span>Mbps</span></div><small id="video-bitrate-help">${selected.videoBitrateMbps ? 'Personalizado' : 'Padrão do perfil'} · ${((selected.videoBitrateMbps ?? QUALITY_PRESETS[selected.preset].bitrate / 1_000_000) / 8).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} MB/s por espectador, no máximo.</small><button class="button subtle" data-action="reset-bitrate" ${disabled || !selected.videoBitrateMbps ? 'disabled' : ''}>Usar padrão do perfil</button></div></div>
+  <p id="upload-budget-help" class="quality-help">O orçamento total reserva 15% de folga e é dividido entre quem assiste à sua tela. O teto individual permite mais bitrate, mas não força consumo: cenas paradas usam menos banda. A tela, o computador e a rede podem entregar menos resolução, quadros ou velocidade que o perfil escolhido.</p><p class="quality-status" role="status">${escape(qualityStatus)}</p></section>`;
 }
 
-function metricPeer(peerId: string, name: string): string {
-  return `<article class="metric-peer" data-peer-metrics="${escape(peerId)}"><header><strong>${escape(name)}</strong><span data-value="status">Aguardando medição</span></header><dl class="metric-values"><div><dt>Resolução</dt><dd data-value="resolution">—</dd></div><div><dt>Quadros/s</dt><dd data-value="fps">—</dd></div><div><dt>Vídeo</dt><dd data-value="bitrate">— Mbps</dd></div><div><dt>Resposta</dt><dd data-value="rtt">— ms</dd></div><div><dt>Perda</dt><dd data-value="loss">—</dd></div><div><dt>Conexão</dt><dd data-value="route">—</dd></div></dl><p class="metric-detail" data-value="detail">Os dados aparecem quando a conexão de vídeo é estabelecida.</p></article>`;
+function metricPeer(
+  peerId: string,
+  name: string,
+  direction?: 'inbound' | 'outbound',
+): string {
+  return `<article class="metric-peer" data-peer-metrics="${escape(peerId)}" ${direction ? `data-direction="${direction}"` : ''}><header><strong>${escape(name)}</strong><span data-value="status">Aguardando medição</span></header><dl class="metric-values"><div><dt>Resolução</dt><dd data-value="resolution">—</dd></div><div><dt>Quadros/s</dt><dd data-value="fps">—</dd></div><div><dt>Vídeo</dt><dd data-value="bitrate">— Mbps</dd></div><div><dt>Resposta</dt><dd data-value="rtt">— ms</dd></div><div><dt>Perda</dt><dd data-value="loss">—</dd></div><div><dt>Conexão</dt><dd data-value="route">—</dd></div></dl><p class="metric-detail" data-value="detail">Os dados aparecem quando a conexão de vídeo é estabelecida.</p></article>`;
 }
 
 function renderDiagnostics(): string {
   if (!room) return '';
+  const multi = multiState();
+  if (multi) {
+    const rows = [...viewers]
+      .map(([id, person]) =>
+        metricPeer(id, `Enviando para ${person.name}`, 'outbound'),
+      )
+      .join('');
+    const selected = multi.participants.find(
+      (person) => person.peerId === watching?.publisherId,
+    );
+    return `<section class="stream-diagnostics" aria-label="Diagnóstico de envio e recepção"><div class="diagnostics-heading"><h2>Conexões desta sala</h2><button class="button subtle" data-action="export-diagnostics">Salvar diagnóstico</button></div>${rows}${watching ? metricPeer(watching.publisherId, `Recebendo de ${selected?.name ?? 'participante'}`, 'inbound') : ''}${!rows && !watching ? '<p>Escolha uma transmissão ou aguarde alguém assistir à sua tela.</p>' : ''}<p class="metrics-footnote">Somente as conexões ativas aparecem aqui. O perfil de vídeo é um objetivo, sujeito à fonte, ao computador e à rede.</p></section>`;
+  }
   const host = room.role === 'host';
   return `<section class="stream-diagnostics" aria-labelledby="diagnostics-heading"><div class="diagnostics-heading"><h2 id="diagnostics-heading">${host ? 'Vídeo enviado em tempo real' : 'Vídeo recebido'}</h2><button class="button subtle" data-action="export-diagnostics">Salvar diagnóstico</button><span>Atualizado a cada 2 s</span></div>${host ? `<div class="capture-summary"><div><span>Captura no computador</span><strong data-stat="capture">—</strong><small>Formato informado pelo sistema.</small></div><div><span>Envio de vídeo total</span><strong data-stat="upload-total">— Mbps</strong><small data-stat="upload-detail">Aguardando conexões.</small></div></div>` : ''}<div class="metric-peer-list">${host ? (viewers.size ? [...viewers].map(([id, viewer]) => metricPeer(id, viewer.name)).join('') : '<p class="metrics-empty">As medições de cada amigo aparecem quando ele entrar e a transmissão começar.</p>') : metricPeer(room.hostId!, room.hostName)}</div><p class="metrics-footnote">Medições podem variar ou ficar indisponíveis. O perfil selecionado é um objetivo, e os FPS ${host ? 'enviados' : 'recebidos'} dependem também do conteúdo exibido.</p></section>`;
 }
@@ -1167,8 +1548,12 @@ function measured(value: number, decimals = 1): string {
 function patchMetrics(): void {
   if (!room) return;
   const now = Date.now();
-  const live = room.role === 'host' ? sharing : remoteSharing;
-  const fresh = latestMetrics.filter(
+  const live = multiState()
+    ? sharing || remoteSharing
+    : room.role === 'host'
+      ? sharing
+      : remoteSharing;
+  const fresh = [...latestMetrics, ...incomingMetrics].filter(
     (metric) => now - metric.timestamp >= 0 && now - metric.timestamp <= 8_000,
   );
   const captureNode = root.querySelector<HTMLElement>('[data-stat="capture"]');
@@ -1204,8 +1589,14 @@ function patchMetrics(): void {
           : `Vídeo enviado a ${outbound.length} ${outbound.length === 1 ? 'espectador' : 'espectadores'}.`;
   for (const row of root.querySelectorAll<HTMLElement>('[data-peer-metrics]')) {
     const peerId = row.dataset.peerMetrics;
-    const direction = room.role === 'host' ? 'outbound' : 'inbound';
-    const metric = live
+    const direction =
+      row.dataset.direction ?? (room.role === 'host' ? 'outbound' : 'inbound');
+    const rowLive = multiState()
+      ? direction === 'outbound'
+        ? sharing
+        : remoteSharing
+      : live;
+    const metric = rowLive
       ? fresh.find(
           (entry) => entry.peerId === peerId && entry.direction === direction,
         )
@@ -1214,22 +1605,30 @@ function patchMetrics(): void {
       const node = row.querySelector<HTMLElement>(`[data-value="${key}"]`);
       if (node && node.textContent !== text) node.textContent = text;
     };
-    const viewer = peerId ? viewers.get(peerId) : undefined;
+    const viewer =
+      peerId && direction === 'outbound' ? viewers.get(peerId) : undefined;
     const reconnecting =
       metric?.recovering ||
       viewer?.reconnecting ||
-      (room.role === 'viewer' && connectionReconnecting);
+      (direction === 'inbound' && connectionReconnecting);
     write(
       'status',
       reconnecting
         ? 'Reconectando…'
-        : !live
+        : !rowLive
           ? 'Sem transmissão'
-          : viewer?.failed || connectionIssue
+          : viewer?.failed || (direction === 'inbound' && connectionIssue)
             ? 'Conexão interrompida'
             : metric
               ? 'Medição recebida'
-              : metricsStartedAt && now - metricsStartedAt > 10_000
+              : (direction === 'inbound' && multiState()
+                    ? incomingMetricsStartedAt
+                    : metricsStartedAt) &&
+                  now -
+                    (direction === 'inbound' && multiState()
+                      ? incomingMetricsStartedAt
+                      : metricsStartedAt) >
+                    10_000
                 ? 'Medição indisponível'
                 : 'Aguardando medição',
     );
@@ -1363,6 +1762,19 @@ function renderRoomV2(): string {
 
 function renderRoom(): string {
   if (!room) return '';
+  const multi = multiState();
+  if (multi)
+    return renderStage({
+      state: multi,
+      watching: watching?.publicationId ?? null,
+      sharing,
+      hasRemote: !!remoteStream,
+      hasLocal: !!localStream,
+      sourceName: sharedSourceName,
+      busy: !!busy || applyingPreferences || signalRecovering,
+      issue: connectionIssue,
+      recovering: connectionReconnecting || signalRecovering,
+    });
   if (roomState) return renderRoomV2();
   const host = room.role === 'host';
   const hasVideo = host ? !!localStream : !!remoteStream;
@@ -1395,7 +1807,7 @@ function renderModal(): string {
   if (modal === 'update')
     return `<div class="modal-overlay"><section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-heading"><h2 id="modal-title">${update.status === 'downloaded' ? 'Atualização pronta' : 'Atualização disponível'}</h2></div><p class="modal-description">Versão instalada: ${escape(config.version)}. Nova versão: ${escape(update.version ?? 'disponível')}.</p><p role="status">${update.status === 'downloading' ? `Baixando… ${Math.round(update.percent ?? 0)}%` : update.status === 'error' ? escape(update.message ?? 'Falha ao atualizar. Tente novamente nas configurações.') : update.status === 'downloaded' ? 'O aplicativo será reiniciado para instalar.' : 'Uma nova versão do Discorja está disponível.'}</p>${room ? '<p class="settings-warning">Reiniciar encerrará sua participação e qualquer transmissão ativa.</p>' : ''}<div class="modal-footer"><button class="button subtle" data-action="defer-update">Depois</button>${update.status === 'downloaded' ? '<button class="button primary" data-action="confirm-install-update">Reiniciar e atualizar</button>' : update.status === 'available' ? '<button class="button primary" data-action="download-update">Atualizar agora</button>' : ''}</div></section></div>`;
   if (modal === 'sources')
-    return `<div class="modal-overlay"><section class="modal source-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-heading"><div><span class="eyebrow">O CONTROLE É SEU</span><h2 id="modal-title">O que vamos compartilhar?</h2></div><button class="icon-button" data-action="cancel-sources" aria-label="Cancelar escolha">${icon('close')}</button></div><p class="modal-description">Selecione uma tela ou janela. A transmissão começa ao clicar em iniciar.</p>${busy === 'sources' ? '<div class="source-loading"><span class="spinner"></span> Buscando telas e janelas…</div>' : sources.length ? `<div class="source-grid">${sources.map((source, index) => `<button id="source-${index}" class="source-option ${selectedSource === source.id ? 'selected' : ''}" data-action="select-source" data-source="${escape(source.id)}" aria-pressed="${selectedSource === source.id}" ${busy === 'capture' ? 'disabled' : ''}><div class="source-thumbnail">${source.thumbnail ? `<img src="${escape(source.thumbnail)}" alt="Prévia de ${escape(source.name)}">` : icon(source.kind === 'screen' ? 'screen' : 'window')}<span class="source-check">${icon('check')}</span></div><span class="source-name">${icon(source.kind === 'screen' ? 'screen' : 'window')}<span>${escape(source.name)}</span></span></button>`).join('')}</div>` : `<div class="source-loading">${icon('window')} Nenhuma tela disponível. Confira as permissões de captura do sistema.</div>`}<div class="source-privacy">${icon('shield')} Compartilhe só o necessário. Evite janelas com informações pessoais.</div><div class="modal-footer"><button class="button subtle" data-action="cancel-sources">Cancelar</button><button class="button primary" data-action="start-share" ${!selectedSource || busy ? 'disabled' : ''}>${busy === 'capture' ? '<span class="spinner"></span> Iniciando…' : `${icon('screen')} Iniciar compartilhamento`}</button></div></section></div>`;
+    return `<div class="modal-overlay"><section class="modal source-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-heading"><div><span class="eyebrow">O CONTROLE É SEU</span><h2 id="modal-title">O que vamos compartilhar?</h2></div><button class="icon-button" data-action="cancel-sources" aria-label="Cancelar escolha">${icon('close')}</button></div><p class="modal-description">Selecione uma tela ou janela. A transmissão começa ao clicar em iniciar.</p>${busy === 'sources' ? '<div class="source-loading"><span class="spinner"></span> Buscando telas e janelas…</div>' : sources.length ? `<div class="source-grid">${sources.map((source, index) => `<button id="source-${index}" class="source-option ${selectedSource === source.id ? 'selected' : ''}" data-action="select-source" data-source="${escape(source.id)}" aria-pressed="${selectedSource === source.id}" ${busy === 'capture' ? 'disabled' : ''}><div class="source-thumbnail">${source.thumbnail ? `<img src="${escape(source.thumbnail)}" alt="Prévia de ${escape(source.name)}">` : icon(source.kind === 'screen' ? 'screen' : 'window')}<span class="source-check">${icon('check')}</span></div><span class="source-name">${icon(source.kind === 'screen' ? 'screen' : 'window')}<span>${escape(source.name)}</span></span></button>`).join('')}</div>` : `<div class="source-loading">${icon('window')} Nenhuma tela disponível. Confira as permissões de captura do sistema.</div>`}<div class="source-privacy">${icon('shield')} Compartilhe só o necessário. Evite janelas com informações pessoais.</div><div class="modal-footer"><button class="button subtle" data-action="refresh-sources" ${busy ? 'disabled' : ''}>Atualizar janelas</button><button class="button subtle" data-action="cancel-sources">Cancelar</button><button class="button primary" data-action="start-share" ${!selectedSource || busy ? 'disabled' : ''}>${busy === 'capture' ? '<span class="spinner"></span> Iniciando…' : `${icon('screen')} Iniciar compartilhamento`}</button></div></section></div>`;
   const updateText: Record<UpdateState['status'], string> = {
     disabled: 'As atualizações estarão disponíveis nas versões publicadas.',
     idle: 'Confira se existe uma nova versão.',
@@ -1422,7 +1834,14 @@ function render(): void {
     updatePrompted = true;
   }
   const oldVideo = root.querySelector<HTMLVideoElement>('#stream-video');
-  const nextStream = room?.role === 'host' ? localStream : remoteStream;
+  const oldPreview = root.querySelector<HTMLVideoElement>('#local-preview');
+  const nextStream = multiState()
+    ? watching
+      ? remoteStream
+      : localStream
+    : room?.role === 'host'
+      ? localStream
+      : remoteStream;
   const keepVideo =
     !!oldVideo && !!nextStream && oldVideo.srcObject === nextStream;
   // Detaching a fullscreen element exits fullscreen. Defer structural updates until the user exits.
@@ -1432,16 +1851,10 @@ function render(): void {
     return;
   }
   deferredRender = false;
-  const focused =
-    document.activeElement instanceof HTMLElement
-      ? document.activeElement.id
-      : '';
-  const focusedAction = document.activeElement?.closest('[role="dialog"]')
-    ? document.activeElement.getAttribute('data-action')
-    : null;
+  const interaction = rememberInteraction(root);
   const hadModal = !!root.querySelector('[role="dialog"]');
   const stage = room ? 'Sua sala' : 'Início';
-  root.innerHTML = `<div class="app-shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">${logo}</span><span>discorja<span class="brand-period">.</span></span></div><div class="sidebar-caption">SEU PONTO DE ENCONTRO</div><nav aria-label="Navegação principal"><button class="nav-item ${!room ? 'active' : ''}" data-action="home">${icon('home')} Início${!room ? '<span></span>' : ''}</button>${room ? `<button class="nav-item active" data-action="room">${icon('screen')} Sua sala <span></span></button>` : ''}</nav><div class="sidebar-bottom"><div class="little-note"><span>Um código.<br>Um momento.<br><strong>Todo mundo perto.</strong></span><i>✳</i></div><button class="nav-item" data-action="settings">${icon('settings')} Configurações</button><div class="version-label">DISCORJA <span>v${escape(config.version)}</span></div></div></aside><div class="main-shell"><header class="topbar"><div class="breadcrumb">Seu espaço <span>/</span> <strong>${stage}</strong></div><div class="topbar-status"><span class="${sharing ? 'live-dot' : 'online-dot'}"></span>${sharing ? 'Você está transmitindo' : room ? 'Conectado à sala' : 'Pronto para conectar'}<span class="topbar-separator"></span><span class="private-label">${icon('lock')} Feito para a sua turma</span></div></header><main id="main-content">${!api ? `<div class="preview-notice">${icon('screen')} Prévia da interface. Abra o aplicativo desktop para criar salas e compartilhar sua tela.</div>` : ''}${notice ? `<div class="notice ${notice.kind}" role="${notice.kind === 'error' ? 'alert' : 'status'}">${icon(notice.kind === 'error' ? 'alert' : notice.kind === 'success' ? 'check' : 'network')}<span>${escape(notice.text)}</span><button class="icon-button" data-action="dismiss" aria-label="Dispensar aviso">${icon('close')}</button></div>` : ''}${room ? renderRoom() : renderHome()}</main><footer class="app-footer"><span><i class="${socket && room ? 'online-dot' : 'server-dot'}"></i>${escape(endpointLabel())}${socket && room ? ' · conectado' : ''}</span><span>${icon('shield')} Captura por sua escolha. Sempre.</span></footer></div></div>${renderModal()}`;
+  root.innerHTML = `<div class="app-shell"><a class="skip-link" href="#main-content">Ir para o conteúdo</a><aside class="sidebar"><div class="brand"><span class="brand-mark">${logo}</span><span>discorja<span class="brand-period">.</span></span></div><div class="sidebar-caption">SEU PONTO DE ENCONTRO</div><nav aria-label="Navegação principal"><button class="nav-item ${!room ? 'active' : ''}" data-action="home">${icon('home')} Início${!room ? '<span></span>' : ''}</button>${room ? `<button class="nav-item active" data-action="room">${icon('screen')} Sua sala <span></span></button>` : ''}</nav><div class="sidebar-bottom"><div class="little-note"><span>Um código.<br>Um momento.<br><strong>Todo mundo perto.</strong></span><i>✳</i></div><button class="nav-item" data-action="settings">${icon('settings')} Configurações</button><div class="version-label">DISCORJA <span>v${escape(config.version)}</span></div></div></aside><div class="main-shell"><header class="topbar"><div class="breadcrumb">Seu espaço <span>/</span> <strong>${stage}</strong></div><div class="topbar-status"><span class="${sharing ? 'live-dot' : 'online-dot'}"></span>${sharing ? 'Você está transmitindo' : room ? 'Conectado à sala' : 'Pronto para conectar'}<span class="topbar-separator"></span><span class="private-label">${icon('lock')} Feito para a sua turma</span></div></header><main id="main-content" tabindex="-1">${!api ? `<div class="preview-notice">${icon('screen')} Prévia da interface. Abra o aplicativo desktop para criar salas e compartilhar sua tela.</div>` : ''}${notice ? `<div class="notice ${notice.kind}" aria-label="Aviso">${icon(notice.kind === 'error' ? 'alert' : notice.kind === 'success' ? 'check' : 'network')}<span>${escape(notice.text)}</span><button class="icon-button" data-action="dismiss" aria-label="Dispensar aviso">${icon('close')}</button></div>` : ''}${room ? renderRoom() : renderHome()}</main><footer class="app-footer"><span><i class="${socket && room ? 'online-dot' : 'server-dot'}"></i>${escape(endpointLabel())}${socket && room ? ' · conectado' : ''}</span><span>${icon('shield')} Captura por sua escolha. Sempre.</span></footer></div></div>${renderModal()}`;
   root
     .querySelector('nav')
     ?.insertAdjacentHTML(
@@ -1460,7 +1873,9 @@ function render(): void {
     if (chooseButton) chooseButton.disabled = !!busy || applyingPreferences;
     column.insertAdjacentHTML(
       'beforeend',
-      `${renderAudioControls()}${room.role === 'host' ? renderQualityPanel() : ''}${renderDiagnostics()}`,
+      multiState()
+        ? `${renderAudioControls()}<details id="quality-details" class="stage-details" ${qualityOpen ? 'open' : ''}><summary>Qualidade da sua transmissão</summary>${renderQualityPanel()}</details><details id="diagnostics-details" class="stage-details" ${diagnosticsOpen ? 'open' : ''}><summary>Conexão e diagnóstico</summary>${renderDiagnostics()}</details>`
+        : `${renderAudioControls()}${room.role === 'host' ? renderQualityPanel() : ''}${renderDiagnostics()}`,
     );
     if (connectionReconnecting && room.role === 'viewer' && remoteStream) {
       const banner = document.createElement('div');
@@ -1470,7 +1885,7 @@ function render(): void {
       const status = panel.querySelector<HTMLElement>('.status-pill');
       if (status?.lastChild) status.lastChild.textContent = 'RECONECTANDO';
     }
-    if (!nextStream) {
+    if (!nextStream && !multiState()) {
       const sourceLabel = panel.querySelector(
         '.broadcast-controls > span:first-child > span',
       );
@@ -1514,27 +1929,37 @@ function render(): void {
     void placeholder.play().catch(() => undefined);
   }
   if (!keepVideo && oldVideo) oldVideo.srcObject = null;
+  const previewPlaceholder =
+    root.querySelector<HTMLVideoElement>('#local-preview');
+  if (previewPlaceholder && oldPreview && oldPreview.srcObject === localStream)
+    previewPlaceholder.replaceWith(oldPreview);
+  if (oldPreview && !root.contains(oldPreview)) {
+    oldPreview.pause();
+    oldPreview.srcObject = null;
+  }
   updatePlayback();
+  syncPreviews();
   patchMetrics();
-  if (focused) document.getElementById(focused)?.focus();
-  if (focusedAction && modal)
-    root
-      .querySelector<HTMLElement>(
-        `[role="dialog"] [data-action="${focusedAction}"]`,
-      )
-      ?.focus();
+  restoreInteraction(root, interaction, !!modal);
   if (modal && !document.activeElement?.closest('[role="dialog"]'))
-    document
-      .querySelector<HTMLElement>(
-        '[role="dialog"] button:not(:disabled), [role="dialog"] input:not(:disabled)',
-      )
-      ?.focus();
+    focusable(root.querySelector<HTMLElement>('[role="dialog"]')!)[0]?.focus();
   if (!modal && hadModal)
     root
       .querySelector<HTMLElement>(
         `[data-action="${returnFocusAction}"], [data-action="settings"]`,
       )
       ?.focus();
+  const message =
+    connectionIssue && watching
+      ? connectionIssue
+      : (notice?.text ??
+        (signalRecovering
+          ? 'Reconectando à sala.'
+          : room
+            ? `${sharing ? 'Você está compartilhando sua tela. ' : ''}${watching ? (connectionReconnecting ? 'Recuperando a transmissão escolhida.' : remoteStream ? 'Recebendo a transmissão escolhida.' : 'Conectando à transmissão escolhida.') : 'Nenhuma transmissão selecionada.'}`
+            : 'Pronto para entrar ou criar uma sala.'));
+  if (announcements.textContent !== message)
+    announcements.textContent = message;
 }
 
 root.addEventListener('input', (event) => {
@@ -1609,9 +2034,10 @@ root.addEventListener('change', (event) => {
       'preferred-codec',
       'adaptive-quality',
       'upload-budget',
+      'video-bitrate',
     ].includes(target.id)
   )
-    void applyPreferences(readQualityControls());
+    void applyPreferences(readQualityControls(target.id === 'video-bitrate'));
 });
 
 root.addEventListener('click', (event) => {
@@ -1620,6 +2046,27 @@ root.addEventListener('click', (event) => {
   );
   if (!button || button.disabled) return;
   switch (button.dataset.action) {
+    case 'reset-bitrate':
+      void applyPreferences({ ...preferences, videoBitrateMbps: undefined });
+      break;
+    case 'watch-screen':
+      if (
+        button.dataset.publication &&
+        button.dataset.publication !== watching?.publicationId
+      )
+        selectPublication(button.dataset.publication);
+      break;
+    case 'preview-own':
+    case 'stop-watching':
+      selectPublication(null);
+      break;
+    case 'retry-watching':
+      if (watching) selectPublication(watching.publicationId);
+      break;
+    case 'stop-publication':
+      if (button.dataset.peer)
+        send({ type: 'stop-publication', peerId: button.dataset.peer });
+      break;
     case 'rooms':
       if (!busy && !signalRecovering) {
         modal = 'rooms';
@@ -1670,7 +2117,12 @@ root.addEventListener('click', (event) => {
       if (room?.role === 'host' && sharing) stopSystemAudio();
       break;
     case 'toggle-receive-audio': {
-      if (room?.role !== 'viewer') break;
+      if (
+        multiState()
+          ? !watching || liveAudio(localStream).length > 0
+          : room?.role !== 'viewer'
+      )
+        break;
       receiveMuted = !receiveMuted;
       render();
       const video = root.querySelector<HTMLVideoElement>('#stream-video');
@@ -1686,7 +2138,29 @@ root.addEventListener('click', (event) => {
     }
     case 'export-diagnostics':
       void api
-        ?.exportDiagnostics({ preferences, metrics: latestMetrics })
+        ?.exportDiagnostics({
+          preferences,
+          metrics: [...latestMetrics, ...incomingMetrics]
+            .filter((metric) => Date.now() - metric.timestamp <= 8000)
+            .map((metric) => ({
+              ...metric,
+              ageMs: Math.max(0, Date.now() - metric.timestamp),
+            })),
+          session: {
+            signaling: signalRecovering
+              ? 'recovering'
+              : room
+                ? 'connected'
+                : busy === 'room'
+                  ? 'connecting'
+                  : 'idle',
+            publishing: sharing,
+            watching: Boolean(watching),
+            publications:
+              multiState()?.publications.length ?? (sharing ? 1 : 0),
+            participants: roomState?.participants.length ?? 0,
+          },
+        })
         .catch(() => notify('Não foi possível salvar o diagnóstico.', 'error'));
       break;
     case 'defer-update':
@@ -1737,6 +2211,7 @@ root.addEventListener('click', (event) => {
       render();
       break;
     case 'choose-source':
+    case 'refresh-sources':
       void openSources();
       break;
     case 'cancel-sources':
@@ -1808,7 +2283,20 @@ root.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (!modal) return;
+  if (!modal) {
+    if (event.key === 'Escape') {
+      const menu =
+        document.activeElement?.closest<HTMLDetailsElement>(
+          '.member-menu[open]',
+        );
+      if (menu) {
+        event.preventDefault();
+        menu.open = false;
+        menu.querySelector<HTMLElement>('summary')?.focus();
+      }
+    }
+    return;
+  }
   if (event.key === 'Escape') {
     if (modal === 'sources') cancelSources();
     else if (!busy) {
@@ -1818,26 +2306,29 @@ document.addEventListener('keydown', (event) => {
     }
   }
   if (event.key === 'Tab') {
-    const elements = [
-      ...document.querySelectorAll<HTMLElement>(
-        '[role="dialog"] button:not(:disabled), [role="dialog"] input:not(:disabled)',
-      ),
-    ];
-    const first = elements[0];
-    const last = elements[elements.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last?.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first?.focus();
-    }
+    const dialog = root.querySelector<HTMLElement>('[role="dialog"]');
+    if (dialog) trapDialogTab(event, dialog);
   }
 });
 
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement && deferredRender) render();
 });
+window.addEventListener('blur', syncPreviews);
+window.addEventListener('focus', syncPreviews);
+document.addEventListener('visibilitychange', syncPreviews);
+root.addEventListener(
+  'toggle',
+  (event) => {
+    if (event.target instanceof HTMLDetailsElement) {
+      if (event.target.id === 'quality-details')
+        qualityOpen = event.target.open;
+      if (event.target.id === 'diagnostics-details')
+        diagnosticsOpen = event.target.open;
+    }
+  },
+  true,
+);
 
 const metricsTimer = setInterval(patchMetrics, 2_000);
 
@@ -1862,6 +2353,7 @@ window.addEventListener('beforeunload', () => {
   sessionEpoch++;
   stopTracks(localStream);
   stopTracks(remoteStream);
+  watchPeers?.dispose();
   peers?.dispose();
   socket?.disconnect();
   void api?.setSharing(false).catch(() => undefined);
@@ -1869,6 +2361,17 @@ window.addEventListener('beforeunload', () => {
 
 render();
 if (api) {
+  api.onForeground((value) => {
+    nativeForeground = value;
+    syncPreviews();
+  });
+  void api
+    .getForeground()
+    .then((value) => {
+      nativeForeground = value;
+      syncPreviews();
+    })
+    .catch(() => undefined);
   api.onUpdate((state) => {
     update = state;
     render();

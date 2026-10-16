@@ -1,4 +1,32 @@
-# Salas, participantes e permissões — 0.5.0
+# Salas, participantes e permissões
+
+## Versão 0.7.0: várias telas, uma recepção por pessoa
+
+Qualquer participante pode selecionar uma janela e iniciar sua própria captura enquanto houver espaço. O piloto permite **duas telas simultâneas**, uma por pessoa, e **cinco participantes totais**. Entrar na sala não recebe vídeo automaticamente: escolha **Assistir** no cartão da pessoa desejada. Os cartões contêm somente informações, sem vídeos ou recepções ocultas.
+
+Você pode compartilhar e assistir à tela de outra pessoa ao mesmo tempo. A prévia da própria captura fica ao lado do destaque. Trocar a tela escolhida fecha os peers e tracks de recepção anteriores, mantendo somente uma transmissão recebida. **Parar de assistir** libera essa recepção; **Parar de compartilhar** encerra apenas sua publicação. Outras telas e seus espectadores continuam.
+
+Ao perder o foco ou minimizar, a prévia local pausa e solta a referência do player ao stream, com reprodução a **0 FPS**. A track de captura permanece ativa e com as mesmas configurações para o envio. Ao voltar, a prévia reutiliza essa captura. Isso reduz trabalho de reprodução local; não garante queda imediata de RAM, pois captura, codificador e recepção escolhida ainda têm buffers próprios.
+
+O som da tela escolhida começa silenciado. Se você captura o áudio do computador, ouvir outra transmissão dentro do Discorja fica bloqueado enquanto essa track existir, inclusive com envio silenciado. Use **Encerrar captura de som** para poder ouvir; isso evita recaptura e realimentação dentro do aplicativo. O som geral do Windows ainda pode incluir o Discord.
+
+O dono concede moderação pelo menu **···** de cada pessoa. Dono e moderadores podem encerrar uma publicação individual; participantes podem encerrar somente a própria. A regra de remoção continua: moderadores não expulsam dono ou outro moderador. Somente o dono encerra a sala inteira; a saída definitiva dele continua fechando a sala para todos.
+
+### Configurar e migrar
+
+1. Atualize o servidor antes dos aplicativos. Reiniciar o processo fecha as salas em memória.
+2. Mantenha `MAX_PUBLISHERS=2` no ambiente do servidor. O intervalo aceito é 1 a 4, sem ultrapassar `MAX_VIEWERS + 1`; quatro telas ainda precisam de medição representativa. Essa variável é um limite, não uma garantia de capacidade.
+3. `MAX_VIEWERS=4` representa quatro vagas além do criador: cinco participantes totais, independentemente de quem transmite. Cada participante recebe no máximo uma tela.
+4. Distribua clientes 0.7.0 e crie novas salas. Elas usam o **protocolo 3**, com publicação e seleção independentes. Protocolos 1 e 2 permanecem no servidor em salas separadas; não se misturam na mesma sala.
+5. Confira WSS e `ALLOWED_ORIGINS=app://discorja` no servidor de produção. Não inclua `STATS_TOKEN` nem credenciais administrativas nos clientes. O diagnóstico de [operação](operacao.md) verifica saúde e compatibilidade.
+
+O tráfego de mídia continua P2P: cada publicador envia somente para quem escolheu sua tela. Duas publicações não obrigam cada pessoa a baixar duas telas. Os limites de upload e a adaptação por espectador continuam independentes em cada computador que publica. A SFU segue adiada, sem infraestrutura adicional paga.
+
+Os testes atuais incluem `npm run test:multistream`, além dos ensaios de vídeo, áudio e salas. Resultados e limitações em [validacao-0.7.0.md](validacao-0.7.0.md).
+
+## Referência histórica: versão 0.5.0, protocolo 2
+
+As regras abaixo descrevem o modelo anterior, mantido apenas para clientes antigos em suas próprias salas. Na 0.7.0 valem as regras de várias telas acima; o controle **Permitir tela** foi substituído pela publicação individual.
 
 ## Como usar
 

@@ -2,6 +2,14 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DiscorjaAPI, UpdateState } from '../shared/protocol';
 
 const api: DiscorjaAPI = {
+  getForeground: () => ipcRenderer.invoke('window:foreground'),
+  onForeground: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, value: unknown) => {
+      if (typeof value === 'boolean') callback(value);
+    };
+    ipcRenderer.on('window:foreground', listener);
+    return () => ipcRenderer.removeListener('window:foreground', listener);
+  },
   getConfig: () => ipcRenderer.invoke('config:get'),
   saveConfig: (config) => ipcRenderer.invoke('config:save', config),
   getSources: () => ipcRenderer.invoke('capture:sources'),

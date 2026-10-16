@@ -9,14 +9,14 @@ export type SignalPayload =
   | { type: 'offer' | 'answer'; sdp: string }
   | { type: 'ice'; candidate: IceCandidate };
 
-export const ROOM_PROTOCOL_VERSION = 2;
+export const ROOM_PROTOCOL_VERSION = 3;
 export interface RoomParticipant {
   peerId: string;
   name: string;
   role: 'owner' | 'moderator' | 'participant';
   connected: boolean;
 }
-export interface RoomState {
+export interface LegacyRoomState {
   type: 'room-state';
   reason: 'created' | 'joined' | 'resumed' | 'updated';
   protocol: 2;
@@ -30,11 +30,45 @@ export interface RoomState {
   sharing: boolean;
   resumeToken: string;
 }
+export interface Publication {
+  publicationId: string;
+  publisherId: string;
+  audio: boolean;
+  connected: boolean;
+  watchers: number;
+}
+export interface MultiRoomState extends Omit<LegacyRoomState, 'protocol'> {
+  protocol: 3;
+  publications: Publication[];
+  maxPublishers: number;
+  watching: string | null;
+  watchRequestId: string | null;
+  subscribers: string[];
+}
+export type RoomState = LegacyRoomState | MultiRoomState;
 
 export type ClientMessage =
   | { type: 'hello'; protocol: number }
   | { type: 'set-publisher'; peerId: string }
   | { type: 'set-moderator'; peerId: string; enabled: boolean }
+  | {
+      type: 'publish-state';
+      publicationId: string;
+      sharing: boolean;
+      audio: boolean;
+    }
+  | {
+      type: 'watch-publication';
+      publicationId: string | null;
+      requestId: string;
+    }
+  | { type: 'stop-publication'; peerId: string }
+  | {
+      type: 'stream-signal';
+      publicationId: string;
+      peerId: string;
+      signal: SignalPayload;
+    }
   | { type: 'resume-room'; token: string }
   | { type: 'create-room'; name: string; roomName?: string }
   | { type: 'join-room'; code: string; name: string }
@@ -45,7 +79,13 @@ export type ClientMessage =
   | { type: 'leave-room' };
 
 export type ServerMessage =
-  | { type: 'hello'; protocol: 2 }
+  | { type: 'hello'; protocol: 2 | 3 }
+  | {
+      type: 'stream-signal';
+      publicationId: string;
+      peerId: string;
+      signal: SignalPayload;
+    }
   | RoomState
   | {
       type: 'room-created';
@@ -114,6 +154,8 @@ export interface UpdateState {
 }
 
 export interface DiscorjaAPI {
+  getForeground(): Promise<boolean>;
+  onForeground(callback: (foreground: boolean) => void): () => void;
   getConfig(): Promise<AppConfig>;
   saveConfig(config: { signalingUrl: string }): Promise<void>;
   getSources(): Promise<CaptureSource[]>;

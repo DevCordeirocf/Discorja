@@ -130,13 +130,14 @@ Configure o health check HTTP em `/health` e confirme suporte a WebSocket, ausê
 | `PORT`            | Porta HTTP/WebSocket; padrão `8787`.                                                                                                                                |
 | `ALLOWED_ORIGINS` | Lista de origens permitidas separadas por vírgula. Padrão: `app://discorja,http://127.0.0.1:5173,http://localhost:5173`. Em produção, restrinja a `app://discorja`. |
 | `MAX_VIEWERS`     | Número máximo de espectadores por sala; padrão `4`.                                                                                                                 |
+| `MAX_PUBLISHERS`  | Telas simultâneas no protocolo 3; padrão `2`, intervalo de 1 a 4 sem ultrapassar `MAX_VIEWERS + 1`. Manter duas no piloto.                                          |
 | `ROOM_TTL_MS`     | Duração máxima de uma sala em milissegundos; padrão `14400000` (quatro horas).                                                                                      |
 | `MAX_ROOMS`       | Limite de salas simultâneas no processo; padrão `5`.                                                                                                                |
 | `MAX_CLIENTS`     | Limite de conexões simultâneas no processo; padrão `20`.                                                                                                            |
 | `RESUME_GRACE_MS` | Prazo de retomada: padrão `20000`, entre 0 e 60000; zero desabilita.                                                                                                |
 | `STATS_TOKEN`     | Credencial administrativa de `/api/stats`; vazio desabilita a rota. Nunca distribuir no app.                                                                        |
 
-Configure limites de acordo com a capacidade do host. Aumentar `MAX_VIEWERS` não resolve o limite de upload do anfitrião. A checagem de `Origin` reduz o uso por páginas de terceiros, mas não substitui autenticação nem impede clientes WebSocket próprios de enviar a mesma origem.
+Configure limites de acordo com a capacidade do host. No protocolo 3, `MAX_VIEWERS + 1` é o total de participantes, independentemente de quem publica; cada um assiste a uma tela por vez. Aumentar esse limite não resolve o upload dos publicadores. `MAX_PUBLISHERS` é configuração do servidor e não exige incluir segredos no aplicativo. A checagem de `Origin` reduz o uso por páginas de terceiros, mas não substitui autenticação nem impede clientes WebSocket próprios de enviar a mesma origem. Após implantar, use o diagnóstico e o roteiro de [operação](operacao.md).
 
 `HOST` tem padrão `127.0.0.1` fora do container. Os limites numéricos precisam ser inteiros positivos. `PORT` aceita inteiros de 0 a 65535; 0 escolhe uma porta livre e é útil para testes, mas dificulta o encaminhamento de um serviço público. Configurações inválidas interrompem a inicialização em vez de serem silenciosamente ignoradas.
 

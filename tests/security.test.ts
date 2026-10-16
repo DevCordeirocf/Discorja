@@ -9,6 +9,66 @@ import { isServerMessage } from '../src/shared/validation';
 import { sanitizeDiagnostics } from '../src/shared/diagnostics';
 
 describe('Isolamento do aplicativo', () => {
+  it('inclui contexto de suporte sem aceitar dados livres ou contexto de runtime do renderer', () => {
+    const report = sanitizeDiagnostics(
+      {
+        metrics: [
+          { direction: 'outbound', fps: 60, ageMs: 100, room: 'secret' },
+        ],
+        preferences: { videoBitrateMbps: 24 },
+        session: {
+          signaling: 'recovering',
+          publishing: true,
+          watching: true,
+          participants: 4,
+          publications: 2,
+          token: 'secret',
+          name: 'secret',
+        },
+        runtime: { electron: 'secret' },
+      },
+      '0.8.0',
+      {
+        platform: 'win32',
+        architecture: 'x64',
+        electron: '44.7.2',
+        chromium: '150.0.1.2',
+        node: '22.0.0',
+        updateStatus: 'downloaded',
+        workingSetKiB: 10000,
+      },
+    );
+    expect(report.schemaVersion).toBe(2);
+    expect(report.session).toMatchObject({
+      protocol: 3,
+      signaling: 'recovering',
+      publishing: true,
+      watching: true,
+      publications: 2,
+      participants: 4,
+    });
+    expect(report.runtime).toMatchObject({
+      platform: 'win32',
+      electron: '44.7.2',
+      updateStatus: 'downloaded',
+      workingSetKiB: 10000,
+    });
+    expect(report.preferences.videoBitrateMbps).toBe(24);
+    expect(JSON.stringify(report)).not.toContain('secret');
+    const invalid = sanitizeDiagnostics(
+      {
+        metrics: [],
+        session: {
+          participants: 102,
+          publications: -1,
+          signaling: 'secret',
+          publishing: 'true',
+        },
+      },
+      '0.8.0',
+    );
+    expect(invalid.session).toEqual({ protocol: 3 });
+  });
   const root = path.resolve('dist/renderer');
   it('limita protocolo a arquivos locais permitidos sem streams alternativos', () => {
     expect(rendererFile(root, 'app://discorja/index.html')).toBe(

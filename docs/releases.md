@@ -42,18 +42,18 @@ O workflow pode ser iniciado manualmente em **Run workflow**, informando uma tag
 
 ### Preparar a próxima versão
 
-Por exemplo, para passar de 0.2.0 para 0.2.1:
+Exemplo para preparar a 0.8.0, depois de revisar e validar as alterações:
 
 ```powershell
-npm version 0.5.0 --no-git-tag-version
+npm version 0.8.0 --no-git-tag-version
 npm run typecheck
 npm run format:check
 npm test
 git add .
-git commit -m "Prepara versão 0.5.0"
+git commit -m "Prepara versão 0.8.0"
 git push origin main
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.8.0
+git push origin v0.8.0
 ```
 
 Revise os arquivos antes de adicioná-los. `npm version` sincroniza pacote e lockfile. Mantenha `appId`, repositório e nome do produto estáveis para preservar o caminho de instalação e atualização.
@@ -71,8 +71,8 @@ Esse comando gera o instalador e os metadados sem enviar arquivos ao GitHub. Par
 
 | Arquivo                                     | Função                                                    |
 | ------------------------------------------- | --------------------------------------------------------- |
-| `release/Discorja-Setup-0.2.0.exe`          | Instalador Windows.                                       |
-| `release/Discorja-Setup-0.2.0.exe.blockmap` | Metadados para download diferencial.                      |
+| `release/Discorja-Setup-0.8.0.exe`          | Instalador Windows.                                       |
+| `release/Discorja-Setup-0.8.0.exe.blockmap` | Metadados para download diferencial.                      |
 | `release/latest.yml`                        | Versão, localização e hashes utilizados pelo atualizador. |
 
 Mantenha os três arquivos da mesma compilação. Não edite o manifesto à mão nem misture versões. Sem `GITHUB_REPOSITORY`, o mesmo comando produz um pacote local sem destino de atualização. Os comandos de build não carregam `.env` automaticamente.
@@ -80,6 +80,10 @@ Mantenha os três arquivos da mesma compilação. Não edite o manifesto à mão
 `scripts/prepare-release.mjs` gera `build/release.json` com `{ owner, repo }` e, somente quando configurado, `publisherName`. O build inclui esses dados públicos no pacote. Não versione nem edite o arquivo gerado.
 
 ## Como o aplicativo atualiza
+
+Antes de publicar, execute `npm run release:verify`. A verificação lê `latest.yml`, exige versão e nome do instalador correspondentes ao `package.json`, confere tamanho e SHA-512 e exige o `.blockmap`. Caminhos externos e links simbólicos são rejeitados. O workflow usa somente os três arquivos validados da versão atual; instaladores antigos que estejam na pasta local não são enviados junto. A verificação não instala nem publica arquivos e mantém assinatura opcional.
+
+O teste `node scripts/check-updater.mjs` usa o executável empacotado e um provedor HTTP restrito a localhost, em perfis e cache isolados. Confere versão atual, falha de conexão, hash inválido, download válido e bloqueio de reinício pelo estado nativo de compartilhamento. Não executa o instalador baixado nem substitui a validação entre duas instalações reais. O pacote precisa ter sido gerado previamente, com `release/latest.yml` da mesma versão.
 
 O aplicativo Windows empacotado com destino de distribuição consulta versões cerca de cinco segundos após abrir. Quando encontra versão estável maior, mostra um popup com versão instalada/nova, **Atualizar agora** e **Depois**. O download começa pela ação do usuário, mostra progresso e termina com a opção **Reiniciar e atualizar**. Adiar permite continuar usando o app e evita repetir o popup na mesma execução; ele pode reaparecer na próxima abertura.
 

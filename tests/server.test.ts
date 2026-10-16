@@ -4,7 +4,11 @@ import {
   createSignalingServer,
   type SignalingOptions,
 } from '../src/server/server.js';
-import type { ClientMessage, ServerMessage } from '../src/shared/protocol.js';
+import type {
+  ClientMessage,
+  ServerMessage,
+  MultiRoomState,
+} from '../src/shared/protocol.js';
 
 type MessageOf<T extends ServerMessage['type']> = Extract<
   ServerMessage,
@@ -84,10 +88,10 @@ async function join(viewer: Peer, code: string, name = 'Amigo') {
   return viewer.next('room-joined');
 }
 
-async function modern(url: string) {
+async function modern(url: string, protocol: 2 | 3 = 2) {
   const peer = await connect(url);
-  peer.send({ type: 'hello', protocol: 2 });
-  expect(await peer.next('hello')).toEqual({ type: 'hello', protocol: 2 });
+  peer.send({ type: 'hello', protocol });
+  expect(await peer.next('hello')).toEqual({ type: 'hello', protocol });
   return peer;
 }
 async function state(
@@ -247,6 +251,235 @@ describe('Salas do protocolo 2', () => {
     expect((await viewer.next('room-closed')).reason).toBe('host-left');
     modernClient.send({ type: 'join-room', code: room.code, name: 'Novo' });
     expect((await modernClient.next('error')).code).toBe('ROOM_NOT_FOUND');
+  });
+});
+
+let watchSequence = 0;
+async function multiSnapshot(
+  peer: Peer,
+  predicate: (value: MultiRoomState) => boolean = () => true,
+) {
+  return (await state(
+    peer,
+    (value) => value.protocol === 3 && predicate(value),
+  )) as MultiRoomState;
+}
+async function publish(peer: Peer, id: string) {
+  peer.send({
+    type: 'publish-state',
+    publicationId: id,
+    sharing: true,
+    audio: false,
+  });
+  return multiSnapshot(peer, (value) =>
+    value.publications.some((entry) => entry.publicationId === id),
+  );
+}
+async function watch(peer: Peer, id: string | null) {
+  const requestId = `watch-${++watchSequence}`;
+  peer.send({ type: 'watch-publication', publicationId: id, requestId });
+  return multiSnapshot(peer, (value) => value.watchRequestId === requestId);
+}
+
+describe('Publicações e seleção única no protocolo 3', () => {
+  it('retoma publicação e seleção, aplica moderação durante a queda e invalida token ao remover', async () => {
+    const { url } = await start({ resumeGraceMs: 20000 });
+    const owner = await modern(url, 3),
+      member = await modern(url, 3),
+      viewer = await modern(url, 3);
+    const room = await modernRoom(owner);
+    const joined = await modernJoin(member, room.code);
+    await modernJoin(viewer, room.code, 'Espectador');
+    await publish(owner, 'screen-owner');
+    await publish(member, 'screen-member');
+    await watch(member, 'screen-owner');
+    await watch(viewer, 'screen-member');
+    member.socket.terminate();
+    const disconnected = await multiSnapshot(owner, (value) =>
+      value.publications.some(
+        (entry) => entry.publicationId === 'screen-member' && !entry.connected,
+      ),
+    );
+    expect(disconnected.subscribers).toEqual([]);
+    owner.send({ type: 'stop-publication', peerId: joined.selfId });
+    expect(
+      (await multiSnapshot(viewer, (value) => value.publications.length === 1))
+        .watching,
+    ).toBeNull();
+    const returned = await modern(url, 3);
+    returned.send({ type: 'resume-room', token: joined.resumeToken });
+    const resumed = await multiSnapshot(
+      returned,
+      (value) => value.reason === 'resumed',
+    );
+    expect(resumed.selfId).toBe(joined.selfId);
+    expect(resumed.watching).toBe('screen-owner');
+    expect(resumed.publications).toHaveLength(1);
+    expect(resumed.resumeToken).not.toBe(joined.resumeToken);
+    await multiSnapshot(owner, (value) =>
+      value.subscribers.includes(joined.selfId),
+    );
+    owner.send({ type: 'kick', peerId: joined.selfId });
+    await returned.next('kicked');
+    returned.socket.terminate();
+    const attacker = await modern(url, 3);
+    attacker.send({ type: 'resume-room', token: resumed.resumeToken });
+    expect((await attacker.next('error')).code).toBe('RESUME_REJECTED');
+  });
+  it('permite duas publicações independentes e troca uma única assinatura por vez', async () => {
+    const { url } = await start();
+    const a = await modern(url, 3),
+      b = await modern(url, 3),
+      viewer = await modern(url, 3);
+    const room = await modernRoom(a);
+    const second = await modernJoin(b, room.code, 'Segundo');
+    const joined = await modernJoin(viewer, room.code, 'Espectador');
+    await publish(a, 'publication-A');
+    const both = await publish(b, 'publication-B');
+    expect(both.publications).toHaveLength(2);
+    expect(both.watching).toBeNull();
+    expect(both.subscribers).toEqual([]);
+    expect((await watch(viewer, 'publication-A')).watching).toBe(
+      'publication-A',
+    );
+    await multiSnapshot(a, (value) =>
+      value.subscribers.includes(joined.selfId),
+    );
+    // Retry the same screen: the sender must close the old PC before offering again.
+    await watch(viewer, 'publication-A');
+    await multiSnapshot(
+      a,
+      (value) => !value.subscribers.includes(joined.selfId),
+    );
+    await multiSnapshot(a, (value) =>
+      value.subscribers.includes(joined.selfId),
+    );
+    a.send({
+      type: 'stream-signal',
+      publicationId: 'publication-A',
+      peerId: joined.selfId,
+      signal: { type: 'offer', sdp: 'v=0' },
+    });
+    expect((await viewer.next('stream-signal')).publicationId).toBe(
+      'publication-A',
+    );
+    expect((await watch(viewer, 'publication-B')).watching).toBe(
+      'publication-B',
+    );
+    const noLongerWatching = await multiSnapshot(
+      a,
+      (value) =>
+        value.publications.length === 2 &&
+        !value.subscribers.includes(joined.selfId),
+    );
+    expect(
+      noLongerWatching.publications.find(
+        (entry) => entry.publicationId === 'publication-A',
+      )?.watchers,
+    ).toBe(0);
+    a.send({
+      type: 'stream-signal',
+      publicationId: 'publication-A',
+      peerId: joined.selfId,
+      signal: { type: 'ice', candidate: { candidate: '' } },
+    });
+    expect((await a.next('error')).code).toBe('FORBIDDEN_SIGNAL');
+    b.send({
+      type: 'stream-signal',
+      publicationId: 'publication-B',
+      peerId: joined.selfId,
+      signal: { type: 'offer', sdp: 'v=0' },
+    });
+    expect((await viewer.next('stream-signal')).peerId).toBe(second.selfId);
+    await watch(a, 'publication-B');
+    expect(
+      (await multiSnapshot(b, (value) => value.subscribers.length === 2))
+        .publications,
+    ).toHaveLength(2);
+    expect((await watch(viewer, null)).watching).toBeNull();
+  });
+  it('aplica limite, rejeita publicação obsoleta e mantém a outra tela ao parar uma delas', async () => {
+    const { url, httpUrl } = await start({ statsToken: 'd'.repeat(64) });
+    const a = await modern(url, 3),
+      b = await modern(url, 3),
+      c = await modern(url, 3);
+    const room = await modernRoom(a);
+    const second = await modernJoin(b, room.code);
+    await modernJoin(c, room.code, 'Terceiro');
+    await publish(a, 'publication-A');
+    await publish(b, 'publication-B');
+    c.send({
+      type: 'publish-state',
+      publicationId: 'publication-C',
+      sharing: true,
+      audio: false,
+    });
+    expect((await c.next('error')).code).toBe('PUBLICATION_LIMIT');
+    a.send({
+      type: 'publish-state',
+      publicationId: 'obsolete',
+      sharing: false,
+      audio: false,
+    });
+    expect((await a.next('error')).code).toBe('STALE_PUBLICATION');
+    await watch(c, 'publication-B');
+    c.send({ type: 'stop-publication', peerId: room.selfId });
+    expect((await c.next('error')).code).toBe('FORBIDDEN');
+    const response = await fetch(`${httpUrl}/api/stats`, {
+      headers: { Authorization: `Bearer ${'d'.repeat(64)}` },
+    });
+    expect((await response.json()).reportedScreenPublishers).toBe(2);
+    a.send({ type: 'stop-publication', peerId: second.selfId });
+    const after = await multiSnapshot(
+      c,
+      (value) => value.publications.length === 1,
+    );
+    expect(after.watching).toBeNull();
+    expect(after.publications[0].publicationId).toBe('publication-A');
+  });
+  it('bloqueia autoassinatura, negociação sem assinatura e sinais entre salas', async () => {
+    const { url } = await start();
+    const a = await modern(url, 3),
+      viewer = await modern(url, 3),
+      outside = await modern(url, 3);
+    const room = await modernRoom(a);
+    const joined = await modernJoin(viewer, room.code);
+    await modernRoom(outside);
+    await publish(a, 'publication-A');
+    a.send({
+      type: 'watch-publication',
+      publicationId: 'publication-A',
+      requestId: 'self-watch',
+    });
+    expect((await a.next('error')).code).toBe('PUBLICATION_NOT_FOUND');
+    a.send({
+      type: 'stream-signal',
+      publicationId: 'publication-A',
+      peerId: joined.selfId,
+      signal: { type: 'offer', sdp: 'v=0' },
+    });
+    expect((await a.next('error')).code).toBe('FORBIDDEN_SIGNAL');
+    outside.send({
+      type: 'watch-publication',
+      publicationId: 'publication-A',
+      requestId: 'cross-room',
+    });
+    expect((await outside.next('error')).code).toBe('PUBLICATION_NOT_FOUND');
+    await watch(viewer, 'publication-A');
+    viewer.send({
+      type: 'stream-signal',
+      publicationId: 'publication-A',
+      peerId: room.selfId,
+      signal: { type: 'offer', sdp: 'v=0' },
+    });
+    expect((await viewer.next('error')).code).toBe('FORBIDDEN_SIGNAL');
+    viewer.send({
+      type: 'stream-signal',
+      publicationId: 'obsolete',
+      peerId: room.selfId,
+      signal: { type: 'answer', sdp: 'v=0' },
+    });
+    expect((await viewer.next('error')).code).toBe('FORBIDDEN_SIGNAL');
   });
 });
 

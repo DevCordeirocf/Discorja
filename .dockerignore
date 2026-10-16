@@ -5,8 +5,11 @@
 !tsconfig.server.json
 !scripts/
 !scripts/install-electron.mjs
+!scripts/check-server.mjs
 !src/
 !src/server/
 !src/server/**
 !src/shared/
 !src/shared/**
+!src/electron/
+!src/electron/config.ts

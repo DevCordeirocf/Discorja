@@ -33,7 +33,7 @@ export class SignalConnection {
       };
       const timer = setTimeout(() => {
         fail(
-          'O servidor não confirmou o protocolo de salas. Atualize o servidor para a versão 0.5.0 ou confira seu endereço.',
+          'O servidor não confirmou o protocolo de salas. Atualize o servidor para a versão 0.7.0 ou confira seu endereço.',
         );
         this.disconnect();
       }, timeoutMs);
@@ -85,7 +85,7 @@ export class SignalConnection {
                 resolve();
               } else {
                 fail(
-                  'Aplicativo e servidor usam versões incompatíveis. Atualize o servidor para 0.5.0 e use clientes compatíveis.',
+                  'Aplicativo e servidor usam versões incompatíveis. Atualize o servidor para 0.7.0 e use clientes compatíveis.',
                 );
                 this.disconnect();
               }
