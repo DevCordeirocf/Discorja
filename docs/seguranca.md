@@ -1,5 +1,11 @@
 # Segurança e operação sem serviços pagos
 
+## Permissões e troca de salas na 0.5.0
+
+O protocolo de salas é confirmado antes da sessão. O servidor mantém dono, moderação e transmissor separadamente e verifica autorização em cada operação. Não aceita escolher um participante de outra sala, ofertas de um receptor, remoção do dono por moderador ou concessão de moderação pelo próprio participante. Sessões retomadas herdam somente o estado guardado no backend e recebem um token novo. Snapshots são validados no cliente, com limites de participantes, IDs únicos e dono/transmissor presentes na sala.
+
+Trocar de sala fecha a mídia e a sinalização anteriores. O histórico guarda somente até doze convites/nome/endpoint, sem token de retomada. Abrir o painel não se conecta aos outros convites. Ser autorizado a transmitir nunca inicia captura remota. A saída do dono fecha a sala; publicação e moderação não transferem propriedade automaticamente. Procedimento de migração em [salas.md](salas.md).
+
 **Referência:** revisão inicial da versão 0.2.4 e implementação local da 0.3.0, em 15 de outubro de 2026.  
 **Escopo:** componentes Electron, sinalização, configuração e distribuição; consulta de avisos de dependências e testes locais. Não foi realizado teste de invasão, varredura do servidor publicado ou inspeção da conta de hospedagem. Os controles implementados e as verificações operacionais pendentes estão discriminados na [validação da 0.3.0](validacao-0.3.0.md).
 

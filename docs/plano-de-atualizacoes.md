@@ -1,8 +1,8 @@
 # Plano de evolução do Discorja
 
-**Referência:** evolução da 0.2.4 para a implementação local 0.4.0, em 15 de outubro de 2026.
+**Referência:** evolução da 0.2.4 para a implementação local 0.5.0.
 
-**Status:** implementações da 0.3.0 e 0.4.0 preparadas; validação operacional depende da implantação e ensaios externos indicados nos registros. Versões posteriores continuam sendo propostas de organização, sem datas garantidas.
+**Status:** implementação local da 0.5.0 preparada; a 0.4.0 foi enviada separadamente ao GitHub. Validação operacional depende da implantação e ensaios externos indicados nos registros. Versões posteriores continuam sendo propostas de organização, sem datas garantidas.
 
 ## Objetivo
 
@@ -92,7 +92,7 @@ Configuração externa necessária deve ser listada ao final da subetapa com ins
 
 ### Registro de progresso e retomada
 
-**Estado atual:** implementação local da **0.4.0 preparada**, incluindo 0.4-A e 0.4-B por solicitação conjunta. A 0.3.0 mantém verificações operacionais pendentes em C2, E1, E2 e F; G2 permanece adiada. A 0.4.0 tem ensaios locais de áudio aprovados, mas ainda exige loopback nativo, dispositivos físicos, uso real com Discord e sincronização prolongada em computadores separados. As etapas 0.5 em diante não foram iniciadas. A conclusão de testes locais não certifica a segurança ou capacidade de todo o sistema.
+**Estado atual:** implementação local da **0.5.0 preparada**, incluindo 0.5-A e 0.5-B. A 0.4.0 foi enviada ao GitHub no commit `cc0c79a` antes da continuação. Os ensaios locais de salas, papéis, vídeo e áudio passaram; implantação do novo servidor e clientes ainda está pendente. A 0.3.0 mantém verificações operacionais em C2/E1/E2/F; G2 continua adiada. A validação nativa de áudio/Discord da 0.4.0 permanece pendente. As etapas 0.6 em diante não foram iniciadas. Testes locais não certificam segurança ou capacidade de todo o ambiente.
 
 Ao terminar ou interromper uma subetapa, atualizar este registro no próprio arquivo. Manter uma entrada por subetapa trabalhada; não sobrescrever o histórico de entregas anteriores.
 
@@ -152,6 +152,16 @@ Ao terminar ou interromper uma subetapa, atualizar este registro no próprio arq
 - **Configuração externa:** nenhuma variável nova no servidor. Mesma sinalização e ICE. Usar cliente 0.4.0 nos dois lados, saída de áudio disponível e opção de som marcada por captura. Publicação da release permanece uma ação separada.
 - **Pendências:** loopback em Windows 10/11, troca física de saída, chamada real do Discord, sincronização por trinta minutos e carga em redes distintas. Não há captura exclusiva de processo ou exclusão automática do Discord. Durante a chamada, manter somente vídeo se o isolamento não foi comprovado.
 - **Retomada:** seguir a matriz de validação e o [guia de áudio](audio.md). Não iniciar 0.5 automaticamente. Código local sem commit ou publicação automática nesta entrega.
+
+#### Entrega 0.5-A e 0.5-B — Papéis, protocolo e navegação de salas
+
+**Estado:** implementação concluída; aguardando distribuição e validação operacional.
+
+- **Escopo:** protocolo 2 confirmado; dono/moderador/participante separados do transmissor; autorização no servidor; sessões retomadas sem confiar em papel do cliente; salas nomeadas, convites recentes e troca com encerramento da mídia anterior. Uma sala de mídia ativa por aplicativo e uma publicação por sala.
+- **Verificações:** 101 testes em onze arquivos, tipos e build aprovados; vinte cenários integrados de vídeo, dezesseis de áudio e dez de salas aprovados. Troca com áudio, mudança de transmissor, retirada de moderação, captura sempre explícita, isolamento de salas/protocolos e destino inexistente cobertos.
+- **Configuração externa:** implantar servidor 0.5.0 primeiro, conferir WSS/origens/limites e distribuir cliente 0.5.0; nenhuma variável ou contratação nova. Clientes antigos continuam somente em salas do protocolo anterior. Reiniciar o servidor encerra salas em memória.
+- **Pendências:** instalação/atualização real e testes com máquinas/redes diferentes; continuam os ensaios de áudio nativo/Discord das entregas anteriores. Não houve publicação da 0.5.0 nesta rodada.
+- **Retomada:** seguir [salas.md](salas.md) e [validacao-0.5.0.md](validacao-0.5.0.md). As alterações 0.5.0 estão locais, separadas do commit publicado da 0.4.0. Não iniciar a etapa seguinte automaticamente.
 
 ## 0.3.0 — Performance, conexão e monitoramento
 
@@ -394,7 +404,7 @@ Executar primeiro amostras curtas para encontrar falhas e depois sessões de pel
 
 ## Próxima entrega recomendada
 
-A implementação local da **0.4.0 está preparada**. Priorizar os ensaios de áudio e as configurações operacionais pendentes descritos nos registros, sem reimplementar os itens entregues. A próxima etapa de produto é **0.5-A — Sessão, papéis e protocolo de salas**, mediante solicitação. TURN/SFU próprios continuam opcionais; nenhuma etapa depende de contratar serviços.
+A implementação local da **0.5.0 está preparada**. Priorizar a implantação, a distribuição e os ensaios operacionais descritos nos registros. A etapa **0.6-A** avalia SFU própria somente se houver máquina e rede existentes, sem contratação; pode ser adiada. A próxima ampliação obrigatória é **0.7-A — Publicações simultâneas**, mediante solicitação. Nenhuma etapa depende de contratar serviços.
 
 ## Referências técnicas
 

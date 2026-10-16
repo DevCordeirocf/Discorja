@@ -1,4 +1,8 @@
-import type { ClientMessage, ServerMessage } from '../shared/protocol';
+import {
+  ROOM_PROTOCOL_VERSION,
+  type ClientMessage,
+  type ServerMessage,
+} from '../shared/protocol';
 
 import { isServerMessage, MAX_MESSAGE_BYTES } from '../shared/validation';
 export { isServerMessage } from '../shared/validation';
@@ -29,7 +33,7 @@ export class SignalConnection {
       };
       const timer = setTimeout(() => {
         fail(
-          'O servidor demorou para responder. Confira o endereço em Configurações.',
+          'O servidor não confirmou o protocolo de salas. Atualize o servidor para a versão 0.5.0 ou confira seu endereço.',
         );
         this.disconnect();
       }, timeoutMs);
@@ -45,10 +49,9 @@ export class SignalConnection {
       this.socket = socket;
       socket.onopen = () => {
         if (settled || this.intentional) return;
-        settled = true;
-        clearTimeout(timer);
-        this.abortOpen = null;
-        resolve();
+        socket.send(
+          JSON.stringify({ type: 'hello', protocol: ROOM_PROTOCOL_VERSION }),
+        );
       };
       socket.onmessage = (event: MessageEvent<unknown>) => {
         if (Date.now() - this.windowStarted >= 10_000) {
@@ -70,8 +73,26 @@ export class SignalConnection {
         }
         try {
           const message: unknown = JSON.parse(event.data);
-          if (isServerMessage(message)) this.onMessage(message);
-          else socket.close(1008, 'Protocolo inválido');
+          if (isServerMessage(message)) {
+            if (!settled) {
+              if (
+                message.type === 'hello' &&
+                message.protocol === ROOM_PROTOCOL_VERSION
+              ) {
+                settled = true;
+                clearTimeout(timer);
+                this.abortOpen = null;
+                resolve();
+              } else {
+                fail(
+                  'Aplicativo e servidor usam versões incompatíveis. Atualize o servidor para 0.5.0 e use clientes compatíveis.',
+                );
+                this.disconnect();
+              }
+              return;
+            }
+            this.onMessage(message);
+          } else socket.close(1008, 'Protocolo inválido');
         } catch {
           socket.close(1008, 'Protocolo inválido');
         }

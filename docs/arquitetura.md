@@ -1,5 +1,13 @@
 # Arquitetura e privacidade
 
+## Salas na versão 0.5.0
+
+O protocolo 2 confirma compatibilidade por `hello` e mantém dono e moderadores separados do transmissor autorizado. O servidor envia snapshots `room-state` com os participantes, o dono, o transmissor e o estado da publicação; cada conexão recebe somente seu próprio token. `set-publisher` e `set-moderator` são operações restritas e validadas no backend. Uma pessoa transmite por sala; receber permissão não inicia captura.
+
+O dono sair encerra a sala, mesmo quando outro membro está transmitindo. A saída do transmissor devolve a permissão ao dono sem iniciar mídia. Os nomes `host` e `viewer` ainda usados pelo transporte representam emissor e receptor; não definem autoridade administrativa no protocolo 2. O contrato anterior permanece disponível em salas separadas para a transição dos clientes 0.3/0.4.
+
+O painel de salas guarda somente convites recentes e mantém uma sala ativa por aplicativo. Confirmar uma troca encerra tracks, peers e socket anteriores antes da próxima conexão. Não existe assinatura de mídia em salas inativas. Política, permissões e migração em [salas.md](salas.md).
+
 O Discorja separa três funções:
 
 | Componente                     | Responsabilidade                                                                                        |
@@ -73,7 +81,7 @@ As mensagens são JSON em WebSocket. O contrato tipado está em `src/shared/prot
 | `close-room`                | Anfitrião encerra a sala.                                                          |
 | `leave-room`                | Participante sai; se for anfitrião, a sala termina.                                |
 
-O servidor responde com criação/entrada, mudanças de participantes, sinais, estado do anfitrião, remoção, encerramento ou erro. As razões de encerramento são `host-left`, `host-closed` e `expired`. Não há uma API HTTP de gestão de salas: HTTP expõe apenas `/health`, além do upgrade WebSocket em `/` e `/ws`.
+O contrato da tabela corresponde ao protocolo anterior, mantido para transição. No protocolo 2, criação, entrada, retomada e alterações de participantes retornam `room-state`; a negociação de mídia continua em `signal`. As razões de encerramento são `host-left`, `host-closed` e `expired` (os nomes históricos referem-se à saída ou encerramento pelo dono). HTTP expõe `/health` e `/api/stats` quando habilitada por credencial, além do upgrade WebSocket em `/` e `/ws`; não há API HTTP pública de gestão das salas.
 
 O servidor verifica formato, tamanho, campos permitidos e autorização para encaminhar cada sinal. Não permite comunicação arbitrária entre salas ou entre espectadores. Essas verificações não autenticam a identidade informada no campo nome.
 

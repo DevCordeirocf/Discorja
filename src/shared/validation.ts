@@ -48,6 +48,67 @@ export function isServerMessage(v: unknown): v is ServerMessage {
   const identity = () => roomCode(v.code) && peerId(v.selfId);
   const session = () => v.resumeToken === undefined || token(v.resumeToken);
   switch (v.type) {
+    case 'hello':
+      return keys(v, ['type', 'protocol']) && v.protocol === 2;
+    case 'room-state': {
+      if (
+        !keys(v, [
+          'type',
+          'reason',
+          'protocol',
+          'code',
+          'name',
+          'selfId',
+          'ownerId',
+          'publisherId',
+          'maxParticipants',
+          'participants',
+          'sharing',
+          'resumeToken',
+        ]) ||
+        v.protocol !== 2 ||
+        !['created', 'joined', 'resumed', 'updated'].includes(
+          String(v.reason),
+        ) ||
+        !identity() ||
+        !name(v.name) ||
+        !peerId(v.ownerId) ||
+        !peerId(v.publisherId) ||
+        !Number.isInteger(v.maxParticipants) ||
+        Number(v.maxParticipants) < 2 ||
+        Number(v.maxParticipants) > 101 ||
+        !Array.isArray(v.participants) ||
+        v.participants.length < 1 ||
+        v.participants.length > Number(v.maxParticipants) ||
+        typeof v.sharing !== 'boolean' ||
+        !token(v.resumeToken)
+      )
+        return false;
+      if (
+        !v.participants.every(
+          (entry) =>
+            object(entry) &&
+            keys(entry, ['peerId', 'name', 'role', 'connected']) &&
+            peerId(entry.peerId) &&
+            name(entry.name) &&
+            ['owner', 'moderator', 'participant'].includes(
+              String(entry.role),
+            ) &&
+            typeof entry.connected === 'boolean',
+        )
+      )
+        return false;
+      const members = v.participants as { peerId: string; role: string }[];
+      return (
+        new Set(members.map((entry) => entry.peerId)).size === members.length &&
+        members.some((entry) => entry.peerId === v.selfId) &&
+        members.some((entry) => entry.peerId === v.publisherId) &&
+        members.filter((entry) => entry.role === 'owner').length === 1 &&
+        members.some(
+          (entry) => entry.peerId === v.ownerId && entry.role === 'owner',
+        )
+      );
+    }
     case 'room-created':
       return (
         keys(v, ['type', 'code', 'selfId', 'maxViewers'], ['resumeToken']) &&

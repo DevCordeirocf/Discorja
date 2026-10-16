@@ -84,6 +84,172 @@ async function join(viewer: Peer, code: string, name = 'Amigo') {
   return viewer.next('room-joined');
 }
 
+async function modern(url: string) {
+  const peer = await connect(url);
+  peer.send({ type: 'hello', protocol: 2 });
+  expect(await peer.next('hello')).toEqual({ type: 'hello', protocol: 2 });
+  return peer;
+}
+async function state(
+  peer: Peer,
+  predicate: (value: MessageOf<'room-state'>) => boolean = () => true,
+) {
+  for (let index = 0; index < 30; index++) {
+    const value = await peer.next('room-state');
+    if (predicate(value)) return value;
+  }
+  throw new Error('Snapshot esperado não recebido.');
+}
+async function modernRoom(owner: Peer) {
+  owner.send({ type: 'create-room', name: 'Dono', roomName: 'Sala da turma' });
+  return state(owner, (value) => value.reason === 'created');
+}
+async function modernJoin(peer: Peer, code: string, name = 'Amigo') {
+  peer.send({ type: 'join-room', code, name });
+  return state(peer, (value) => value.reason === 'joined');
+}
+
+describe('Salas do protocolo 2', () => {
+  it('separa dono, transmissor e participante e restringe a negociação à publicação autorizada', async () => {
+    const { url } = await start();
+    const owner = await modern(url),
+      publisher = await modern(url),
+      member = await modern(url);
+    const room = await modernRoom(owner);
+    const joined = await modernJoin(publisher, room.code);
+    await modernJoin(member, room.code, 'Espectador');
+    owner.send({ type: 'set-publisher', peerId: joined.selfId });
+    const selected = await state(
+      owner,
+      (value) => value.publisherId === joined.selfId,
+    );
+    expect(selected.ownerId).toBe(room.selfId);
+    expect(selected.sharing).toBe(false);
+    owner.send({ type: 'host-state', sharing: true });
+    expect((await owner.next('error')).code).toBe('FORBIDDEN');
+    publisher.send({ type: 'host-state', sharing: true });
+    await state(owner, (value) => value.sharing);
+    publisher.send({
+      type: 'signal',
+      peerId: room.selfId,
+      signal: { type: 'offer', sdp: 'v=0' },
+    });
+    expect((await owner.next('signal')).peerId).toBe(joined.selfId);
+    owner.send({
+      type: 'signal',
+      peerId: joined.selfId,
+      signal: { type: 'answer', sdp: 'v=0' },
+    });
+    expect((await publisher.next('signal')).peerId).toBe(room.selfId);
+    member.send({
+      type: 'signal',
+      peerId: room.selfId,
+      signal: { type: 'offer', sdp: 'v=0' },
+    });
+    expect((await member.next('error')).code).toBe('PEER_NOT_FOUND');
+    publisher.send({ type: 'close-room' });
+    expect((await publisher.next('error')).code).toBe('FORBIDDEN');
+  });
+  it('concede e revoga moderação sem permitir escalar privilégios ou remover o dono', async () => {
+    const { url } = await start();
+    const owner = await modern(url),
+      moderator = await modern(url),
+      viewer = await modern(url);
+    const room = await modernRoom(owner);
+    const mod = await modernJoin(moderator, room.code);
+    const target = await modernJoin(viewer, room.code, 'Outro');
+    moderator.send({
+      type: 'set-moderator',
+      peerId: mod.selfId,
+      enabled: true,
+    });
+    expect((await moderator.next('error')).code).toBe('FORBIDDEN');
+    owner.send({ type: 'set-moderator', peerId: mod.selfId, enabled: true });
+    await state(moderator, (value) =>
+      value.participants.some(
+        (member) => member.peerId === mod.selfId && member.role === 'moderator',
+      ),
+    );
+    moderator.send({ type: 'kick', peerId: room.selfId });
+    expect((await moderator.next('error')).code).toBe('FORBIDDEN');
+    moderator.send({ type: 'set-publisher', peerId: target.selfId });
+    await state(viewer, (value) => value.publisherId === target.selfId);
+    owner.send({ type: 'set-moderator', peerId: mod.selfId, enabled: false });
+    await state(
+      moderator,
+      (value) =>
+        value.participants.find((member) => member.peerId === mod.selfId)
+          ?.role === 'participant',
+    );
+    moderator.send({ type: 'kick', peerId: target.selfId });
+    expect((await moderator.next('error')).code).toBe('FORBIDDEN');
+    owner.send({ type: 'kick', peerId: target.selfId });
+    await viewer.next('kicked');
+    const after = await state(
+      owner,
+      (value) =>
+        value.participants.length === 2 && value.publisherId === room.selfId,
+    );
+    expect(after.sharing).toBe(false);
+    expect(
+      after.participants.some((member) => member.peerId === target.selfId),
+    ).toBe(false);
+  });
+  it('retoma a sessão com os papéis do servidor e revoga o token depois de sair', async () => {
+    const { url } = await start({ resumeGraceMs: 20000 });
+    const owner = await modern(url),
+      publisher = await modern(url);
+    const room = await modernRoom(owner);
+    const joined = await modernJoin(publisher, room.code);
+    owner.send({ type: 'set-publisher', peerId: joined.selfId });
+    await state(publisher, (value) => value.publisherId === joined.selfId);
+    publisher.socket.terminate();
+    await state(owner, (value) =>
+      value.participants.some(
+        (member) => member.peerId === joined.selfId && !member.connected,
+      ),
+    );
+    const returned = await modern(url);
+    returned.send({ type: 'resume-room', token: joined.resumeToken });
+    const resumed = await state(
+      returned,
+      (value) => value.reason === 'resumed',
+    );
+    expect(resumed.publisherId).toBe(joined.selfId);
+    expect(resumed.ownerId).toBe(room.selfId);
+    expect(resumed.resumeToken).not.toBe(joined.resumeToken);
+    returned.send({ type: 'leave-room' });
+    await state(owner, (value) => value.participants.length === 1);
+    const attacker = await modern(url);
+    attacker.send({ type: 'resume-room', token: resumed.resumeToken });
+    expect((await attacker.next('error')).code).toBe('RESUME_REJECTED');
+  });
+  it('mantém salas e protocolos isolados e fecha a sala quando o dono sai', async () => {
+    const { url } = await start();
+    const owner = await modern(url),
+      other = await modern(url),
+      viewer = await modern(url),
+      legacy = await connect(url);
+    const room = await modernRoom(owner),
+      outside = await modernRoom(other);
+    const joined = await modernJoin(viewer, room.code);
+    owner.send({ type: 'set-publisher', peerId: outside.selfId });
+    expect((await owner.next('error')).code).toBe('PEER_NOT_FOUND');
+    legacy.send({ type: 'join-room', code: room.code, name: 'Antigo' });
+    expect((await legacy.next('error')).code).toBe('PROTOCOL_MISMATCH');
+    const oldRoom = await createRoom(legacy);
+    const modernClient = await modern(url);
+    modernClient.send({ type: 'join-room', code: oldRoom.code, name: 'Novo' });
+    expect((await modernClient.next('error')).code).toBe('PROTOCOL_MISMATCH');
+    owner.send({ type: 'set-publisher', peerId: joined.selfId });
+    await state(viewer, (value) => value.publisherId === joined.selfId);
+    owner.send({ type: 'leave-room' });
+    expect((await viewer.next('room-closed')).reason).toBe('host-left');
+    modernClient.send({ type: 'join-room', code: room.code, name: 'Novo' });
+    expect((await modernClient.next('error')).code).toBe('ROOM_NOT_FOUND');
+  });
+});
+
 afterEach(async () => {
   for (const socket of sockets.splice(0)) socket.terminate();
   await Promise.all(services.splice(0).map((service) => service.close()));

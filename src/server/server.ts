@@ -66,6 +66,7 @@ interface IpState {
   joins: Counter;
 }
 interface Client {
+  protocol: 1 | 2;
   id: string;
   socket: WebSocket;
   ip: string;
@@ -81,6 +82,10 @@ interface Client {
   signals: Map<string, Counter>;
 }
 interface Room {
+  protocol: 1 | 2;
+  name: string;
+  owner: Client;
+  moderators: Set<string>;
   code: string;
   host: Client;
   hostName: string;
@@ -157,13 +162,46 @@ function validSignal(value: unknown): value is SignalPayload {
 function parseMessage(value: unknown): ClientMessage | undefined {
   if (!plainObject(value)) return;
   switch (value.type) {
+    case 'hello':
+      if (
+        exactKeys(value, ['type', 'protocol']) &&
+        Number.isInteger(value.protocol)
+      )
+        return { type: 'hello', protocol: Number(value.protocol) };
+      break;
+    case 'set-publisher':
+      if (exactKeys(value, ['type', 'peerId']) && validPeerId(value.peerId))
+        return { type: 'set-publisher', peerId: value.peerId };
+      break;
+    case 'set-moderator':
+      if (
+        exactKeys(value, ['type', 'peerId', 'enabled']) &&
+        validPeerId(value.peerId) &&
+        typeof value.enabled === 'boolean'
+      )
+        return {
+          type: 'set-moderator',
+          peerId: value.peerId,
+          enabled: value.enabled,
+        };
+      break;
     case 'resume-room':
       if (exactKeys(value, ['type', 'token']) && validToken(value.token))
         return { type: 'resume-room', token: value.token };
       break;
     case 'create-room':
-      if (exactKeys(value, ['type', 'name']) && validName(value.name))
-        return { type: value.type, name: value.name.trim() };
+      if (
+        exactKeys(value, ['type', 'name'], ['roomName']) &&
+        validName(value.name) &&
+        (value.roomName === undefined || validName(value.roomName))
+      )
+        return {
+          type: value.type,
+          name: value.name.trim(),
+          ...(typeof value.roomName === 'string'
+            ? { roomName: value.roomName.trim() }
+            : {}),
+        };
       break;
     case 'join-room': {
       if (
@@ -305,6 +343,39 @@ export function createSignalingServer(options: SignalingOptions = {}): {
   };
   const error = (client: Client, code: string, message: string) =>
     send(client, { type: 'error', code, message });
+  const members = (room: Room) => [room.host, ...room.viewers.values()];
+  const roomState = (
+    room: Room,
+    target?: Client,
+    reason: 'created' | 'joined' | 'resumed' | 'updated' = 'updated',
+  ) => {
+    if (room.protocol !== 2) return;
+    for (const member of target ? [target] : members(room))
+      send(member, {
+        type: 'room-state',
+        protocol: 2,
+        reason,
+        code: room.code,
+        name: room.name,
+        selfId: member.id,
+        ownerId: room.owner.id,
+        publisherId: room.host.id,
+        sharing: room.sharing && room.host.socket.readyState === WebSocket.OPEN,
+        maxParticipants: maxViewers + 1,
+        resumeToken: member.resumeToken,
+        participants: members(room).map((client) => ({
+          peerId: client.id,
+          name: client.name,
+          role:
+            client === room.owner
+              ? 'owner'
+              : room.moderators.has(client.id)
+                ? 'moderator'
+                : 'participant',
+          connected: client.socket.readyState === WebSocket.OPEN,
+        })),
+      });
+  };
   const closeRoom = (
     room: Room,
     reason: 'host-left' | 'host-closed' | 'expired',
@@ -321,11 +392,21 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     sessions.delete(client.resumeToken);
     const room = client.room;
     if (!room) return;
-    if (room.host === client) {
+    if (room.owner === client) {
       closeRoom(room, 'host-left');
       return;
     }
     client.room = undefined;
+    room.moderators.delete(client.id);
+    if (room.protocol === 2) {
+      if (room.host === client) {
+        room.host = room.owner;
+        room.viewers.delete(room.owner.id);
+        room.sharing = false;
+      } else room.viewers.delete(client.id);
+      roomState(room);
+      return;
+    }
     if (room.viewers.delete(client.id))
       send(room.host, { type: 'viewer-left', peerId: client.id });
   };
@@ -464,6 +545,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     const acceptedIpState = ipState;
     wss.handleUpgrade(request, socket, head, (websocket) => {
       const client: Client = {
+        protocol: 1,
         id: randomUUID(),
         socket: websocket,
         ip,
@@ -497,6 +579,10 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         sessions.get(client.resumeToken) === client
       ) {
         client.disconnectedAt = now();
+        if (client.room.protocol === 2) {
+          roomState(client.room);
+          return;
+        }
         if (client.room.host === client)
           for (const viewer of client.room.viewers.values())
             send(viewer, { type: 'host-state', sharing: false });
@@ -533,6 +619,19 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         }
         return;
       }
+      if (message.type === 'hello') {
+        if (client.room || message.protocol !== 2) {
+          error(
+            client,
+            'PROTOCOL_MISMATCH',
+            'Protocolo incompatível. Use aplicativo e servidor 0.5.0.',
+          );
+          return;
+        }
+        client.protocol = 2;
+        send(client, { type: 'hello', protocol: 2 });
+        return;
+      }
       if (message.type === 'resume-room') {
         if (
           !consume(client.joins, limits.socketJoins) ||
@@ -547,6 +646,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           client.room ||
           !previous ||
           !room ||
+          room.protocol !== client.protocol ||
           previous.disconnectedAt === undefined ||
           now() - previous.disconnectedAt >= grace ||
           previous.socket.readyState === WebSocket.OPEN
@@ -566,7 +666,14 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         const host = room.host === previous;
         if (host) room.host = client;
         else room.viewers.set(client.id, client);
+        if (room.owner === previous) room.owner = client;
         sessions.set(client.resumeToken, client);
+        if (room.protocol === 2) {
+          roomState(room, client, 'resumed');
+          for (const member of members(room))
+            if (member !== client) roomState(room, member);
+          return;
+        }
         send(client, {
           type: 'room-resumed',
           role: host ? 'host' : 'viewer',
@@ -631,6 +738,10 @@ export function createSignalingServer(options: SignalingOptions = {}): {
             ).join('');
           } while (rooms.has(code));
           const room: Room = {
+            protocol: client.protocol,
+            name: message.roomName ?? `Sala de ${message.name}`.slice(0, 40),
+            owner: client,
+            moderators: new Set(),
             code,
             host: client,
             hostName: message.name,
@@ -642,6 +753,10 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           client.room = room;
           client.name = message.name;
           sessions.set(client.resumeToken, client);
+          if (room.protocol === 2) {
+            roomState(room, client, 'created');
+            return;
+          }
           send(client, {
             type: 'room-created',
             code,
@@ -656,6 +771,14 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           error(client, 'ROOM_NOT_FOUND', 'Sala não encontrada ou expirada.');
           return;
         }
+        if (room.protocol !== client.protocol) {
+          error(
+            client,
+            'PROTOCOL_MISMATCH',
+            'Esta sala usa outra versão. Todos devem usar clientes compatíveis; crie uma nova sala após atualizar.',
+          );
+          return;
+        }
         if (room.viewers.size >= maxViewers) {
           error(
             client,
@@ -668,6 +791,12 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         client.room = room;
         client.name = message.name;
         sessions.set(client.resumeToken, client);
+        if (room.protocol === 2) {
+          roomState(room, client, 'joined');
+          for (const member of members(room))
+            if (member !== client) roomState(room, member);
+          return;
+        }
         send(client, {
           type: 'room-joined',
           code: room.code,
@@ -690,17 +819,57 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         return;
       }
       const isHost = room.host === client;
+      const isOwner = room.owner === client;
+      const canModerate = isOwner || room.moderators.has(client.id);
       switch (message.type) {
+        case 'set-publisher':
+        case 'set-moderator': {
+          if (
+            room.protocol !== 2 ||
+            (message.type === 'set-moderator' ? !isOwner : !canModerate)
+          ) {
+            error(
+              client,
+              'FORBIDDEN',
+              'Você não tem permissão para alterar este papel.',
+            );
+            return;
+          }
+          const target = members(room).find(
+            (member) => member.id === message.peerId,
+          );
+          if (!target || target.socket.readyState !== WebSocket.OPEN) {
+            error(
+              client,
+              'PEER_NOT_FOUND',
+              'Participante indisponível nesta sala.',
+            );
+            return;
+          }
+          if (message.type === 'set-moderator') {
+            if (target === room.owner) {
+              error(client, 'FORBIDDEN', 'O dono mantém suas permissões.');
+              return;
+            }
+            if (message.enabled) room.moderators.add(target.id);
+            else room.moderators.delete(target.id);
+          } else if (target !== room.host) {
+            const previous = room.host;
+            room.viewers.delete(target.id);
+            room.viewers.set(previous.id, previous);
+            room.host = target;
+            room.sharing = false;
+            for (const member of members(room)) member.signals.clear();
+          }
+          roomState(room);
+          break;
+        }
         case 'leave-room':
           leave(client);
           break;
         case 'close-room':
-          if (!isHost) {
-            error(
-              client,
-              'FORBIDDEN',
-              'Apenas o anfitrião pode encerrar a sala.',
-            );
+          if (!isOwner) {
+            error(client, 'FORBIDDEN', 'Somente o dono pode encerrar a sala.');
             return;
           }
           closeRoom(room, 'host-closed');
@@ -710,24 +879,45 @@ export function createSignalingServer(options: SignalingOptions = {}): {
             error(
               client,
               'FORBIDDEN',
-              'Apenas o anfitrião pode controlar a transmissão.',
+              'Somente o transmissor autorizado pode controlar a publicação.',
             );
             return;
           }
           room.sharing = message.sharing;
+          if (room.protocol === 2) {
+            roomState(room);
+            break;
+          }
           for (const viewer of room.viewers.values())
             send(viewer, { type: 'host-state', sharing: message.sharing });
           break;
         case 'kick': {
-          if (!isHost) {
+          if (!canModerate) {
             error(
               client,
               'FORBIDDEN',
-              'Apenas o anfitrião pode remover espectadores.',
+              'Somente o dono ou um moderador pode remover participantes.',
             );
             return;
           }
-          const viewer = room.viewers.get(message.peerId);
+          const viewer =
+            room.protocol === 2
+              ? members(room).find((member) => member.id === message.peerId)
+              : room.viewers.get(message.peerId);
+          if (
+            room.protocol === 2 &&
+            viewer &&
+            (viewer === room.owner ||
+              viewer === client ||
+              (!isOwner && room.moderators.has(viewer.id)))
+          ) {
+            error(
+              client,
+              'FORBIDDEN',
+              'Você não pode remover este participante.',
+            );
+            return;
+          }
           if (!viewer) {
             error(
               client,
@@ -741,6 +931,10 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           break;
         }
         case 'signal': {
+          if (room.protocol === 2 && !room.sharing) {
+            error(client, 'NOT_SHARING', 'Não há publicação ativa nesta sala.');
+            return;
+          }
           const peer = isHost
             ? room.viewers.get(message.peerId)
             : message.peerId === room.host.id

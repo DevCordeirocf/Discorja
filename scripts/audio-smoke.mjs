@@ -423,7 +423,27 @@ try {
   checks.push(
     'Ended audio source warns and detaches sender while video remains active',
   );
-  await host.locator('[data-action=leave]').click();
+  await host.locator('[data-action=stop]').click();
+  await start(host);
+  await video(viewer);
+  await host.locator('nav [data-action=rooms]').click();
+  await host.locator('#new-room-name').fill('Outra sala de áudio');
+  await host
+    .getByRole('button', { name: 'Criar outra sala', exact: true })
+    .click();
+  await host.locator('[data-action=confirm-switch]').click();
+  await expect(
+    host.getByRole('heading', { name: 'Outra sala de áudio', exact: true }),
+  ).toBeVisible();
+  assert.equal(
+    await host.evaluate(() =>
+      window.__audioTestTracks.every((track) => track.readyState === 'ended'),
+    ),
+    true,
+  );
+  checks.push(
+    'Switching rooms ends all audio and video tracks without starting a new capture',
+  );
   await expect(viewer.locator('.room-code')).toHaveCount(0);
   checks.push(
     'Room closure removes playback and ends all local capture tracks',

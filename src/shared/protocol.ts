@@ -9,9 +9,34 @@ export type SignalPayload =
   | { type: 'offer' | 'answer'; sdp: string }
   | { type: 'ice'; candidate: IceCandidate };
 
+export const ROOM_PROTOCOL_VERSION = 2;
+export interface RoomParticipant {
+  peerId: string;
+  name: string;
+  role: 'owner' | 'moderator' | 'participant';
+  connected: boolean;
+}
+export interface RoomState {
+  type: 'room-state';
+  reason: 'created' | 'joined' | 'resumed' | 'updated';
+  protocol: 2;
+  code: string;
+  name: string;
+  selfId: string;
+  ownerId: string;
+  publisherId: string;
+  maxParticipants: number;
+  participants: RoomParticipant[];
+  sharing: boolean;
+  resumeToken: string;
+}
+
 export type ClientMessage =
+  | { type: 'hello'; protocol: number }
+  | { type: 'set-publisher'; peerId: string }
+  | { type: 'set-moderator'; peerId: string; enabled: boolean }
   | { type: 'resume-room'; token: string }
-  | { type: 'create-room'; name: string }
+  | { type: 'create-room'; name: string; roomName?: string }
   | { type: 'join-room'; code: string; name: string }
   | { type: 'signal'; peerId: string; signal: SignalPayload }
   | { type: 'kick'; peerId: string }
@@ -20,6 +45,8 @@ export type ClientMessage =
   | { type: 'leave-room' };
 
 export type ServerMessage =
+  | { type: 'hello'; protocol: 2 }
+  | RoomState
   | {
       type: 'room-created';
       code: string;

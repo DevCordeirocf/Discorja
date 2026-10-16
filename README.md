@@ -5,6 +5,8 @@ Aplicativo de compartilhamento de tela para **Windows 10/11 x64**, feito para pe
 ## Recursos
 
 - Salas por convite com código de oito caracteres.
+- Salas nomeadas, convites recentes e troca com encerramento da mídia anterior.
+- Dono e moderadores separados de quem transmite; uma tela ativa por sala.
 - Captura de janela ou monitor com prévia e controles para iniciar e parar.
 - Som do computador opcional no Windows, com controle de envio e volume recebido.
 - Até quatro espectadores por sala na configuração padrão.
@@ -65,12 +67,17 @@ O endereço local padrão é `ws://127.0.0.1:8787`. Para testar com outro comput
 4. Se quiser transmitir som, marque a opção e confira o aviso antes de iniciar. Durante chamadas no Discord, prefira somente vídeo até validar uma saída de som isolada.
 5. Inicie a transmissão e compartilhe o código com os amigos. Quem assiste pode clicar em **Ouvir transmissão** e ajustar o volume.
 6. Use os controles para silenciar ou encerrar a captura de som, parar o vídeo, remover espectadores ou encerrar a sala.
+7. Abra **Salas** para criar outra sala ou entrar por um convite salvo. O dono ou moderador pode usar **Permitir tela** para autorizar outro transmissor, que inicia sua própria captura.
+
+Na versão 0.5.0, atualize primeiro o servidor e use clientes compatíveis na mesma sala. A troca encerra a sessão anterior; se o dono trocar ou sair, sua sala é encerrada para todos. Veja o [guia de salas](docs/salas.md).
 
 ## Documentação
 
 - [Plano de evolução](docs/plano-de-atualizacoes.md) — próximas versões de desempenho, áudio, salas e compartilhamento simultâneo.
 - [Segurança](docs/seguranca.md) — revisão, melhorias propostas e operação sem serviços pagos.
 - [Áudio e Discord](docs/audio.md) — uso, controles e configurações suportadas.
+- [Salas e permissões](docs/salas.md) — navegação, troca, moderação e migração de versões.
+- [Validação da versão 0.5.0](docs/validacao-0.5.0.md) — testes e pendências desta etapa.
 - [Validação da versão 0.4.0](docs/validacao-0.4.0.md) — testes de áudio e verificações pendentes.
 - [Validação da versão 0.3.0](docs/validacao-0.3.0.md) — entregas, testes e verificações de implantação pendentes.
 - [Guia de desenvolvimento](docs/desenvolvimento.md) — ambiente, configurações, testes, manutenção e diagnóstico.
