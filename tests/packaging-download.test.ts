@@ -11,6 +11,9 @@ const execFileAsync = promisify(execFile);
 const fixture = Buffer.from('Discorja packaging download fixture');
 const checksum = createHash('sha256').update(fixture).digest('hex');
 const artifact = 'electron-v44.7.2-win32-x64.zip';
+// Allow cold Node/module startup on Windows without changing the HTTP timeout.
+const childTimeout = 20000;
+const testTimeout = childTimeout + 10000;
 let directory: string;
 let servers: Server[];
 
@@ -74,6 +77,7 @@ function environment(proxy: string, bypass: boolean): NodeJS.ProcessEnv {
   for (const key of Object.keys(env)) {
     if (
       /proxy/i.test(key) ||
+      /^global_agent_/i.test(key) ||
       /^electron_(mirror|nightly_mirror|custom_|get_)/i.test(key)
     )
       delete env[key];
@@ -84,6 +88,53 @@ function environment(proxy: string, bypass: boolean): NodeJS.ProcessEnv {
     GLOBAL_AGENT_HTTP_PROXY: proxy,
     GLOBAL_AGENT_NO_PROXY: bypass ? '127.0.0.1' : '',
   };
+}
+
+async function runDownload(
+  proxy: string,
+  bypass: boolean,
+  url: string,
+  expectedChecksum = checksum,
+) {
+  const started = Date.now();
+  try {
+    return await execFileAsync(
+      process.execPath,
+      [
+        '-e',
+        download,
+        JSON.stringify({
+          cacheRoot: directory,
+          url,
+          checksum: expectedChecksum,
+        }),
+      ],
+      {
+        env: environment(proxy, bypass),
+        timeout: childTimeout,
+        windowsHide: true,
+      },
+    );
+  } catch (cause) {
+    const failure = cause as Error & {
+      code?: string | number | null;
+      signal?: string | null;
+      killed?: boolean;
+      stderr?: string;
+    };
+    const reason = failure.killed
+      ? `processo interrompido (limite de ${childTimeout} ms)`
+      : `código ${failure.code ?? 'indisponível'}`;
+    throw Object.assign(
+      new Error(
+        `Download de teste falhou após ${Date.now() - started} ms: ${reason}; ` +
+          `sinal ${failure.signal ?? 'nenhum'}. ` +
+          `Saída de erro: ${failure.stderr?.trim() || 'vazia; verifique a inicialização do processo filho.'}`,
+        { cause },
+      ),
+      { stderr: failure.stderr, code: failure.code, signal: failure.signal },
+    );
+  }
 }
 
 describe('Download do empacotador com proxy atualizado', () => {
@@ -97,39 +148,29 @@ describe('Download do empacotador com proxy atualizado', () => {
       const url = bypass
         ? `${direct}/${artifact}`
         : `http://artifact.invalid/${artifact}`;
-      const { stdout } = await execFileAsync(
-        process.execPath,
-        [
-          '-e',
-          download,
-          JSON.stringify({ cacheRoot: directory, url, checksum }),
-        ],
-        { env: environment(proxy, bypass), timeout: 5000, windowsHide: true },
-      );
+      const { stdout } = await runDownload(proxy, bypass, url);
       expect(stdout).toBe(fixture.toString());
       expect(proxyRequests).toEqual(bypass ? [] : [url]);
       expect(directRequests).toEqual(bypass ? [`/${artifact}`] : []);
     },
+    testTimeout,
   );
 
-  it('continua rejeitando download com checksum incorreto', async () => {
-    const requests: string[] = [];
-    const proxy = await endpoint(requests);
-    await expect(
-      execFileAsync(
-        process.execPath,
-        [
-          '-e',
-          download,
-          JSON.stringify({
-            cacheRoot: directory,
-            url: `http://artifact.invalid/${artifact}`,
-            checksum: '0'.repeat(64),
-          }),
-        ],
-        { env: environment(proxy, false), timeout: 5000, windowsHide: true },
-      ),
-    ).rejects.toMatchObject({ stderr: expect.stringMatching(/checksum/i) });
-    expect(requests).toHaveLength(1);
-  });
+  it(
+    'continua rejeitando download com checksum incorreto',
+    async () => {
+      const requests: string[] = [];
+      const proxy = await endpoint(requests);
+      await expect(
+        runDownload(
+          proxy,
+          false,
+          `http://artifact.invalid/${artifact}`,
+          '0'.repeat(64),
+        ),
+      ).rejects.toMatchObject({ stderr: expect.stringMatching(/checksum/i) });
+      expect(requests).toHaveLength(1);
+    },
+    testTimeout,
+  );
 });
