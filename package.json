@@ -1,6 +1,6 @@
 {
   "name": "discorja",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "private": true,
   "description": "Compartilhe uma janela ou tela com seus amigos.",
   "author": "Discorja",
@@ -41,5 +41,10 @@
     "typescript": "7.0.2",
     "vite": "8.3.4",
     "vitest": "5.0.4"
+  },
+  "overrides": {
+    "@electron/get@3.1.0": {
+      "global-agent": "4.1.3"
+    }
   }
 }

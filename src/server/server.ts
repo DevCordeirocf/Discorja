@@ -1,4 +1,10 @@
-import { randomInt, randomUUID } from 'node:crypto';
+import {
+  randomInt,
+  randomUUID,
+  randomBytes,
+  createHash,
+  timingSafeEqual,
+} from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import type {
@@ -15,6 +21,7 @@ const DEFAULT_ORIGINS = [
   'http://localhost:5173',
 ];
 const MAX_PAYLOAD = 64 * 1024;
+import { token as validToken } from '../shared/validation.js';
 
 export interface RateLimit {
   max: number;
@@ -23,6 +30,8 @@ export interface RateLimit {
 
 /** Limits count attempts, including failed requests. IPs use the TCP address, never forwarded headers. */
 export interface SignalingOptions {
+  statsToken?: string;
+  resumeGraceMs?: number;
   /** Exact WebSocket Origin allowlist; defaults to the desktop app and local Vite development. */
   allowedOrigins?: readonly string[];
   maxViewers?: number;
@@ -65,6 +74,11 @@ interface Client {
   room?: Room;
   messages: Counter;
   joins: Counter;
+  name: string;
+  resumeToken: string;
+  disconnectedAt?: number;
+  invalidMessages: number;
+  signals: Map<string, Counter>;
 }
 interface Room {
   code: string;
@@ -143,6 +157,10 @@ function validSignal(value: unknown): value is SignalPayload {
 function parseMessage(value: unknown): ClientMessage | undefined {
   if (!plainObject(value)) return;
   switch (value.type) {
+    case 'resume-room':
+      if (exactKeys(value, ['type', 'token']) && validToken(value.token))
+        return { type: 'resume-room', token: value.token };
+      break;
     case 'create-room':
       if (exactKeys(value, ['type', 'name']) && validName(value.name))
         return { type: value.type, name: value.name.trim() };
@@ -208,13 +226,28 @@ export function createSignalingServer(options: SignalingOptions = {}): {
   const now = options.now ?? Date.now;
   const origins = new Set(options.allowedOrigins ?? DEFAULT_ORIGINS);
   const maxViewers = positiveInteger(options.maxViewers, 4, 'maxViewers');
+  if (maxViewers > 100) throw new Error('maxViewers deve ser no máximo 100.');
+  const grace = options.resumeGraceMs ?? 20_000;
+  if (!Number.isSafeInteger(grace) || grace < 0 || grace > 60_000)
+    throw new Error('resumeGraceMs inválido.');
+  const statsToken = options.statsToken;
+  if (
+    statsToken &&
+    (statsToken.length < 32 || statsToken.length > 256 || /\s/.test(statsToken))
+  )
+    throw new Error(
+      'STATS_TOKEN precisa ter entre 32 e 256 caracteres sem espaços.',
+    );
+  const statsHash = statsToken
+    ? createHash('sha256').update(statsToken).digest()
+    : undefined;
   const ttl = positiveInteger(
     options.roomTtlMs,
     4 * 60 * 60 * 1000,
     'roomTtlMs',
   );
-  const maxRooms = positiveInteger(options.maxRooms, 1000, 'maxRooms');
-  const maxClients = positiveInteger(options.maxClients, 5000, 'maxClients');
+  const maxRooms = positiveInteger(options.maxRooms, 5, 'maxRooms');
+  const maxClients = positiveInteger(options.maxClients, 20, 'maxClients');
   const maxTrackedIps = positiveInteger(
     options.maxTrackedIps,
     10_000,
@@ -247,6 +280,8 @@ export function createSignalingServer(options: SignalingOptions = {}): {
   const ips = new Map<string, IpState>();
   const clients = new Map<WebSocket, Client>();
   const rooms = new Map<string, Room>();
+  const sessions = new Map<string, Client>();
+  const statsRequests = new Map<string, Counter>();
   let closing = false;
   let closePromise: Promise<void> | undefined;
   const freshCounter = (): Counter => ({ start: now(), count: 0 });
@@ -276,12 +311,14 @@ export function createSignalingServer(options: SignalingOptions = {}): {
   ) => {
     if (!rooms.delete(room.code)) return;
     for (const member of [room.host, ...room.viewers.values()]) {
+      sessions.delete(member.resumeToken);
       member.room = undefined;
       send(member, { type: 'room-closed', reason });
     }
     room.viewers.clear();
   };
   const leave = (client: Client) => {
+    sessions.delete(client.resumeToken);
     const room = client.room;
     if (!room) return;
     if (room.host === client) {
@@ -295,10 +332,77 @@ export function createSignalingServer(options: SignalingOptions = {}): {
   const expireRooms = () => {
     for (const room of rooms.values())
       if (now() >= room.expiresAt) closeRoom(room, 'expired');
+    for (const client of sessions.values())
+      if (
+        client.disconnectedAt !== undefined &&
+        now() - client.disconnectedAt >= grace
+      )
+        leave(client);
   };
   const server = createServer((request, response) => {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
+    if (request.url === '/api/stats' && statsHash) {
+      const ip = request.socket.remoteAddress ?? 'unknown';
+      let counter = statsRequests.get(ip);
+      if (!counter) {
+        if (statsRequests.size >= 1000) {
+          response.writeHead(429);
+          response.end();
+          return;
+        }
+        counter = freshCounter();
+        statsRequests.set(ip, counter);
+      }
+      if (!consume(counter, { max: 30, windowMs: 60_000 })) {
+        response.writeHead(429, { 'Retry-After': '60' });
+        response.end();
+        return;
+      }
+      const auth = request.headers.authorization;
+      const supplied =
+        typeof auth === 'string' && auth.startsWith('Bearer ')
+          ? auth.slice(7)
+          : '';
+      if (
+        supplied.length > 256 ||
+        !timingSafeEqual(
+          createHash('sha256').update(supplied).digest(),
+          statsHash,
+        )
+      ) {
+        response.writeHead(401, { 'WWW-Authenticate': 'Bearer' });
+        response.end();
+        return;
+      }
+      if (request.method !== 'GET') {
+        response.writeHead(405, { Allow: 'GET' });
+        response.end();
+        return;
+      }
+      expireRooms();
+      const connected = [...clients.values()].filter(
+        (c) => c.socket.readyState === WebSocket.OPEN,
+      );
+      response.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+      });
+      response.end(
+        JSON.stringify({
+          schemaVersion: 1,
+          scope: 'instance',
+          websocketConnections: connected.length,
+          participantSessions: connected.filter((c) => c.room).length,
+          roomMemberships: connected.filter((c) => c.room).length,
+          activeRooms: rooms.size,
+          reportedScreenPublishers: connected.filter(
+            (c) => c.room?.host === c && c.room.sharing,
+          ).length,
+          generatedAt: new Date(now()).toISOString(),
+        }),
+      );
+      return;
+    }
     if (request.method === 'GET' && request.url === '/health') {
       response.writeHead(closing ? 503 : 200, {
         'Content-Type': 'application/json; charset=utf-8',
@@ -365,6 +469,10 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         ip,
         ipState: acceptedIpState,
         alive: true,
+        name: '',
+        resumeToken: randomBytes(32).toString('hex'),
+        invalidMessages: 0,
+        signals: new Map(),
         messages: freshCounter(),
         joins: freshCounter(),
       };
@@ -381,8 +489,19 @@ export function createSignalingServer(options: SignalingOptions = {}): {
       /* close performs membership cleanup after a failed transport. */
     });
     socket.on('close', () => {
-      leave(client);
       clients.delete(socket);
+      if (
+        !closing &&
+        grace &&
+        client.room &&
+        sessions.get(client.resumeToken) === client
+      ) {
+        client.disconnectedAt = now();
+        if (client.room.host === client)
+          for (const viewer of client.room.viewers.values())
+            send(viewer, { type: 'host-state', sharing: false });
+        else send(client.room.host, { type: 'viewer-left', peerId: client.id });
+      } else leave(client);
     });
     socket.on('message', (data, isBinary) => {
       client.ipState.lastSeen = now();
@@ -395,6 +514,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           'RATE_LIMITED',
           'Muitas mensagens. Aguarde antes de tentar novamente.',
         );
+        leave(client);
         socket.close(1008, 'Limite de mensagens');
         return;
       }
@@ -407,6 +527,71 @@ export function createSignalingServer(options: SignalingOptions = {}): {
       }
       if (!message) {
         error(client, 'INVALID_MESSAGE', 'Mensagem inválida.');
+        if (++client.invalidMessages >= 3) {
+          leave(client);
+          socket.close(1008, 'Protocolo inválido');
+        }
+        return;
+      }
+      if (message.type === 'resume-room') {
+        if (
+          !consume(client.joins, limits.socketJoins) ||
+          !consume(client.ipState.joins, limits.ipJoins)
+        ) {
+          error(client, 'RATE_LIMITED', 'Aguarde antes de tentar novamente.');
+          return;
+        }
+        const previous = sessions.get(message.token);
+        const room = previous?.room;
+        if (
+          client.room ||
+          !previous ||
+          !room ||
+          previous.disconnectedAt === undefined ||
+          now() - previous.disconnectedAt >= grace ||
+          previous.socket.readyState === WebSocket.OPEN
+        ) {
+          error(
+            client,
+            'RESUME_REJECTED',
+            'Não foi possível retomar a sala. Entre novamente.',
+          );
+          return;
+        }
+        sessions.delete(previous.resumeToken);
+        client.id = previous.id;
+        client.name = previous.name;
+        client.room = room;
+        previous.room = undefined;
+        const host = room.host === previous;
+        if (host) room.host = client;
+        else room.viewers.set(client.id, client);
+        sessions.set(client.resumeToken, client);
+        send(client, {
+          type: 'room-resumed',
+          role: host ? 'host' : 'viewer',
+          code: room.code,
+          selfId: client.id,
+          hostId: room.host.id,
+          hostName: room.hostName,
+          maxViewers,
+          sharing: room.sharing,
+          resumeToken: client.resumeToken,
+          viewers: host
+            ? [...room.viewers.values()]
+                .filter((c) => c.socket.readyState === WebSocket.OPEN)
+                .map((c) => ({ peerId: c.id, name: c.name }))
+            : [],
+        });
+        if (host)
+          for (const viewer of room.viewers.values())
+            send(viewer, { type: 'host-state', sharing: room.sharing });
+        else
+          send(room.host, {
+            type: 'viewer-joined',
+            peerId: client.id,
+            name: client.name,
+          });
         return;
       }
       if (message.type === 'create-room' || message.type === 'join-room') {
@@ -455,11 +640,14 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           };
           rooms.set(code, room);
           client.room = room;
+          client.name = message.name;
+          sessions.set(client.resumeToken, client);
           send(client, {
             type: 'room-created',
             code,
             selfId: client.id,
             maxViewers,
+            resumeToken: client.resumeToken,
           });
           return;
         }
@@ -478,6 +666,8 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         }
         room.viewers.set(client.id, client);
         client.room = room;
+        client.name = message.name;
+        sessions.set(client.resumeToken, client);
         send(client, {
           type: 'room-joined',
           code: room.code,
@@ -485,6 +675,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           hostId: room.host.id,
           hostName: room.hostName,
           sharing: room.sharing,
+          resumeToken: client.resumeToken,
         });
         send(room.host, {
           type: 'viewer-joined',
@@ -563,6 +754,18 @@ export function createSignalingServer(options: SignalingOptions = {}): {
             );
             return;
           }
+          const key = `${peer.id}:${message.signal.type === 'ice' ? 'ice' : 'sdp'}`;
+          const counter = client.signals.get(key) ?? freshCounter();
+          client.signals.set(key, counter);
+          if (
+            !consume(counter, {
+              max: message.signal.type === 'ice' ? 128 : 8,
+              windowMs: 10_000,
+            })
+          ) {
+            error(client, 'RATE_LIMITED', 'Limite de negociação atingido.');
+            return;
+          }
           if (
             (message.signal.type === 'offer' && !isHost) ||
             (message.signal.type === 'answer' && isHost)
@@ -586,6 +789,11 @@ export function createSignalingServer(options: SignalingOptions = {}): {
   });
   const cleanup = setInterval(() => {
     expireRooms();
+    for (const [ip, counter] of statsRequests)
+      if (now() - counter.start >= 60_000) statsRequests.delete(ip);
+    for (const client of clients.values())
+      for (const [key, counter] of client.signals)
+        if (now() - counter.start >= 10_000) client.signals.delete(key);
     const activeIps = new Set([...clients.values()].map((client) => client.ip));
     for (const [ip, state] of ips)
       if (!activeIps.has(ip) && now() - state.lastSeen >= ipRetentionMs)

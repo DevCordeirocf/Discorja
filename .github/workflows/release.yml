@@ -27,11 +27,12 @@ jobs:
       DISCORJA_PUBLISHER_NAME: ${{ vars.DISCORJA_PUBLISHER_NAME }}
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           ref: ${{ github.event.inputs.tag || github.ref }}
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -51,7 +52,9 @@ jobs:
           git show-ref --verify --quiet "refs/tags/$env:RELEASE_TAG"
           if ($LASTEXITCODE -ne 0) { throw 'The requested tag does not exist.' }
       - run: npm ci
+      - run: npm audit --audit-level=moderate
       - run: npm run typecheck
+      - run: npm run format:check
       - run: npm test
       - run: npm run build
       - name: Build Windows installer

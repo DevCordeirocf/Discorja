@@ -45,15 +45,15 @@ O workflow pode ser iniciado manualmente em **Run workflow**, informando uma tag
 Por exemplo, para passar de 0.2.0 para 0.2.1:
 
 ```powershell
-npm version 0.2.1 --no-git-tag-version
+npm version 0.3.0 --no-git-tag-version
 npm run typecheck
 npm run format:check
 npm test
 git add .
-git commit -m "Prepara versão 0.2.1"
+git commit -m "Prepara versão 0.3.0"
 git push origin main
-git tag v0.2.1
-git push origin v0.2.1
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 Revise os arquivos antes de adicioná-los. `npm version` sincroniza pacote e lockfile. Mantenha `appId`, repositório e nome do produto estáveis para preservar o caminho de instalação e atualização.
@@ -81,7 +81,9 @@ Mantenha os três arquivos da mesma compilação. Não edite o manifesto à mão
 
 ## Como o aplicativo atualiza
 
-O aplicativo Windows empacotado com destino de distribuição consulta versões cerca de cinco segundos após abrir. Também oferece **Configurações → Verificar atualizações**. Uma versão estável maior é baixada automaticamente; o usuário sai da sala e usa **Reiniciar e instalar**. Fechar o aplicativo normalmente não instala a atualização, e o processo principal impede a instalação durante a transmissão.
+O aplicativo Windows empacotado com destino de distribuição consulta versões cerca de cinco segundos após abrir. Quando encontra versão estável maior, mostra um popup com versão instalada/nova, **Atualizar agora** e **Depois**. O download começa pela ação do usuário, mostra progresso e termina com a opção **Reiniciar e atualizar**. Adiar permite continuar usando o app e evita repetir o popup na mesma execução; ele pode reaparecer na próxima abertura.
+
+Também há **Configurações → Verificar atualizações**, download manual e acesso à atualização pronta. A confirmação de reinício avisa sobre sala/transmissão ativa e encerra a participação antes de instalar. Fechar normalmente não instala. Sem internet ou com pacote inválido, o app continua utilizável; não há atualização obrigatória ou downgrade automático. O servidor de sinalização não pode indicar instaladores nem disparar a atualização.
 
 **Pacotes antigos com atualizações desativadas precisam receber manualmente a primeira instalação configurada**, com ou sem assinatura. Publicar no GitHub não adiciona um destino a uma instalação antiga que não o possui. Feche o app, instale a nova distribuição e confira a versão.
 
@@ -124,16 +126,16 @@ Renovar certificado ou mudar publicador exige testar compatibilidade a partir da
 
 ## Diagnóstico
 
-| Sintoma                            | Conferir                                                                                            |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Workflow não aparece               | Arquivo na branch padrão e Actions habilitado.                                                      |
-| Configuração parcial de assinatura | Sem certificado, remova os três campos opcionais; para assinar, complete todos.                     |
-| Erro de tag                        | Tag existente, estável `vX.Y.Z`, igual ao pacote, com lockfile sincronizado.                        |
-| Erro no envio                      | Permissão `contents: write` e release ainda em rascunho.                                            |
-| Atualizações desativadas           | Desenvolvimento ou pacote sem repositório configurado; instale a primeira distribuição configurada. |
-| Não encontra versão                | Release pública, publicada, estável e maior que a instalada; manifesto e arquivos acessíveis.       |
-| Download/validação falha           | Arquivos da mesma compilação, hash, rede e, se exigido pela instalação, assinatura/publicador.      |
-| Reinício indisponível              | Download incompleto ou usuário ainda em uma sala.                                                   |
+| Sintoma                            | Conferir                                                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Workflow não aparece               | Arquivo na branch padrão e Actions habilitado.                                                          |
+| Configuração parcial de assinatura | Sem certificado, remova os três campos opcionais; para assinar, complete todos.                         |
+| Erro de tag                        | Tag existente, estável `vX.Y.Z`, igual ao pacote, com lockfile sincronizado.                            |
+| Erro no envio                      | Permissão `contents: write` e release ainda em rascunho.                                                |
+| Atualizações desativadas           | Desenvolvimento ou pacote sem repositório configurado; instale a primeira distribuição configurada.     |
+| Não encontra versão                | Release pública, publicada, estável e maior que a instalada; manifesto e arquivos acessíveis.           |
+| Download/validação falha           | Arquivos da mesma compilação, hash, rede e, se exigido pela instalação, assinatura/publicador.          |
+| Reinício indisponível              | Download incompleto ou pacote não validado. A ação de reiniciar pede confirmação antes de sair da sala. |
 
 A atualização desktop não implanta a sinalização. A operação do servidor é descrita em [implantação](implantacao.md).
 

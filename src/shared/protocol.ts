@@ -10,6 +10,7 @@ export type SignalPayload =
   | { type: 'ice'; candidate: IceCandidate };
 
 export type ClientMessage =
+  | { type: 'resume-room'; token: string }
   | { type: 'create-room'; name: string }
   | { type: 'join-room'; code: string; name: string }
   | { type: 'signal'; peerId: string; signal: SignalPayload }
@@ -19,7 +20,25 @@ export type ClientMessage =
   | { type: 'leave-room' };
 
 export type ServerMessage =
-  | { type: 'room-created'; code: string; selfId: string; maxViewers: number }
+  | {
+      type: 'room-created';
+      code: string;
+      selfId: string;
+      maxViewers: number;
+      resumeToken?: string;
+    }
+  | {
+      type: 'room-resumed';
+      code: string;
+      selfId: string;
+      hostId: string;
+      hostName: string;
+      maxViewers: number;
+      sharing: boolean;
+      role: 'host' | 'viewer';
+      resumeToken: string;
+      viewers: { peerId: string; name: string }[];
+    }
   | {
       type: 'room-joined';
       code: string;
@@ -27,6 +46,7 @@ export type ServerMessage =
       hostId: string;
       hostName: string;
       sharing: boolean;
+      resumeToken?: string;
     }
   | { type: 'viewer-joined'; peerId: string; name: string }
   | { type: 'viewer-left'; peerId: string }
@@ -74,6 +94,9 @@ export interface DiscorjaAPI {
   setSharing(sharing: boolean): Promise<void>;
   copyCode(code: string): Promise<void>;
   checkUpdates(): Promise<void>;
+  downloadUpdate(): Promise<void>;
+  getUpdateState(): Promise<UpdateState>;
+  exportDiagnostics(report: unknown): Promise<void>;
   installUpdate(): Promise<void>;
   onUpdate(callback: (state: UpdateState) => void): () => void;
 }

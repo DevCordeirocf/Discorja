@@ -1,5 +1,21 @@
 # Qualidade de vídeo e estabilidade
 
+## Recursos da versão 0.3.0
+
+O orçamento de envio reserva 15% de folga antes de dividir o vídeo entre espectadores. Isso não é um limite absoluto do tráfego da placa de rede: cabeçalhos, retransmissões, sinalização e outros programas também consomem banda. Os valores efetivos continuam visíveis nas medições.
+
+O controle **Formato na próxima transmissão** permite preferir H264, VP8, VP9 ou AV1, mantendo formatos alternativos na negociação. Automático mantém a escolha do navegador. Uma preferência só é aplicada em uma nova conexão de transmissão; mudar a seleção não troca o codec de um fluxo já negociado. Disponibilidade e uso de hardware dependem dos dois computadores. Compare o codec e o codificador efetivos, CPU/GPU e vídeo recebido; escolher H264 não garante aceleração.
+
+O diagnóstico agora apresenta codificador/decodificador, indicador de eficiência quando informado, jitter, quadros descartados e congelamentos disponíveis. Ausência de dado aparece como desconhecida; `powerEfficientEncoder` não é uma identificação inequívoca de GPU. **Salvar diagnóstico** abre um diálogo local para exportar somente métricas permitidas, sem identificadores de participantes, nomes, SDP, ICE, endereços ou credenciais.
+
+O ensaio automatizado pode comparar preferências VP8/H264 e prolongar a transmissão local:
+
+```powershell
+node scripts/smoke.mjs --packaged --codec-matrix --network-stress --soak-minutes=30
+```
+
+Execute depois de gerar o pacote. Ele cria sua própria janela animada e aplicativos de teste; não captura o monitor ou janelas pessoais. O modo prolongado exige máquina disponível e os resultados ficam em `test-results/`, fora do Git. Testar vários apps na mesma máquina acrescenta carga; isso não substitui computadores/redes separados ou quatro espectadores reais. Os resultados da revisão estão em [validação da 0.3.0](validacao-0.3.0.md).
+
 O objetivo é manter uma transmissão utilizável quando a rede ou o computador não sustentam a qualidade escolhida. A seleção de 1080p/60 FPS representa um teto solicitado; a qualidade recebida depende da fonte, da codificação, do caminho de rede e do computador de cada espectador.
 
 Os resultados e limites da execução desta versão estão em [validação local da versão 0.2.0](validacao-0.2.0.md), incluindo as medidas recebidas e os cenários ainda pendentes.

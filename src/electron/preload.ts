@@ -10,6 +10,10 @@ const api: DiscorjaAPI = {
   setSharing: (sharing) => ipcRenderer.invoke('capture:sharing', sharing),
   copyCode: (code) => ipcRenderer.invoke('room:copy', code),
   checkUpdates: () => ipcRenderer.invoke('updates:check'),
+  getUpdateState: () => ipcRenderer.invoke('updates:state'),
+  downloadUpdate: () => ipcRenderer.invoke('updates:download'),
+  exportDiagnostics: (report) =>
+    ipcRenderer.invoke('diagnostics:export', report),
   installUpdate: () => ipcRenderer.invoke('updates:install'),
   onUpdate: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, state: UpdateState) =>

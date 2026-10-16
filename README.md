@@ -10,6 +10,8 @@ Aplicativo de compartilhamento de tela para **Windows 10/11 x64**, feito para pe
 - Perfis de **720p/30 FPS**, **1080p/30 FPS** e **1080p/60 FPS**.
 - Prioridade para detalhes ou movimento, adaptação por espectador e limite de envio.
 - Indicadores de qualidade da transmissão e controle de participantes.
+- Diagnóstico exportável, preferência de formato de vídeo e recuperação de quedas breves.
+- Aviso de atualização ao abrir, com opção de atualizar ou adiar.
 - Instalador Windows e atualizações por GitHub Releases, com assinatura de código opcional.
 
 O MVP transmite somente o vídeo da tela. Áudio, câmera e gravação não estão disponíveis nesta versão. A qualidade recebida depende da fonte, do computador e da conexão.
@@ -64,6 +66,9 @@ O endereço local padrão é `ws://127.0.0.1:8787`. Para testar com outro comput
 
 ## Documentação
 
+- [Plano de evolução](docs/plano-de-atualizacoes.md) — próximas versões de desempenho, áudio, salas e compartilhamento simultâneo.
+- [Segurança](docs/seguranca.md) — revisão, melhorias propostas e operação sem serviços pagos.
+- [Validação da versão 0.3.0](docs/validacao-0.3.0.md) — entregas, testes e verificações de implantação pendentes.
 - [Guia de desenvolvimento](docs/desenvolvimento.md) — ambiente, configurações, testes, manutenção e diagnóstico.
 - [Arquitetura e privacidade](docs/arquitetura.md) — componentes, conexões e tratamento dos dados.
 - [Implantação](docs/implantacao.md) — sinalização pública, TLS e STUN/TURN.

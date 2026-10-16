@@ -13,6 +13,7 @@ import {
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { authorizedFrame, rendererFile, trustedAppUrl } from './security';
 import type { AppConfig, UpdateState } from '../shared/protocol';
 import {
   DEFAULT_SIGNALING_URL,
@@ -55,23 +56,11 @@ const devUrl =
     : null;
 
 function trustedUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return devUrl
-      ? parsed.origin === devUrl
-      : parsed.protocol === 'app:' && parsed.host === 'discorja';
-  } catch {
-    return false;
-  }
+  return trustedAppUrl(url, devUrl);
 }
 
 function assertSender(event: Electron.IpcMainInvokeEvent) {
-  if (
-    !window ||
-    event.sender !== window.webContents ||
-    event.senderFrame !== window.webContents.mainFrame ||
-    !trustedUrl(event.senderFrame.url)
-  ) {
+  if (!window || !authorizedFrame(event, window.webContents, devUrl)) {
     throw new Error('Solicitação não autorizada.');
   }
 }
@@ -122,9 +111,10 @@ async function configureUpdates() {
   const { default: updaterModule } = await import('electron-updater');
   const { autoUpdater } = updaterModule;
   updater = autoUpdater;
-  updater.autoDownload = true;
+  updater.autoDownload = false;
   updater.autoInstallOnAppQuit = false;
   updater.allowPrerelease = false;
+  updater.allowDowngrade = false;
   updater.on('checking-for-update', () =>
     publishUpdate({ status: 'checking' }),
   );
@@ -132,7 +122,13 @@ async function configureUpdates() {
     publishUpdate({ status: 'available', version: info.version }),
   );
   updater.on('download-progress', (info) =>
-    publishUpdate({ status: 'downloading', percent: info.percent }),
+    publishUpdate({
+      status: 'downloading',
+      version: updateState.version,
+      percent: Number.isFinite(info.percent)
+        ? Math.max(0, Math.min(100, info.percent))
+        : 0,
+    }),
   );
   updater.on('update-downloaded', (info) =>
     publishUpdate({ status: 'downloaded', version: info.version }),
@@ -216,6 +212,34 @@ function registerIpc() {
     clipboard.writeText(code);
   });
   handle('updates:check', checkUpdates);
+  handle('updates:state', () => updateState);
+  handle('updates:download', async () => {
+    if (!updater || updateState.status !== 'available') return;
+    publishUpdate({
+      status: 'downloading',
+      version: updateState.version,
+      percent: 0,
+    });
+    try {
+      await updater.downloadUpdate();
+    } catch {
+      publishUpdate({
+        status: 'error',
+        message: 'Não foi possível baixar ou validar a atualização.',
+      });
+    }
+  });
+  handle('diagnostics:export', async (report: unknown) => {
+    const { sanitizeDiagnostics } = await import('../shared/diagnostics');
+    const safe = sanitizeDiagnostics(report, app.getVersion());
+    const result = await dialog.showSaveDialog(window!, {
+      title: 'Salvar diagnóstico',
+      defaultPath: 'discorja-diagnostico.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (!result.canceled && result.filePath)
+      await writeFile(result.filePath, JSON.stringify(safe, null, 2), 'utf8');
+  });
   handle('updates:install', () => {
     if (!updater || updateState.status !== 'downloaded') return;
     if (sharing)
@@ -246,20 +270,8 @@ async function main() {
   }
   const rendererRoot = path.resolve(__dirname, '../renderer');
   protocol.handle('app', (request) => {
-    const url = new URL(request.url);
-    if (url.host !== 'discorja')
-      return new Response('Not found', { status: 404 });
-    let pathname: string;
-    try {
-      pathname = decodeURIComponent(url.pathname);
-    } catch {
-      return new Response('Bad request', { status: 400 });
-    }
-    const target = path.resolve(
-      rendererRoot,
-      '.' + (pathname === '/' ? '/index.html' : pathname),
-    );
-    if (!target.startsWith(rendererRoot + path.sep))
+    const target = rendererFile(rendererRoot, request.url);
+    if (!target || request.method !== 'GET')
       return new Response('Forbidden', { status: 403 });
     return net.fetch(pathToFileURL(target).toString());
   });
@@ -342,14 +354,19 @@ async function main() {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
+      allowRunningInsecureContent: false,
+      webviewTag: false,
       spellcheck: false,
     },
   });
   window.removeMenu();
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => {
-    if (!trustedUrl(url)) event.preventDefault();
+    event.preventDefault();
   });
+  window.webContents.on('will-frame-navigate', (event) =>
+    event.preventDefault(),
+  );
   window.webContents.on('will-attach-webview', (event) =>
     event.preventDefault(),
   );

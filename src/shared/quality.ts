@@ -2,6 +2,7 @@ export type QualityPresetId = '720p30' | '1080p30' | '1080p60';
 export type ContentMode = 'motion' | 'detail';
 
 export interface StreamPreferences {
+  preferredCodec?: 'H264' | 'VP8' | 'VP9' | 'AV1';
   preset: QualityPresetId;
   content: ContentMode;
   adaptive: boolean;
@@ -46,6 +47,10 @@ export function normalizePreferences(input: unknown): StreamPreferences {
       ? (input as Partial<StreamPreferences>)
       : {};
   return {
+    ...(value.preferredCodec &&
+    ['H264', 'VP8', 'VP9', 'AV1'].includes(value.preferredCodec)
+      ? { preferredCodec: value.preferredCodec }
+      : {}),
     preset:
       value.preset && Object.hasOwn(QUALITY_PRESETS, value.preset)
         ? value.preset
@@ -84,6 +89,15 @@ export interface PeerMetrics {
   rttMs?: number;
   packetLossPercent?: number;
   codec?: string;
+  encoderImplementation?: string;
+  decoderImplementation?: string;
+  powerEfficientEncoder?: boolean;
+  powerEfficientDecoder?: boolean;
+  jitterMs?: number;
+  framesDropped?: number;
+  freezeCount?: number;
+  totalFreezesDuration?: number;
+  availableOutgoingMbps?: number;
   route?: 'direct' | 'relay' | 'unknown';
   limitation?: 'none' | 'cpu' | 'bandwidth' | 'other';
   levelLabel?: string;

@@ -16,10 +16,12 @@ const service = createSignalingServer({
   allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
+  statsToken: process.env.STATS_TOKEN || undefined,
+  resumeGraceMs: integerEnv('RESUME_GRACE_MS', 20_000, 0),
   maxViewers: integerEnv('MAX_VIEWERS', 4),
   roomTtlMs: integerEnv('ROOM_TTL_MS', 4 * 60 * 60 * 1000),
-  maxRooms: integerEnv('MAX_ROOMS', 1000),
-  maxClients: integerEnv('MAX_CLIENTS', 5000),
+  maxRooms: integerEnv('MAX_ROOMS', 5),
+  maxClients: integerEnv('MAX_CLIENTS', 20),
 });
 service.server.on('error', (error: Error) => {
   console.error('Não foi possível iniciar a sinalização:', error.message);

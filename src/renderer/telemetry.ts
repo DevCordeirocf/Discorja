@@ -299,6 +299,32 @@ export class PeerTelemetry {
       if (typeof codec?.mimeType === 'string' && codec.mimeType)
         result.codec = codec.mimeType;
       const pair = selectedPair(stats, rtp);
+      for (const key of [
+        'encoderImplementation',
+        'decoderImplementation',
+      ] as const) {
+        const value = rtp[key];
+        if (typeof value === 'string' && value.length <= 128)
+          result[key] = value;
+      }
+      for (const key of [
+        'powerEfficientEncoder',
+        'powerEfficientDecoder',
+      ] as const)
+        if (typeof rtp[key] === 'boolean') result[key] = rtp[key];
+      const jitter = count(rtp, 'jitter');
+      if (jitter !== undefined) result.jitterMs = jitter * 1000;
+      for (const key of [
+        'framesDropped',
+        'freezeCount',
+        'totalFreezesDuration',
+      ] as const) {
+        const value = count(rtp, key);
+        if (value !== undefined) result[key] = value;
+      }
+      const available = count(pair, 'availableOutgoingBitrate');
+      if (available !== undefined)
+        result.availableOutgoingMbps = available / 1_000_000;
       result.route = route(stats, pair);
       const remote =
         direction === 'outbound' ? remoteInbound(stats, rtp) : undefined;

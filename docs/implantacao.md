@@ -36,9 +36,33 @@ O arquivo deve existir no caminho informado e conter a configuração desse host
 
 `GET /health` responde com `{"status":"ok"}` se o processo estiver disponível. Os caminhos `/` e `/ws` aceitam WebSocket. Um resultado saudável não comprova que dois aplicativos conseguem estabelecer uma conexão WebRTC.
 
+## Contagem de conexões e sessões
+
+A versão 0.3.0 oferece `GET /api/stats`. Sem `STATS_TOKEN`, retorna 404. Configure somente no ambiente do servidor um segredo aleatório de 32 a 256 caracteres, sem espaços. Exemplo para gerar e usar localmente, sem imprimir o segredo:
+
+```powershell
+$env:STATS_TOKEN = node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))"
+# Inicie o servidor nesse ambiente; em hospedagem, cadastre o segredo nas variáveis do serviço.
+Invoke-RestMethod 'http://127.0.0.1:8787/api/stats' -Headers @{ Authorization = "Bearer $env:STATS_TOKEN" }
+```
+
+Fora de localhost, consultar por HTTPS. Não colocar o token em URL, código versionado, screenshots ou no aplicativo distribuído. A credencial é para o administrador; não é necessário configurá-la nos apps dos amigos. Trocar o segredo exige reiniciar o serviço e atualizar o consumidor administrativo.
+
+Resposta: `schemaVersion`, `scope: instance`, `websocketConnections`, `participantSessions`, `roomMemberships`, `activeRooms`, `reportedScreenPublishers` e `generatedAt`. São contagens atuais, sem nomes/IPs/códigos. Sessões representam instâncias conectadas do app em uma sala, não pessoas únicas. Publicadores são declarados pela sinalização, não comprovação de vídeo recebido. Conexões interrompidas só deixam de contar quando detectadas pelo transporte/heartbeat.
+
+Há limite de 30 consultas por minuto por endereço TCP, inclusive consultas sem autorização; excesso retorna 429 e não afeta `/health`. Atrás de proxy, vários administradores podem compartilhar esse limite. Token inválido retorna 401, método diferente de GET com autenticação válida retorna 405. Não há armazenamento histórico.
+
+## Retomada após queda breve
+
+O servidor guarda a associação de uma conexão interrompida por até `RESUME_GRACE_MS` (padrão 20 segundos, máximo 60 segundos; zero desabilita). O app 0.3.0 tenta retomar por até 18 segundos com espera progressiva e token temporário mantido em memória. O servidor valida a associação existente e gira o token após uso, sem aceitar papel escolhido pelo cliente. Saída voluntária, expulsão, encerramento e expiração revogam a associação.
+
+Durante a recuperação, os peers são recriados; o anfitrião pode reutilizar somente a captura já autorizada e ainda ativa. Não há nova escolha de janela automática. Se o prazo acabar ou o servidor perder o estado, a captura para e é necessário entrar novamente. Reiniciar/reimplantar o servidor perde salas em memória: não existe migração entre processos. Clientes antigos continuam usando o fluxo básico, sem retomada.
+
 ## Docker
 
 O Dockerfile gera uma imagem Linux somente para a sinalização. O aplicativo Electron continua instalado nos computadores Windows.
+
+Para aplicar as restrições adicionais da 0.3.0, prefira `docker compose up -d --build` usando o `compose.yml` incluído: usuário não root, sistema de arquivos somente leitura, capacidades removidas, sem novos privilégios, limites de processos/CPU/memória e rotação de logs. A porta fica restrita a localhost para um proxy TLS já disponível; o compose não publica um endpoint WSS sozinho. Não monta diretórios pessoais ou socket de administração. Não foi validado nesta revisão em um Docker disponível; conferir compatibilidade antes de implantar. O Dockerfile mantém verificação de saúde em `/health`.
 
 ```powershell
 docker build -t discorja-signaling .
@@ -107,8 +131,10 @@ Configure o health check HTTP em `/health` e confirme suporte a WebSocket, ausê
 | `ALLOWED_ORIGINS` | Lista de origens permitidas separadas por vírgula. Padrão: `app://discorja,http://127.0.0.1:5173,http://localhost:5173`. Em produção, restrinja a `app://discorja`. |
 | `MAX_VIEWERS`     | Número máximo de espectadores por sala; padrão `4`.                                                                                                                 |
 | `ROOM_TTL_MS`     | Duração máxima de uma sala em milissegundos; padrão `14400000` (quatro horas).                                                                                      |
-| `MAX_ROOMS`       | Limite de salas simultâneas no processo; padrão `1000`.                                                                                                             |
-| `MAX_CLIENTS`     | Limite de conexões simultâneas no processo; padrão `5000`.                                                                                                          |
+| `MAX_ROOMS`       | Limite de salas simultâneas no processo; padrão `5`.                                                                                                                |
+| `MAX_CLIENTS`     | Limite de conexões simultâneas no processo; padrão `20`.                                                                                                            |
+| `RESUME_GRACE_MS` | Prazo de retomada: padrão `20000`, entre 0 e 60000; zero desabilita.                                                                                                |
+| `STATS_TOKEN`     | Credencial administrativa de `/api/stats`; vazio desabilita a rota. Nunca distribuir no app.                                                                        |
 
 Configure limites de acordo com a capacidade do host. Aumentar `MAX_VIEWERS` não resolve o limite de upload do anfitrião. A checagem de `Origin` reduz o uso por páginas de terceiros, mas não substitui autenticação nem impede clientes WebSocket próprios de enviar a mesma origem.
 

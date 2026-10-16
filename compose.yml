@@ -1,0 +1,26 @@
+services:
+  signaling:
+    build: .
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 1
+    restart: unless-stopped
+    ports: ['127.0.0.1:8787:8787']
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8787
+      ALLOWED_ORIGINS: app://discorja
+      MAX_ROOMS: 5
+      MAX_CLIENTS: 20
+      MAX_VIEWERS: 4
+      RESUME_GRACE_MS: 20000
+      STATS_TOKEN: ${STATS_TOKEN:-}
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'

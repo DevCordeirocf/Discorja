@@ -186,7 +186,7 @@ describe('controle RTC e recuperação', () => {
     const lost = await connected(peers, 'lost');
     await peers.configure(preferences);
     expect(healthy.senders[0].parameters.encodings[0].maxBitrate).toBe(
-      2_000_000,
+      1_700_000,
     );
     lost.state('failed');
     await vi.advanceTimersByTimeAsync(28_000);
@@ -194,7 +194,7 @@ describe('controle RTC e recuperação', () => {
     expect(healthy.closed).toBe(false);
     expect(healthy.senders[0].track.readyState).toBe('live');
     expect(healthy.senders[0].parameters.encodings[0].maxBitrate).toBe(
-      4_000_000,
+      3_400_000,
     );
   });
   it('muda parâmetros ao vivo sem substituir PC, track ou envelope negociado', async () => {
@@ -249,13 +249,13 @@ describe('controle RTC e recuperação', () => {
       preset: '1080p60',
       maxUploadMbps: 4,
     });
-    expect(one.senders[0].parameters.encodings[0].maxBitrate).toBe(2_000_000);
-    expect(two.senders[0].parameters.encodings[0].maxBitrate).toBe(2_000_000);
+    expect(one.senders[0].parameters.encodings[0].maxBitrate).toBe(1_700_000);
+    expect(two.senders[0].parameters.encodings[0].maxBitrate).toBe(1_700_000);
     peers.remove('two');
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
-    expect(one.senders[0].parameters.encodings[0].maxBitrate).toBe(4_000_000);
+    expect(one.senders[0].parameters.encodings[0].maxBitrate).toBe(3_400_000);
   });
 
   it('serializa setParameters e a última configuração vence uma transação pendente', async () => {
@@ -285,7 +285,7 @@ describe('controle RTC e recuperação', () => {
     release();
     await Promise.all([first, second]);
     expect(pc.senders[0].maxInFlight).toBe(1);
-    expect(pc.senders[0].parameters.encodings[0].maxBitrate).toBe(4_000_000);
+    expect(pc.senders[0].parameters.encodings[0].maxBitrate).toBe(3_400_000);
     expect(pc.senders[0].parameters.encodings[0].maxFramerate).toBe(30);
   });
 

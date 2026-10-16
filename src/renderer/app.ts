@@ -77,7 +77,13 @@ try {
 }
 let joinCode = '';
 let settingUrl = config.signalingUrl;
-let modal: 'settings' | 'sources' | null = null;
+let modal: 'settings' | 'sources' | 'update' | null = null;
+let updateDismissed = false;
+let updatePrompted = false;
+let resumeToken = '';
+let signalRecovering = false;
+let resumeTimer: ReturnType<typeof setTimeout> | undefined;
+let resumeDeadline: ReturnType<typeof setTimeout> | undefined;
 let returnFocusAction = 'settings';
 let busy: 'room' | 'sources' | 'capture' | 'settings' | null = null;
 let notice: { text: string; kind: 'error' | 'info' | 'success' } | null = null;
@@ -183,6 +189,11 @@ function leaveRoom(
   kind: 'error' | 'info' = 'info',
   tellServer = true,
 ): void {
+  clearTimeout(toastTimer);
+  clearTimeout(resumeTimer);
+  clearTimeout(resumeDeadline);
+  resumeToken = '';
+  signalRecovering = false;
   if (tellServer && room) {
     try {
       socket?.send({
@@ -297,9 +308,45 @@ function createPeers(): void {
 
 function onMessage(message: ServerMessage): void {
   switch (message.type) {
+    case 'room-resumed': {
+      if (
+        !signalRecovering ||
+        !room ||
+        room.selfId !== message.selfId ||
+        room.code !== message.code ||
+        room.role !== message.role
+      )
+        return;
+      clearTimeout(resumeTimer);
+      clearTimeout(resumeDeadline);
+      resumeToken = message.resumeToken;
+      signalRecovering = false;
+      connectionReconnecting = false;
+      viewers.clear();
+      createPeers();
+      if (room.role === 'host') {
+        for (const viewer of message.viewers) {
+          viewers.set(viewer.peerId, {
+            name: viewer.name,
+            connected: false,
+            failed: false,
+            reconnecting: false,
+          });
+          if (sharing && localStream)
+            void peers?.offer(viewer.peerId, localStream);
+        }
+        send({ type: 'host-state', sharing });
+      } else {
+        remoteSharing = message.sharing;
+        if (remoteSharing) waitForVideo();
+      }
+      notify('Conexão com a sala recuperada.', 'success', true);
+      break;
+    }
     case 'room-created': {
       if (pending?.kind !== 'create') return;
       clearPending();
+      resumeToken = message.resumeToken ?? '';
       room = {
         role: 'host',
         code: message.code,
@@ -315,6 +362,7 @@ function onMessage(message: ServerMessage): void {
     case 'room-joined': {
       if (pending?.kind !== 'join') return;
       clearPending();
+      resumeToken = message.resumeToken ?? '';
       room = {
         role: 'viewer',
         code: message.code,
@@ -333,6 +381,8 @@ function onMessage(message: ServerMessage): void {
     }
     case 'viewer-joined': {
       if (room?.role !== 'host') return;
+      if (!viewers.has(message.peerId) && viewers.size >= room.maxViewers)
+        return;
       viewers.set(message.peerId, {
         name: message.name,
         connected: false,
@@ -358,11 +408,9 @@ function onMessage(message: ServerMessage): void {
         (message.peerId !== room.hostId || !remoteSharing)
       )
         return;
-      void peers?.receive(
-        message.peerId,
-        message.signal,
-        room.role === 'viewer',
-      );
+      void peers
+        ?.receive(message.peerId, message.signal, room.role === 'viewer')
+        .catch(() => undefined);
       break;
     }
     case 'host-state': {
@@ -397,11 +445,79 @@ function onMessage(message: ServerMessage): void {
       leaveRoom('O anfitrião removeu você da sala.', 'info', false);
       break;
     case 'error': {
+      if (signalRecovering) {
+        leaveRoom(message.message, 'error', false);
+        break;
+      }
       if (pending || !room) leaveRoom(message.message, 'error', false);
       else notify(message.message, 'error');
       break;
     }
   }
+}
+
+function recoverSignaling(): void {
+  if (signalRecovering) return;
+  if (!room || !resumeToken) {
+    leaveRoom(
+      'A conexão foi encerrada. Entre novamente na sala.',
+      'error',
+      false,
+    );
+    return;
+  }
+  signalRecovering = true;
+  connectionReconnecting = true;
+  latestMetrics = [];
+  peers?.dispose();
+  peers = null;
+  stopTracks(remoteStream);
+  remoteStream = null;
+  socket?.disconnect();
+  const epoch = sessionEpoch;
+  let attempt = 0;
+  resumeDeadline = setTimeout(() => {
+    if (epoch === sessionEpoch && signalRecovering)
+      leaveRoom(
+        'Não foi possível retomar a sala. A transmissão foi encerrada.',
+        'error',
+        false,
+      );
+  }, 18_000);
+  const retry = async () => {
+    if (epoch !== sessionEpoch || !signalRecovering) return;
+    let opened = false;
+    const connection = new SignalConnection(
+      config.signalingUrl,
+      (message) => {
+        if (epoch === sessionEpoch) onMessage(message);
+      },
+      () => {
+        if (epoch !== sessionEpoch) return;
+        if (!signalRecovering) recoverSignaling();
+        else if (opened) resumeTimer = setTimeout(() => void retry(), 1000);
+      },
+    );
+    socket = connection;
+    try {
+      await connection.connect(4000);
+      opened = true;
+      if (epoch !== sessionEpoch || !signalRecovering) {
+        connection.disconnect();
+        return;
+      }
+      connection.send({ type: 'resume-room', token: resumeToken });
+    } catch {
+      connection.disconnect();
+      if (epoch === sessionEpoch && signalRecovering)
+        resumeTimer = setTimeout(
+          () => void retry(),
+          Math.min(3000, 500 * 2 ** attempt++),
+        );
+    }
+  };
+  notify('Reconectando à sala…');
+  resumeTimer = setTimeout(() => void retry(), 500);
 }
 
 async function connectRoom(kind: 'create' | 'join'): Promise<void> {
@@ -431,12 +547,7 @@ async function connectRoom(kind: 'create' | 'join'): Promise<void> {
       if (epoch === sessionEpoch) onMessage(message);
     },
     () => {
-      if (epoch === sessionEpoch)
-        leaveRoom(
-          'A conexão com o servidor foi perdida. A transmissão foi encerrada.',
-          'error',
-          false,
-        );
+      if (epoch === sessionEpoch) recoverSignaling();
     },
   );
   socket = connection;
@@ -759,6 +870,8 @@ async function applyPreferences(next: StreamPreferences): Promise<void> {
 
 function readQualityControls(): StreamPreferences {
   return normalizePreferences({
+    preferredCodec:
+      document.querySelector<HTMLSelectElement>('#preferred-codec')?.value,
     preset: document.querySelector<HTMLSelectElement>('#quality-preset')?.value,
     content: document.querySelector<HTMLSelectElement>('#content-mode')?.value,
     adaptive:
@@ -782,8 +895,8 @@ function renderQualityPanel(): string {
     )
     .join(
       '',
-    )}</select></div><div class="quality-field"><label for="content-mode">O que vai aparecer?</label><select id="content-mode" ${disabled ? 'disabled' : ''}><option value="detail" ${selected.content === 'detail' ? 'selected' : ''}>Textos e detalhes</option><option value="motion" ${selected.content === 'motion' ? 'selected' : ''}>Vídeos e jogos</option></select></div><label class="adaptive-control" for="adaptive-quality"><input id="adaptive-quality" type="checkbox" ${selected.adaptive ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>Ajustar à conexão</strong><small>Reduz quando necessário e recupera aos poucos.</small></span></label><div class="quality-field budget-field"><label for="upload-budget">Limite total de envio</label><div class="budget-input"><input id="upload-budget" type="number" min="4" max="100" step="1" inputmode="numeric" value="${selected.maxUploadMbps}" aria-describedby="upload-budget-help" ${disabled ? 'disabled' : ''}><span>Mbps</span></div></div></div>
-  <p id="upload-budget-help" class="quality-help">O limite vale para o vídeo e é dividido entre todos os espectadores. A tela, o computador e a rede podem entregar menos resolução, quadros ou velocidade que o perfil escolhido.</p><p class="quality-status" role="status">${escape(qualityStatus)}</p></section>`;
+    )}</select></div><div class="quality-field"><label for="content-mode">O que vai aparecer?</label><select id="content-mode" ${disabled ? 'disabled' : ''}><option value="detail" ${selected.content === 'detail' ? 'selected' : ''}>Textos e detalhes</option><option value="motion" ${selected.content === 'motion' ? 'selected' : ''}>Vídeos e jogos</option></select></div><div class="quality-field"><label for="preferred-codec">Formato na próxima transmissão</label><select id="preferred-codec" ${disabled ? 'disabled' : ''}>${['auto', 'H264', 'VP8', 'VP9', 'AV1'].map((codec) => `<option value="${codec}" ${(selected.preferredCodec ?? 'auto') === codec ? 'selected' : ''}>${codec === 'auto' ? 'Automático' : codec}</option>`).join('')}</select></div><label class="adaptive-control" for="adaptive-quality"><input id="adaptive-quality" type="checkbox" ${selected.adaptive ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>Ajustar à conexão</strong><small>Reduz quando necessário e recupera aos poucos.</small></span></label><div class="quality-field budget-field"><label for="upload-budget">Limite total de envio</label><div class="budget-input"><input id="upload-budget" type="number" min="4" max="100" step="1" inputmode="numeric" value="${selected.maxUploadMbps}" aria-describedby="upload-budget-help" ${disabled ? 'disabled' : ''}><span>Mbps</span></div></div></div>
+  <p id="upload-budget-help" class="quality-help">O orçamento reserva 15% de folga e é dividido entre todos os espectadores. A tela, o computador e a rede podem entregar menos resolução, quadros ou velocidade que o perfil escolhido.</p><p class="quality-status" role="status">${escape(qualityStatus)}</p></section>`;
 }
 
 function metricPeer(peerId: string, name: string): string {
@@ -793,7 +906,7 @@ function metricPeer(peerId: string, name: string): string {
 function renderDiagnostics(): string {
   if (!room) return '';
   const host = room.role === 'host';
-  return `<section class="stream-diagnostics" aria-labelledby="diagnostics-heading"><div class="diagnostics-heading"><h2 id="diagnostics-heading">${host ? 'Vídeo enviado em tempo real' : 'Vídeo recebido'}</h2><span>Atualizado a cada 2 s</span></div>${host ? `<div class="capture-summary"><div><span>Captura no computador</span><strong data-stat="capture">—</strong><small>Formato informado pelo sistema.</small></div><div><span>Envio de vídeo total</span><strong data-stat="upload-total">— Mbps</strong><small data-stat="upload-detail">Aguardando conexões.</small></div></div>` : ''}<div class="metric-peer-list">${host ? (viewers.size ? [...viewers].map(([id, viewer]) => metricPeer(id, viewer.name)).join('') : '<p class="metrics-empty">As medições de cada amigo aparecem quando ele entrar e a transmissão começar.</p>') : metricPeer(room.hostId!, room.hostName)}</div><p class="metrics-footnote">Medições podem variar ou ficar indisponíveis. O perfil selecionado é um objetivo, e os FPS ${host ? 'enviados' : 'recebidos'} dependem também do conteúdo exibido.</p></section>`;
+  return `<section class="stream-diagnostics" aria-labelledby="diagnostics-heading"><div class="diagnostics-heading"><h2 id="diagnostics-heading">${host ? 'Vídeo enviado em tempo real' : 'Vídeo recebido'}</h2><button class="button subtle" data-action="export-diagnostics">Salvar diagnóstico</button><span>Atualizado a cada 2 s</span></div>${host ? `<div class="capture-summary"><div><span>Captura no computador</span><strong data-stat="capture">—</strong><small>Formato informado pelo sistema.</small></div><div><span>Envio de vídeo total</span><strong data-stat="upload-total">— Mbps</strong><small data-stat="upload-detail">Aguardando conexões.</small></div></div>` : ''}<div class="metric-peer-list">${host ? (viewers.size ? [...viewers].map(([id, viewer]) => metricPeer(id, viewer.name)).join('') : '<p class="metrics-empty">As medições de cada amigo aparecem quando ele entrar e a transmissão começar.</p>') : metricPeer(room.hostId!, room.hostName)}</div><p class="metrics-footnote">Medições podem variar ou ficar indisponíveis. O perfil selecionado é um objetivo, e os FPS ${host ? 'enviados' : 'recebidos'} dependem também do conteúdo exibido.</p></section>`;
 }
 
 function finiteMetric(value: number | undefined): value is number {
@@ -920,6 +1033,24 @@ function patchMetrics(): void {
     if (metric?.limitation === 'other')
       detail.push('O navegador está limitando o vídeo.');
     if (metric?.codec) detail.push(`Formato ${metric.codec}.`);
+    if (metric?.encoderImplementation)
+      detail.push(`Codificador ${metric.encoderImplementation}.`);
+    if (metric?.decoderImplementation)
+      detail.push(`Decodificador ${metric.decoderImplementation}.`);
+    if (metric?.direction === 'outbound')
+      detail.push(
+        metric.powerEfficientEncoder === undefined
+          ? 'Aceleração: não informada.'
+          : metric.powerEfficientEncoder
+            ? 'Codificador eficiente informado pelo navegador.'
+            : 'Codificador eficiente não informado como ativo.',
+      );
+    if (finiteMetric(metric?.jitterMs))
+      detail.push(`Jitter ${measured(metric.jitterMs)} ms.`);
+    if (finiteMetric(metric?.framesDropped))
+      detail.push(`Quadros descartados: ${metric.framesDropped}.`);
+    if (finiteMetric(metric?.freezeCount))
+      detail.push(`Congelamentos: ${metric.freezeCount}.`);
     write(
       'detail',
       detail.join(' ') ||
@@ -964,6 +1095,8 @@ function renderRoom(): string {
 
 function renderModal(): string {
   if (!modal) return '';
+  if (modal === 'update')
+    return `<div class="modal-overlay"><section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-heading"><h2 id="modal-title">${update.status === 'downloaded' ? 'Atualização pronta' : 'Atualização disponível'}</h2></div><p class="modal-description">Versão instalada: ${escape(config.version)}. Nova versão: ${escape(update.version ?? 'disponível')}.</p><p role="status">${update.status === 'downloading' ? `Baixando… ${Math.round(update.percent ?? 0)}%` : update.status === 'error' ? escape(update.message ?? 'Falha ao atualizar. Tente novamente nas configurações.') : update.status === 'downloaded' ? 'O aplicativo será reiniciado para instalar.' : 'Uma nova versão do Discorja está disponível.'}</p>${room ? '<p class="settings-warning">Reiniciar encerrará sua participação e qualquer transmissão ativa.</p>' : ''}<div class="modal-footer"><button class="button subtle" data-action="defer-update">Depois</button>${update.status === 'downloaded' ? '<button class="button primary" data-action="confirm-install-update">Reiniciar e atualizar</button>' : update.status === 'available' ? '<button class="button primary" data-action="download-update">Atualizar agora</button>' : ''}</div></section></div>`;
   if (modal === 'sources')
     return `<div class="modal-overlay"><section class="modal source-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-heading"><div><span class="eyebrow">O CONTROLE É SEU</span><h2 id="modal-title">O que vamos compartilhar?</h2></div><button class="icon-button" data-action="cancel-sources" aria-label="Cancelar escolha">${icon('close')}</button></div><p class="modal-description">Selecione uma tela ou janela. A transmissão começa ao clicar em iniciar.</p>${busy === 'sources' ? '<div class="source-loading"><span class="spinner"></span> Buscando telas e janelas…</div>' : sources.length ? `<div class="source-grid">${sources.map((source, index) => `<button id="source-${index}" class="source-option ${selectedSource === source.id ? 'selected' : ''}" data-action="select-source" data-source="${escape(source.id)}" aria-pressed="${selectedSource === source.id}" ${busy === 'capture' ? 'disabled' : ''}><div class="source-thumbnail">${source.thumbnail ? `<img src="${escape(source.thumbnail)}" alt="Prévia de ${escape(source.name)}">` : icon(source.kind === 'screen' ? 'screen' : 'window')}<span class="source-check">${icon('check')}</span></div><span class="source-name">${icon(source.kind === 'screen' ? 'screen' : 'window')}<span>${escape(source.name)}</span></span></button>`).join('')}</div>` : `<div class="source-loading">${icon('window')} Nenhuma tela disponível. Confira as permissões de captura do sistema.</div>`}<div class="source-privacy">${icon('shield')} Compartilhe só o necessário. Evite janelas com informações pessoais.</div><div class="modal-footer"><button class="button subtle" data-action="cancel-sources">Cancelar</button><button class="button primary" data-action="start-share" ${!selectedSource || busy ? 'disabled' : ''}>${busy === 'capture' ? '<span class="spinner"></span> Iniciando…' : `${icon('screen')} Iniciar compartilhamento`}</button></div></section></div>`;
   const updateText: Record<UpdateState['status'], string> = {
@@ -976,10 +1109,21 @@ function renderModal(): string {
     error: update.message ?? 'Não foi possível consultar atualizações.',
     current: 'Você está na versão mais recente.',
   };
-  return `<div class="modal-overlay"><section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-heading"><div><span class="eyebrow">DO SEU JEITO</span><h2 id="modal-title">Configurações</h2></div><button class="icon-button" data-action="close-modal" aria-label="Fechar configurações" ${busy === 'settings' ? 'disabled' : ''}>${icon('close')}</button></div><form id="settings-form"><label class="field-label" for="signaling-url">Servidor de sinalização</label><p class="field-help">O servidor conecta as pessoas da sala. Todos precisam usar o mesmo endereço.</p><input id="signaling-url" class="text-input" type="url" required spellcheck="false" autocomplete="off" placeholder="wss://seu-servidor.exemplo" value="${escape(settingUrl)}" ${room || busy ? 'disabled' : ''}><span class="field-hint">Use wss:// para servidores públicos. O endereço local serve para desenvolvimento.</span>${room ? '<p class="settings-warning">Encerre ou saia da sala para alterar o servidor.</p>' : ''}<div class="settings-divider"></div><div class="settings-update"><div class="settings-app-icon">${logo}</div><div><strong>Discorja <span>v${escape(config.version)}</span></strong><p>${escape(updateText[update.status])}</p></div></div><div class="update-actions">${update.status === 'downloaded' ? `<button type="button" class="button secondary" data-action="install-update" ${room ? 'disabled' : ''}>Reiniciar e instalar</button>${room ? '<small>Saia da sala antes de reiniciar.</small>' : ''}` : `<button type="button" class="button subtle" data-action="check-update" ${!api || !config.updatesConfigured || ['checking', 'downloading', 'available'].includes(update.status) ? 'disabled' : ''}>${icon('refresh')} Verificar atualizações</button>`}</div><div class="modal-footer"><button type="button" class="button subtle" data-action="close-modal" ${busy === 'settings' ? 'disabled' : ''}>Fechar</button><button type="submit" class="button primary" ${!api || !!room || !!busy ? 'disabled' : ''}>${busy === 'settings' ? '<span class="spinner"></span>' : ''}Salvar configurações</button></div></form></section></div>`;
+  return `<div class="modal-overlay"><section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-heading"><div><span class="eyebrow">DO SEU JEITO</span><h2 id="modal-title">Configurações</h2></div><button class="icon-button" data-action="close-modal" aria-label="Fechar configurações" ${busy === 'settings' ? 'disabled' : ''}>${icon('close')}</button></div><form id="settings-form"><label class="field-label" for="signaling-url">Servidor de sinalização</label><p class="field-help">O servidor conecta as pessoas da sala. Todos precisam usar o mesmo endereço.</p><input id="signaling-url" class="text-input" type="url" required spellcheck="false" autocomplete="off" placeholder="wss://seu-servidor.exemplo" value="${escape(settingUrl)}" ${room || busy ? 'disabled' : ''}><span class="field-hint">Use wss:// para servidores públicos. O endereço local serve para desenvolvimento.</span>${room ? '<p class="settings-warning">Encerre ou saia da sala para alterar o servidor.</p>' : ''}<div class="settings-divider"></div><div class="settings-update"><div class="settings-app-icon">${logo}</div><div><strong>Discorja <span>v${escape(config.version)}</span></strong><p>${escape(updateText[update.status])}</p></div></div><div class="update-actions">${update.status === 'available' ? '<button type="button" class="button secondary" data-action="download-update">Baixar atualização</button>' : update.status === 'downloaded' ? `<button type="button" class="button secondary" data-action="install-update" >Reiniciar e instalar</button>` : `<button type="button" class="button subtle" data-action="check-update" ${!api || !config.updatesConfigured || ['checking', 'downloading', 'available'].includes(update.status) ? 'disabled' : ''}>${icon('refresh')} Verificar atualizações</button>`}</div><div class="modal-footer"><button type="button" class="button subtle" data-action="close-modal" ${busy === 'settings' ? 'disabled' : ''}>Fechar</button><button type="submit" class="button primary" ${!api || !!room || !!busy ? 'disabled' : ''}>${busy === 'settings' ? '<span class="spinner"></span>' : ''}Salvar configurações</button></div></form></section></div>`;
 }
 
 function render(): void {
+  if (
+    loaded &&
+    !modal &&
+    !busy &&
+    !updateDismissed &&
+    !updatePrompted &&
+    ['available', 'downloaded'].includes(update.status)
+  ) {
+    modal = 'update';
+    updatePrompted = true;
+  }
   const oldVideo = root.querySelector<HTMLVideoElement>('#stream-video');
   const nextStream = room?.role === 'host' ? localStream : remoteStream;
   const keepVideo =
@@ -1111,6 +1255,7 @@ root.addEventListener('change', (event) => {
     [
       'quality-preset',
       'content-mode',
+      'preferred-codec',
       'adaptive-quality',
       'upload-budget',
     ].includes(target.id)
@@ -1124,6 +1269,30 @@ root.addEventListener('click', (event) => {
   );
   if (!button || button.disabled) return;
   switch (button.dataset.action) {
+    case 'export-diagnostics':
+      void api
+        ?.exportDiagnostics({ preferences, metrics: latestMetrics })
+        .catch(() => notify('Não foi possível salvar o diagnóstico.', 'error'));
+      break;
+    case 'defer-update':
+      updateDismissed = true;
+      modal = null;
+      render();
+      break;
+    case 'download-update':
+      void api
+        ?.downloadUpdate()
+        .catch(() => notify('Falha ao baixar a atualização.', 'error'));
+      break;
+    case 'confirm-install-update':
+      leaveRoom();
+      void api
+        ?.setSharing(false)
+        .then(() => api.installUpdate())
+        .catch(() =>
+          notify('Não foi possível instalar a atualização.', 'error'),
+        );
+      break;
     case 'create':
       void connectRoom('create');
       break;
@@ -1219,12 +1388,8 @@ root.addEventListener('click', (event) => {
         );
       break;
     case 'install-update':
-      if (!room)
-        void api
-          ?.installUpdate()
-          .catch(() =>
-            notify('Não foi possível instalar a atualização.', 'error'),
-          );
+      modal = 'update';
+      render();
       break;
   }
 });
@@ -1234,6 +1399,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     if (modal === 'sources') cancelSources();
     else if (!busy) {
+      if (modal === 'update') updateDismissed = true;
       modal = null;
       render();
     }
@@ -1293,7 +1459,13 @@ if (api) {
       config = value;
       settingUrl = value.signalingUrl;
       loaded = true;
-      update = { status: value.updatesConfigured ? 'idle' : 'disabled' };
+      void api
+        .getUpdateState()
+        .then((state) => {
+          update = state;
+          render();
+        })
+        .catch(() => undefined);
       render();
     })
     .catch(() =>

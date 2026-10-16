@@ -1,71 +1,14 @@
-import type {
-  ClientMessage,
-  ServerMessage,
-  SignalPayload,
-} from '../shared/protocol';
+import type { ClientMessage, ServerMessage } from '../shared/protocol';
 
-function isSignal(value: unknown): value is SignalPayload {
-  if (!value || typeof value !== 'object') return false;
-  const signal = value as Record<string, unknown>;
-  if (signal.type === 'offer' || signal.type === 'answer')
-    return typeof signal.sdp === 'string';
-  return (
-    signal.type === 'ice' &&
-    !!signal.candidate &&
-    typeof signal.candidate === 'object' &&
-    typeof (signal.candidate as Record<string, unknown>).candidate === 'string'
-  );
-}
-
-export function isServerMessage(value: unknown): value is ServerMessage {
-  if (!value || typeof value !== 'object') return false;
-  const message = value as Record<string, unknown>;
-  switch (message.type) {
-    case 'room-created':
-      return (
-        typeof message.code === 'string' &&
-        typeof message.selfId === 'string' &&
-        typeof message.maxViewers === 'number'
-      );
-    case 'room-joined':
-      return (
-        typeof message.code === 'string' &&
-        typeof message.selfId === 'string' &&
-        typeof message.hostId === 'string' &&
-        typeof message.hostName === 'string' &&
-        typeof message.sharing === 'boolean'
-      );
-    case 'viewer-joined':
-      return (
-        typeof message.peerId === 'string' && typeof message.name === 'string'
-      );
-    case 'viewer-left':
-      return typeof message.peerId === 'string';
-    case 'signal':
-      return typeof message.peerId === 'string' && isSignal(message.signal);
-    case 'host-state':
-      return typeof message.sharing === 'boolean';
-    case 'room-closed':
-      return (
-        message.reason === 'host-left' ||
-        message.reason === 'host-closed' ||
-        message.reason === 'expired'
-      );
-    case 'kicked':
-      return true;
-    case 'error':
-      return (
-        typeof message.code === 'string' && typeof message.message === 'string'
-      );
-    default:
-      return false;
-  }
-}
+import { isServerMessage, MAX_MESSAGE_BYTES } from '../shared/validation';
+export { isServerMessage } from '../shared/validation';
 
 export class SignalConnection {
   private socket: WebSocket | null = null;
   private intentional = false;
   private abortOpen: (() => void) | null = null;
+  private messages = 0;
+  private windowStarted = Date.now();
 
   constructor(
     private readonly url: string,
@@ -108,12 +51,29 @@ export class SignalConnection {
         resolve();
       };
       socket.onmessage = (event: MessageEvent<unknown>) => {
-        if (this.intentional || typeof event.data !== 'string') return;
+        if (Date.now() - this.windowStarted >= 10_000) {
+          this.messages = 0;
+          this.windowStarted = Date.now();
+        }
+        if (++this.messages > 200) {
+          socket.close(1008, 'Limite de mensagens');
+          return;
+        }
+        if (this.intentional) return;
+        if (
+          typeof event.data !== 'string' ||
+          event.data.length > MAX_MESSAGE_BYTES ||
+          new TextEncoder().encode(event.data).byteLength > MAX_MESSAGE_BYTES
+        ) {
+          socket.close(1008, 'Mensagem inválida');
+          return;
+        }
         try {
           const message: unknown = JSON.parse(event.data);
           if (isServerMessage(message)) this.onMessage(message);
+          else socket.close(1008, 'Protocolo inválido');
         } catch {
-          /* Ignore frames that do not follow the signaling protocol. */
+          socket.close(1008, 'Protocolo inválido');
         }
       };
       socket.onerror = () =>

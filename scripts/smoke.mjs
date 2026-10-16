@@ -1,6 +1,6 @@
 import { _electron as electron, expect } from '@playwright/test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createSignalingServer } from '../dist/server/server.js';
 import {
@@ -26,13 +26,24 @@ const qualityPhases = [];
 const environment = {};
 const packaged = process.argv.includes('--packaged');
 const networkStress = process.argv.includes('--network-stress');
-const deadline = setTimeout(() => {
-  console.error(
-    'E2E exceeded the 180-second deadline. Closing only its test applications.',
-  );
-  for (const application of applications) application.process().kill();
-  process.exitCode = 1;
-}, 180_000);
+const codecMatrix = process.argv.includes('--codec-matrix');
+const soakMinutes = Number(
+  process.argv
+    .find((arg) => arg.startsWith('--soak-minutes='))
+    ?.split('=')[1] ?? 0,
+);
+if (!Number.isInteger(soakMinutes) || soakMinutes < 0 || soakMinutes > 60)
+  throw new Error('soak-minutes must be an integer between 0 and 60');
+const deadline = setTimeout(
+  () => {
+    console.error(
+      'E2E exceeded the 180-second deadline. Closing only its test applications.',
+    );
+    for (const application of applications) application.process().kill();
+    process.exitCode = 1;
+  },
+  180_000 + soakMinutes * 60_000 + (codecMatrix ? 120_000 : 0),
+);
 function recordQuality(phase) {
   qualityPhases.push(phase);
   console.log(
@@ -216,6 +227,69 @@ try {
     contextIsolation: true,
   });
   checks.push('Renderer sandboxed, isolated and without Node.js access');
+  assert.equal(
+    await host.evaluate(async () => {
+      try {
+        await window.discorja.saveConfig({
+          signalingUrl: 'file:///C:/Windows/win.ini',
+        });
+        return false;
+      } catch {
+        return true;
+      }
+    }),
+    true,
+  );
+  assert.equal(
+    await host.evaluate(async () => {
+      try {
+        await window.discorja.selectSource('unselected-remote-source');
+        return false;
+      } catch {
+        return true;
+      }
+    }),
+    true,
+  );
+  const blocked = await hostApp.evaluate(async ({ net }) => {
+    const response = await net.fetch('app://discorja/%2e%2e%5cpackage.json');
+    return response.status;
+  });
+  assert.equal(blocked, 403);
+  checks.push(
+    'IPC rejects unsafe configuration/capture and protocol blocks file traversal',
+  );
+  await hostApp.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].webContents.send('updates:state', {
+      status: 'available',
+      version: '0.3.1',
+    }),
+  );
+  await expect(
+    host.getByRole('heading', { name: 'Atualização disponível' }),
+  ).toBeVisible();
+  await host.locator('[data-action=defer-update]').click();
+  await hostApp.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].webContents.send('updates:state', {
+      status: 'downloaded',
+      version: '0.3.1',
+    }),
+  );
+  await expect(host.getByRole('dialog')).toHaveCount(0);
+  await host.locator('[data-action=settings]').click();
+  await host.locator('[data-action=install-update]').click();
+  await expect(
+    host.getByRole('heading', { name: 'Atualização pronta' }),
+  ).toBeVisible();
+  await host.locator('[data-action=defer-update]').click();
+  await hostApp.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].webContents.send('updates:state', {
+      status: 'disabled',
+    }),
+  );
+  checks.push(
+    'Update popup shows a new version, can be deferred and reopened without installing',
+  );
   const camera = await bounded(
     host.evaluate(async () => {
       try {
@@ -289,6 +363,40 @@ try {
   await startCapture(host);
   await expectVideo(viewer);
   console.log('First viewer decoded frames');
+  const diagnosticPath = resolve('test-results/diagnostics-export.json');
+  await hostApp.evaluate(({ dialog }, filePath) => {
+    globalThis.originalDiscorjaSaveDialog = dialog.showSaveDialog;
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+  }, diagnosticPath);
+  try {
+    await host.locator('[data-action=export-diagnostics]').click();
+    await expect
+      .poll(async () => {
+        try {
+          return JSON.parse(await readFile(diagnosticPath, 'utf8'))
+            .schemaVersion;
+        } catch {
+          return 0;
+        }
+      })
+      .toBe(1);
+    const exported = JSON.parse(await readFile(diagnosticPath, 'utf8'));
+    assert.deepEqual(Object.keys(exported).sort(), [
+      'generatedAt',
+      'preferences',
+      'schemaVersion',
+      'streams',
+      'version',
+    ]);
+    assert.equal(JSON.stringify(exported).includes(code), false);
+  } finally {
+    await hostApp.evaluate(({ dialog }) => {
+      dialog.showSaveDialog = globalThis.originalDiscorjaSaveDialog;
+    });
+  }
+  checks.push(
+    'Diagnostic export uses the native save flow and omits room identifiers',
+  );
   await viewer.waitForTimeout(12000);
   checks.push(
     'Real video-only desktop window capture decoded by a viewer over WebRTC',
@@ -438,6 +546,27 @@ try {
   const { page: lateViewer } = await launch();
   await join(lateViewer, code, '<b>Amiga</b>');
   await expectVideo(lateViewer);
+  // Drop the actual signaling transport; media must recover without selecting
+  // another source or trusting a client-supplied role.
+  const hostSocket = [...service.wss.clients][0];
+  hostSocket.terminate();
+  await expect(host.locator('.notice')).toContainText('recuperada', {
+    timeout: 15000,
+  });
+  await expectVideo(viewer);
+  await expectVideo(lateViewer);
+  checks.push(
+    'Host signaling resumes with its original capture and viewers recover video',
+  );
+  const viewerSocket = [...service.wss.clients][0];
+  viewerSocket.terminate();
+  await expect(viewer.locator('.notice')).toContainText('recuperada', {
+    timeout: 15000,
+  });
+  await expectVideo(viewer);
+  checks.push(
+    'Viewer signaling resumes without duplicating membership or restarting capture',
+  );
   await expect(
     host.locator('.person strong').filter({ hasText: '<b>Amiga</b>' }),
   ).toBeVisible();
@@ -509,6 +638,53 @@ try {
     }
     await expectVideo(viewer);
   }
+  if (codecMatrix) {
+    environment.videoCodecs = await host.evaluate(() =>
+      RTCRtpSender.getCapabilities('video')?.codecs.map(
+        (codec) => codec.mimeType,
+      ),
+    );
+    await host.locator('#upload-budget').fill('40');
+    await host.locator('#upload-budget').press('Tab');
+    for (const codec of ['VP8', 'H264']) {
+      if (
+        !environment.videoCodecs?.some(
+          (mime) => mime.toLowerCase() === `video/${codec}`.toLowerCase(),
+        )
+      )
+        continue;
+      await host.locator('[data-action=stop]').click();
+      await expect(host.locator('#preferred-codec')).toBeEnabled();
+      await host.locator('#preferred-codec').selectOption(codec);
+      await expect(host.locator('#preferred-codec')).toBeEnabled();
+      await startCapture(host);
+      await expectVideo(viewer);
+      await viewer.waitForTimeout(4000);
+      recordQuality({
+        profile: `codec-${codec}`,
+        host: await qualitySnapshot(host),
+        receiver: await collectQuality(viewer, 3000),
+      });
+    }
+    checks.push(
+      'Available VP8/H264 preferences negotiate real video; measurements recorded without hardware guarantees',
+    );
+  }
+  for (let minute = 0; minute < soakMinutes; minute++) {
+    await viewer.waitForTimeout(30_000);
+    await expectVideo(viewer);
+    await expectVideo(lateViewer);
+    await viewer.waitForTimeout(30_000);
+    recordQuality({
+      profile: `soak-minute-${minute + 1}`,
+      host: await qualitySnapshot(host),
+      receiver: await collectQuality(viewer, 1000),
+    });
+  }
+  if (soakMinutes)
+    checks.push(
+      `Completed ${soakMinutes} minute(s) of additional local two-viewer transmission`,
+    );
   await host
     .getByRole('button', { name: 'Remover Amigo da sala', exact: true })
     .click();
@@ -528,7 +704,11 @@ try {
   checks.push('Closed room code no longer grants access');
   assert.deepEqual(errors, []);
   await writeFile(
-    packaged ? 'test-results/smoke-packaged.json' : 'test-results/smoke.json',
+    packaged
+      ? codecMatrix
+        ? 'test-results/smoke-packaged-codecs.json'
+        : 'test-results/smoke-packaged.json'
+      : 'test-results/smoke.json',
     JSON.stringify(
       {
         mode: packaged ? 'packaged' : 'development',

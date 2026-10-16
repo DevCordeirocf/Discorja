@@ -65,6 +65,35 @@ function network(relay: 'local' | 'remote' | false = false): Stat[] {
 }
 
 describe('Telemetria WebRTC por fluxo de vídeo', () => {
+  it('informa encoder e congelamentos somente quando o navegador fornece dados', () => {
+    const telemetry = new PeerTelemetry();
+    const measured = telemetry.sample(
+      report(
+        video('inbound', {
+          decoderImplementation: 'libvpx',
+          powerEfficientDecoder: false,
+          jitter: 0.015,
+          freezeCount: 2,
+          framesDropped: 3,
+          totalFreezesDuration: 1.5,
+        }),
+      ),
+      'viewer',
+      'inbound',
+    );
+    expect(measured).toMatchObject({
+      decoderImplementation: 'libvpx',
+      powerEfficientDecoder: false,
+      jitterMs: 15,
+      freezeCount: 2,
+      framesDropped: 3,
+      totalFreezesDuration: 1.5,
+    });
+    expect(
+      telemetry.sample(report(video('outbound')), 'host', 'outbound')
+        .powerEfficientEncoder,
+    ).toBeUndefined();
+  });
   it('mede bitrate e FPS com deltas e relógio do relatório, sem taxa fictícia na primeira leitura', () => {
     const telemetry = new PeerTelemetry();
     const first = telemetry.sample(

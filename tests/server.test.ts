@@ -48,7 +48,7 @@ class Peer {
 }
 
 async function start(options: SignalingOptions = {}) {
-  const service = createSignalingServer(options);
+  const service = createSignalingServer({ resumeGraceMs: 0, ...options });
   services.push(service);
   await new Promise<void>((resolve) =>
     service.server.listen(0, '127.0.0.1', resolve),
@@ -90,6 +90,198 @@ afterEach(async () => {
 });
 
 describe('sinalização Discorja', () => {
+  it('conta somente conexões abertas durante retomada e limpa salas expiradas', async () => {
+    let time = 100000;
+    const statsToken = 'c'.repeat(64);
+    const { url, httpUrl } = await start({
+      statsToken,
+      resumeGraceMs: 20000,
+      roomTtlMs: 60000,
+      now: () => time,
+    });
+    const read = async () =>
+      (
+        await fetch(`${httpUrl}/api/stats`, {
+          headers: { Authorization: `Bearer ${statsToken}` },
+        })
+      ).json();
+    const host = await connect(url),
+      viewer = await connect(url);
+    const room = await createRoom(host);
+    const joined = await join(viewer, room.code);
+    viewer.socket.terminate();
+    await host.next('viewer-left');
+    expect(await read()).toMatchObject({
+      websocketConnections: 1,
+      participantSessions: 1,
+      roomMemberships: 1,
+      activeRooms: 1,
+    });
+    const returned = await connect(url);
+    returned.send({ type: 'resume-room', token: joined.resumeToken! });
+    await returned.next('room-resumed');
+    expect(await read()).toMatchObject({
+      websocketConnections: 2,
+      participantSessions: 2,
+      roomMemberships: 2,
+    });
+    time += 60001;
+    expect(await read()).toMatchObject({
+      websocketConnections: 2,
+      participantSessions: 0,
+      activeRooms: 0,
+      reportedScreenPublishers: 0,
+    });
+    expect(
+      (
+        await fetch(`${httpUrl}/api/stats`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${statsToken}` },
+        })
+      ).status,
+    ).toBe(405);
+  });
+  it('protege estatísticas, conta conexões/salas e elimina vínculos ao expulsar', async () => {
+    const statsToken = 'a'.repeat(64);
+    const { url, httpUrl } = await start({ statsToken });
+    const read = () =>
+      fetch(`${httpUrl}/api/stats`, {
+        headers: { Authorization: `Bearer ${statsToken}` },
+      });
+    expect((await fetch(`${httpUrl}/api/stats`)).status).toBe(401);
+    expect(
+      (
+        await fetch(`${httpUrl}/api/stats`, {
+          headers: { Authorization: 'Bearer wrong' },
+        })
+      ).status,
+    ).toBe(401);
+    const host = await connect(url),
+      viewer = await connect(url),
+      outside = await connect(url);
+    const room = await createRoom(host);
+    const member = await join(viewer, room.code);
+    host.send({ type: 'host-state', sharing: true });
+    await viewer.next('host-state');
+    let response = await read();
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    const data = await response.json();
+    expect(data).toMatchObject({
+      schemaVersion: 1,
+      scope: 'instance',
+      websocketConnections: 3,
+      participantSessions: 2,
+      roomMemberships: 2,
+      activeRooms: 1,
+      reportedScreenPublishers: 1,
+    });
+    expect(JSON.stringify(data)).not.toContain(room.code);
+    expect(JSON.stringify(data)).not.toContain(statsToken);
+    host.send({ type: 'kick', peerId: member.selfId });
+    await viewer.next('kicked');
+    expect(await (await read()).json()).toMatchObject({
+      participantSessions: 1,
+    });
+    host.send({ type: 'close-room' });
+    await host.next('room-closed');
+    expect(await (await read()).json()).toMatchObject({
+      activeRooms: 0,
+      participantSessions: 0,
+    });
+    outside.socket.terminate();
+  });
+  it('desabilita estatísticas sem segredo e limita consultas mesmo sem autorização', async () => {
+    const disabled = await start();
+    expect((await fetch(`${disabled.httpUrl}/api/stats`)).status).toBe(404);
+    expect(() => createSignalingServer({ statsToken: 'short' })).toThrow(
+      /STATS_TOKEN/,
+    );
+    const { httpUrl } = await start({ statsToken: 'b'.repeat(32) });
+    for (let i = 0; i < 30; i++)
+      expect((await fetch(`${httpUrl}/api/stats`)).status).toBe(401);
+    expect((await fetch(`${httpUrl}/api/stats`)).status).toBe(429);
+    expect((await fetch(`${httpUrl}/health`)).status).toBe(200);
+  });
+  it('retoma sessão com token rotacionado sem aceitar papel informado pelo cliente', async () => {
+    const { url } = await start({ resumeGraceMs: 20000 });
+    const host = await connect(url),
+      viewer = await connect(url);
+    const room = await createRoom(host);
+    const joined = await join(viewer, room.code);
+    viewer.socket.terminate();
+    await host.next('viewer-left');
+    const replacement = await connect(url);
+    replacement.send({ type: 'resume-room', token: joined.resumeToken! });
+    const resumed = await replacement.next('room-resumed');
+    expect(resumed).toMatchObject({
+      selfId: joined.selfId,
+      role: 'viewer',
+      code: room.code,
+    });
+    expect(resumed.resumeToken).not.toBe(joined.resumeToken);
+    const attacker = await connect(url);
+    attacker.send({ type: 'resume-room', token: joined.resumeToken! });
+    expect(await attacker.next('error')).toMatchObject({
+      code: 'RESUME_REJECTED',
+    });
+    attacker.send({
+      type: 'resume-room',
+      token: resumed.resumeToken,
+      role: 'host',
+    });
+    expect(await attacker.next('error')).toMatchObject({
+      code: 'INVALID_MESSAGE',
+    });
+    host.send({ type: 'kick', peerId: joined.selfId });
+    await replacement.next('kicked');
+    replacement.socket.terminate();
+    attacker.send({ type: 'resume-room', token: resumed.resumeToken });
+    expect(await attacker.next('error')).toMatchObject({
+      code: 'RESUME_REJECTED',
+    });
+  });
+  it('retoma anfitrião com estado preservado e recusa retomada após expiração', async () => {
+    let now = 100000;
+    const { url } = await start({ resumeGraceMs: 20000, now: () => now });
+    const host = await connect(url),
+      viewer = await connect(url);
+    const room = await createRoom(host);
+    await join(viewer, room.code);
+    host.send({ type: 'host-state', sharing: true });
+    await viewer.next('host-state');
+    host.socket.terminate();
+    expect(await viewer.next('host-state')).toMatchObject({ sharing: false });
+    const returned = await connect(url);
+    returned.send({ type: 'resume-room', token: room.resumeToken! });
+    const resumed = await returned.next('room-resumed');
+    expect(resumed).toMatchObject({
+      role: 'host',
+      selfId: room.selfId,
+      sharing: true,
+    });
+    expect(resumed.viewers).toHaveLength(1);
+    await viewer.next('host-state');
+    returned.socket.terminate();
+    await viewer.next('host-state');
+    now += 20001;
+    const expired = await connect(url);
+    expired.send({ type: 'resume-room', token: resumed.resumeToken });
+    expect(await expired.next('error')).toMatchObject({
+      code: 'RESUME_REJECTED',
+    });
+    expect(await viewer.next('room-closed')).toMatchObject({
+      reason: 'host-left',
+    });
+  });
+  it('fecha conexão após mensagens inválidas repetidas', async () => {
+    const { url } = await start();
+    const peer = await connect(url);
+    const closed = new Promise<number>((resolve) =>
+      peer.socket.once('close', resolve),
+    );
+    for (let i = 0; i < 3; i++) peer.socket.send('{}');
+    expect(await closed).toBe(1008);
+  });
   it('conecta anfitrião e dois espectadores, normaliza código e encaminha SDP/ICE', async () => {
     const { url, httpUrl } = await start();
     const [host, one, two] = await Promise.all([
@@ -380,6 +572,7 @@ describe('sinalização Discorja', () => {
       },
     ];
     for (const message of invalid) {
+      const peer = await connect(url);
       peer.socket.send(JSON.stringify(message));
       expect(await peer.next('error')).toMatchObject({
         code: 'INVALID_MESSAGE',

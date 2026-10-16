@@ -16,6 +16,7 @@ interface Peer {
   remoteUfrags: Set<string>;
   retiredUfrags: Set<string>;
   operations: Promise<void>;
+  queued: number;
   controller: AdaptiveQuality;
   telemetry: PeerTelemetry;
   metrics?: PeerMetrics;
@@ -94,6 +95,7 @@ export class RoomPeers {
       remoteUfrags: new Set(),
       retiredUfrags: new Set(),
       operations: Promise.resolve(),
+      queued: 0,
       controller: new AdaptiveQuality(this.preferences),
       telemetry: new PeerTelemetry(),
       dirty: true,
@@ -172,9 +174,15 @@ export class RoomPeers {
     peer: Peer,
     operation: () => Promise<void>,
   ): Promise<void> {
-    const result = peer.operations.then(async () => {
-      if (this.current(peerId, peer)) await operation();
-    });
+    if (peer.queued >= 128) return Promise.resolve();
+    peer.queued++;
+    const result = peer.operations
+      .then(async () => {
+        if (this.current(peerId, peer)) await operation();
+      })
+      .finally(() => {
+        peer.queued--;
+      });
     peer.operations = result.catch(() => undefined);
     return result;
   }
@@ -213,7 +221,7 @@ export class RoomPeers {
     )
       return;
     const fairBitrate =
-      (this.preferences.maxUploadMbps * 1_000_000) /
+      (this.preferences.maxUploadMbps * 850_000) /
       Math.max(1, this.outgoingCount());
     const target = peer.controller.target(fairBitrate);
     const senders = peer.connection
@@ -272,6 +280,35 @@ export class RoomPeers {
       await this.run(peerId, peer, async () => {
         for (const track of stream.getVideoTracks())
           peer.connection.addTrack(track, stream);
+        if (
+          this.preferences.preferredCodec &&
+          typeof RTCRtpSender !== 'undefined'
+        ) {
+          const codecs = RTCRtpSender.getCapabilities('video')?.codecs ?? [];
+          const preferred =
+            `video/${this.preferences.preferredCodec}`.toLowerCase();
+          if (
+            codecs.some((codec) => codec.mimeType.toLowerCase() === preferred)
+          ) {
+            const ordered = [
+              ...codecs.filter(
+                (codec) => codec.mimeType.toLowerCase() === preferred,
+              ),
+              ...codecs.filter(
+                (codec) => codec.mimeType.toLowerCase() !== preferred,
+              ),
+            ];
+            for (const transceiver of peer.connection.getTransceivers()) {
+              if (transceiver.sender.track?.kind === 'video') {
+                try {
+                  transceiver.setCodecPreferences(ordered);
+                } catch {
+                  /* Keep browser compatibility if preferences are unsupported. */
+                }
+              }
+            }
+          }
+        }
         await this.applyParameters(peerId, peer);
         if (!this.current(peerId, peer)) return;
         const offer = await peer.connection.createOffer();
@@ -322,6 +359,7 @@ export class RoomPeers {
     if (signal.type === 'ice') {
       const peer = this.peers.get(peerId);
       if (!peer) {
+        if (!this.waitingIce.has(peerId) && this.waitingIce.size >= 100) return;
         const waiting = this.waitingIce.get(peerId) ?? [];
         if (waiting.length < 128) waiting.push(signal.candidate);
         this.waitingIce.set(peerId, waiting);
@@ -503,7 +541,7 @@ export class RoomPeers {
               Date.now(),
             );
             const fair =
-              (this.preferences.maxUploadMbps * 1_000_000) /
+              (this.preferences.maxUploadMbps * 850_000) /
               Math.max(1, this.outgoingCount());
             if (
               peer.role === 'host' &&
