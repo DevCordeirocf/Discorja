@@ -6,6 +6,7 @@ Aplicativo de compartilhamento de tela para **Windows 10/11 x64**, feito para pe
 
 - Salas por convite com código de oito caracteres.
 - Captura de janela ou monitor com prévia e controles para iniciar e parar.
+- Som do computador opcional no Windows, com controle de envio e volume recebido.
 - Até quatro espectadores por sala na configuração padrão.
 - Perfis de **720p/30 FPS**, **1080p/30 FPS** e **1080p/60 FPS**.
 - Prioridade para detalhes ou movimento, adaptação por espectador e limite de envio.
@@ -14,7 +15,7 @@ Aplicativo de compartilhamento de tela para **Windows 10/11 x64**, feito para pe
 - Aviso de atualização ao abrir, com opção de atualizar ou adiar.
 - Instalador Windows e atualizações por GitHub Releases, com assinatura de código opcional.
 
-O MVP transmite somente o vídeo da tela. Áudio, câmera e gravação não estão disponíveis nesta versão. A qualidade recebida depende da fonte, do computador e da conexão.
+Microfone, câmera e gravação não fazem parte do aplicativo. O som compartilhado pode incluir outros programas, inclusive o Discord; não há isolamento de áudio por janela. A qualidade recebida depende da fonte, do computador e da conexão.
 <img width="1917" height="1011" alt="Captura de tela 2026-10-14 230554" src="https://github.com/user-attachments/assets/13a6b040-d873-4337-b494-ae7241931d07" />
 <img width="1918" height="1007" alt="Captura de tela 2026-10-14 230619" src="https://github.com/user-attachments/assets/5ec9745b-16bb-48b1-9a0a-e6d50589a1b0" />
 <img width="1348" height="607" alt="Captura de tela 2026-10-14 230629" src="https://github.com/user-attachments/assets/16cb8698-e2c5-48ad-8c44-d552e3db91e7" />
@@ -23,7 +24,7 @@ O MVP transmite somente o vídeo da tela. Áudio, câmera e gravação não est�
 
 ## Tecnologias
 
-**Electron** e **TypeScript** no aplicativo, **WebRTC** para o vídeo e **Node.js/WebSocket** para a sinalização das salas. O vídeo sai do computador do anfitrião para cada espectador, diretamente ou por TURN quando configurado.
+**Electron** e **TypeScript** no aplicativo, **WebRTC** para vídeo e áudio e **Node.js/WebSocket** para a sinalização das salas. A mídia sai do computador do anfitrião para cada espectador, diretamente ou por TURN quando configurado.
 
 ## Requisitos
 
@@ -61,13 +62,16 @@ O endereço local padrão é `ws://127.0.0.1:8787`. Para testar com outro comput
 1. Abra o Discorja e configure o servidor de sinalização.
 2. Informe seu nome e crie uma sala.
 3. Escolha a qualidade e a janela ou monitor que deseja transmitir.
-4. Inicie a transmissão e compartilhe o código com os amigos.
-5. Use os controles para parar o vídeo, remover espectadores ou encerrar a sala.
+4. Se quiser transmitir som, marque a opção e confira o aviso antes de iniciar. Durante chamadas no Discord, prefira somente vídeo até validar uma saída de som isolada.
+5. Inicie a transmissão e compartilhe o código com os amigos. Quem assiste pode clicar em **Ouvir transmissão** e ajustar o volume.
+6. Use os controles para silenciar ou encerrar a captura de som, parar o vídeo, remover espectadores ou encerrar a sala.
 
 ## Documentação
 
 - [Plano de evolução](docs/plano-de-atualizacoes.md) — próximas versões de desempenho, áudio, salas e compartilhamento simultâneo.
 - [Segurança](docs/seguranca.md) — revisão, melhorias propostas e operação sem serviços pagos.
+- [Áudio e Discord](docs/audio.md) — uso, controles e configurações suportadas.
+- [Validação da versão 0.4.0](docs/validacao-0.4.0.md) — testes de áudio e verificações pendentes.
 - [Validação da versão 0.3.0](docs/validacao-0.3.0.md) — entregas, testes e verificações de implantação pendentes.
 - [Guia de desenvolvimento](docs/desenvolvimento.md) — ambiente, configurações, testes, manutenção e diagnóstico.
 - [Arquitetura e privacidade](docs/arquitetura.md) — componentes, conexões e tratamento dos dados.

@@ -68,6 +68,7 @@ export interface AppConfig {
   iceServers: RTCIceServer[];
   version: string;
   updatesConfigured: boolean;
+  systemAudioSupported: boolean;
 }
 
 export interface UpdateState {
@@ -89,7 +90,7 @@ export interface DiscorjaAPI {
   getConfig(): Promise<AppConfig>;
   saveConfig(config: { signalingUrl: string }): Promise<void>;
   getSources(): Promise<CaptureSource[]>;
-  selectSource(id: string): Promise<void>;
+  selectSource(id: string, audio?: boolean): Promise<void>;
   cancelCapture(): Promise<void>;
   setSharing(sharing: boolean): Promise<void>;
   copyCode(code: string): Promise<void>;

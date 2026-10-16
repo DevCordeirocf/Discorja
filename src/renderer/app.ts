@@ -7,6 +7,7 @@ import type {
 } from '../shared/protocol';
 import { SignalConnection } from './signal';
 import { RoomPeers } from './rtc';
+import { SYSTEM_AUDIO_CONSTRAINTS } from '../shared/audio';
 import {
   QUALITY_PRESETS,
   DEFAULT_STREAM_PREFERENCES,
@@ -67,6 +68,7 @@ let config: AppConfig = {
   iceServers: [],
   version: 'prévia',
   updatesConfigured: false,
+  systemAudioSupported: false,
 };
 let loaded = !api;
 let displayName = '';
@@ -134,6 +136,46 @@ let remoteStream: MediaStream | null = null;
 let sharing = false;
 let remoteSharing = false;
 let connectionIssue = '';
+let includeSystemAudio = false;
+let audioScopeAccepted = false;
+let audioCaptureIssue = '';
+let receiveMuted = true;
+let receiveVolume = 1;
+
+const liveAudio = (stream: MediaStream | null): MediaStreamTrack[] =>
+  stream?.getAudioTracks().filter((track) => track.readyState === 'live') ?? [];
+
+function updatePlayback(): void {
+  const video = root.querySelector<HTMLVideoElement>('#stream-video');
+  if (!video) return;
+  video.muted = room?.role !== 'viewer' || receiveMuted;
+  video.volume = receiveVolume;
+}
+
+function stopSystemAudio(): void {
+  for (const track of liveAudio(localStream)) {
+    track.onended = track.onmute = track.onunmute = null;
+    track.stop();
+  }
+  audioCaptureIssue =
+    'Som encerrado. Para capturar novamente, pare e inicie o compartilhamento.';
+  void peers?.stopAudio().catch(() => undefined);
+  render();
+}
+
+function renderAudioControls(): string {
+  if (!room) return '';
+  if (room.role === 'host') {
+    if (!sharing) return '';
+    const tracks = liveAudio(localStream);
+    const silenced =
+      tracks.length > 0 && tracks.every((track) => !track.enabled);
+    return `<section class="audio-panel" aria-label="Som da transmissão"><strong>Som da transmissão</strong><p role="status">${escape(audioCaptureIssue || (tracks.length ? (silenced ? 'Envio silenciado. A captura continua ativa.' : 'Capturando o som geral do computador, incluindo outros aplicativos.') : 'Transmissão somente de vídeo.'))}</p>${tracks.length ? `<div class="audio-actions"><button class="button subtle" data-action="toggle-send-audio" aria-pressed="${silenced}">${silenced ? 'Reativar envio de som' : 'Silenciar envio de som'}</button><button class="button subtle" data-action="stop-audio">Encerrar captura de som</button></div>` : ''}</section>`;
+  }
+  if (!remoteStream) return '';
+  const available = liveAudio(remoteStream).length > 0;
+  return `<section class="audio-panel" aria-label="Reprodução da transmissão"><strong>Som recebido</strong><p>${available ? 'O som pode estar em silêncio ou ter sido interrompido pelo anfitrião.' : 'Esta transmissão não tem uma faixa de áudio ativa.'}</p>${available ? `<div class="audio-actions"><button class="button subtle" data-action="toggle-receive-audio" aria-pressed="${!receiveMuted}">${receiveMuted ? 'Ouvir transmissão' : 'Silenciar recepção'}</button><label for="receive-volume">Volume <output id="volume-value">${Math.round(receiveVolume * 100)}%</output></label><input id="receive-volume" type="range" min="0" max="100" value="${Math.round(receiveVolume * 100)}" aria-label="Volume da transmissão"></div><small>O som começa silenciado. Evite ouvir esta transmissão em um computador que também capture seu som.</small>` : ''}</section>`;
+}
 
 function notify(
   text: string,
@@ -173,6 +215,7 @@ function stopSharing(announce = true): void {
   stopTracks(localStream);
   localStream = null;
   sharing = false;
+  audioCaptureIssue = '';
   sharedSourceName = '';
   peers?.clear();
   void peers?.configure(preferences).catch(() => undefined);
@@ -214,6 +257,7 @@ function leaveRoom(
   stopTracks(remoteStream);
   remoteStream = null;
   room = null;
+  receiveMuted = true;
   viewers.clear();
   remoteSharing = false;
   connectionIssue = '';
@@ -263,15 +307,21 @@ function createPeers(): void {
         return;
       }
       clearTimeout(remoteTimer);
+      if (remoteStream && remoteStream !== stream) stopTracks(remoteStream);
       remoteStream = stream;
       connectionReconnecting = false;
       connectionIssue = '';
       for (const track of stream.getVideoTracks())
         track.onended = () => {
           if (remoteStream === stream) {
+            stopTracks(stream);
             remoteStream = null;
             render();
           }
+        };
+      for (const track of stream.getAudioTracks())
+        track.onended = () => {
+          if (remoteStream === stream) render();
         };
       render();
     },
@@ -595,6 +645,8 @@ async function openSources(): Promise<void> {
   returnFocusAction = 'choose-source';
   sources = [];
   selectedSource = '';
+  includeSystemAudio = false;
+  audioScopeAccepted = false;
   modal = 'sources';
   notice = null;
   render();
@@ -643,19 +695,21 @@ async function startSharing(): Promise<void> {
   const selectedPreferences = { ...preferences };
   const source = sources.find((item) => item.id === selectedSource);
   if (!source) return;
+  const captureAudio = includeSystemAudio && config.systemAudioSupported;
+  if (captureAudio && !audioScopeAccepted) return;
   const current = (): boolean =>
     epoch === sessionEpoch && attempt === captureEpoch && room?.role === 'host';
   busy = 'capture';
   render();
   let stream: MediaStream | null = null;
   try {
-    await api.selectSource(source.id);
+    await api.selectSource(source.id, captureAudio);
     if (!current()) return;
     stream = await navigator.mediaDevices.getDisplayMedia({
       video: captureConstraints(selectedPreferences.preset),
-      audio: false,
+      audio: captureAudio ? SYSTEM_AUDIO_CONSTRAINTS : false,
     });
-    for (const track of stream.getAudioTracks()) {
+    for (const track of captureAudio ? [] : stream.getAudioTracks()) {
       stream.removeTrack(track);
       track.stop();
     }
@@ -679,6 +733,10 @@ async function startSharing(): Promise<void> {
       return;
     }
     localStream = stream;
+    audioCaptureIssue =
+      captureAudio && !liveAudio(stream).length
+        ? 'O Windows não forneceu som. O vídeo continua; confira a saída de áudio e reinicie para tentar novamente.'
+        : '';
     sharing = true;
     metricsStartedAt = Date.now();
     latestMetrics = [];
@@ -695,6 +753,27 @@ async function startSharing(): Promise<void> {
           );
         }
       };
+    for (const track of stream.getAudioTracks()) {
+      track.contentHint = 'music';
+      track.onended = () => {
+        if (localStream !== stream) return;
+        audioCaptureIssue =
+          'A captura de som foi interrompida. O vídeo continua; reinicie o compartilhamento para tentar novamente.';
+        void peers?.stopAudio().catch(() => undefined);
+        render();
+      };
+      track.onmute = () => {
+        if (localStream !== stream) return;
+        audioCaptureIssue =
+          'O som está temporariamente indisponível. Confira a saída do Windows.';
+        render();
+      };
+      track.onunmute = () => {
+        if (localStream !== stream) return;
+        audioCaptureIssue = '';
+        render();
+      };
+    }
     if (!send({ type: 'host-state', sharing: true })) return;
     for (const [peerId, viewer] of viewers) {
       viewer.connected = false;
@@ -1033,6 +1112,20 @@ function patchMetrics(): void {
     if (metric?.limitation === 'other')
       detail.push('O navegador está limitando o vídeo.');
     if (metric?.codec) detail.push(`Formato ${metric.codec}.`);
+    if (metric?.audioCodec)
+      detail.push(
+        `Som: ${metric.audioCodec}${finiteMetric(metric.audioBitrateKbps) ? ` · ${measured(metric.audioBitrateKbps, 0)} kbps` : ''}.`,
+      );
+    if (finiteMetric(metric?.audioJitterMs))
+      detail.push(`Variação do som: ${measured(metric.audioJitterMs)} ms.`);
+    if (finiteMetric(metric?.audioPacketLossPercent))
+      detail.push(
+        `Perda de áudio: ${measured(metric.audioPacketLossPercent)}%.`,
+      );
+    if (finiteMetric(metric?.audioBufferMs))
+      detail.push(
+        `Buffer de áudio médio: ${measured(metric.audioBufferMs)} ms.`,
+      );
     if (metric?.encoderImplementation)
       detail.push(`Codificador ${metric.encoderImplementation}.`);
     if (metric?.decoderImplementation)
@@ -1157,7 +1250,7 @@ function render(): void {
     if (chooseButton) chooseButton.disabled = !!busy || applyingPreferences;
     column.insertAdjacentHTML(
       'beforeend',
-      `${room.role === 'host' ? renderQualityPanel() : ''}${renderDiagnostics()}`,
+      `${renderAudioControls()}${room.role === 'host' ? renderQualityPanel() : ''}${renderDiagnostics()}`,
     );
     if (connectionReconnecting && room.role === 'viewer' && remoteStream) {
       const banner = document.createElement('div');
@@ -1183,6 +1276,15 @@ function render(): void {
     profile.className = 'source-profile';
     profile.textContent = `Perfil desejado: ${QUALITY_PRESETS[preferences.preset].label} · ${preferences.content === 'motion' ? 'Vídeos e jogos' : 'Textos e detalhes'}${preferences.adaptive ? ' · Ajuste à conexão ativo' : ''}.`;
     root.querySelector('.source-modal .modal-description')?.after(profile);
+    const options = document.createElement('div');
+    options.className = 'audio-capture-options';
+    options.innerHTML = `<label><input id="include-system-audio" type="checkbox" ${includeSystemAudio ? 'checked' : ''} ${!config.systemAudioSupported || busy ? 'disabled' : ''}> Compartilhar som do computador</label><p>${config.systemAudioSupported ? 'Opcional. Microfone e câmera permanecem bloqueados.' : 'Som do computador disponível somente no Windows.'}</p>${includeSystemAudio ? `<p id="audio-scope-warning" class="settings-warning">Mesmo ao escolher uma janela, o som pode incluir Discord, notificações e outros aplicativos. Fones não evitam essa recaptura. Durante uma chamada, use somente vídeo se não tiver validado uma saída isolada.</p><label><input id="accept-audio-scope" type="checkbox" aria-describedby="audio-scope-warning" ${audioScopeAccepted ? 'checked' : ''} ${busy ? 'disabled' : ''}> Entendo o alcance do som e conferi os aplicativos em reprodução.</label>` : ''}`;
+    root.querySelector('.source-privacy')?.before(options);
+    const start = root.querySelector<HTMLButtonElement>(
+      '[data-action="start-share"]',
+    );
+    if (start && includeSystemAudio && !audioScopeAccepted)
+      start.disabled = true;
   }
   const shell = root.querySelector<HTMLElement>('.app-shell');
   if (shell) shell.inert = !!modal;
@@ -1202,6 +1304,7 @@ function render(): void {
     void placeholder.play().catch(() => undefined);
   }
   if (!keepVideo && oldVideo) oldVideo.srcObject = null;
+  updatePlayback();
   patchMetrics();
   if (focused) document.getElementById(focused)?.focus();
   if (focusedAction && modal)
@@ -1236,6 +1339,12 @@ root.addEventListener('input', (event) => {
     target.value = joinCode;
   }
   if (target.id === 'signaling-url') settingUrl = target.value;
+  if (target.id === 'receive-volume') {
+    receiveVolume = Math.max(0, Math.min(1, Number(target.value) / 100));
+    updatePlayback();
+    const output = root.querySelector('#volume-value');
+    if (output) output.textContent = `${Math.round(receiveVolume * 100)}%`;
+  }
 });
 
 root.addEventListener('submit', (event) => {
@@ -1251,6 +1360,21 @@ root.addEventListener('change', (event) => {
     target instanceof HTMLInputElement || target instanceof HTMLSelectElement
   ))
     return;
+  if (
+    target instanceof HTMLInputElement &&
+    target.id === 'include-system-audio'
+  ) {
+    includeSystemAudio = target.checked && config.systemAudioSupported;
+    audioScopeAccepted = false;
+    render();
+  }
+  if (
+    target instanceof HTMLInputElement &&
+    target.id === 'accept-audio-scope'
+  ) {
+    audioScopeAccepted = target.checked;
+    render();
+  }
   if (
     [
       'quality-preset',
@@ -1269,6 +1393,32 @@ root.addEventListener('click', (event) => {
   );
   if (!button || button.disabled) return;
   switch (button.dataset.action) {
+    case 'toggle-send-audio': {
+      if (room?.role !== 'host' || !sharing) break;
+      const tracks = liveAudio(localStream);
+      const enable = tracks.every((track) => !track.enabled);
+      for (const track of tracks) track.enabled = enable;
+      render();
+      break;
+    }
+    case 'stop-audio':
+      if (room?.role === 'host' && sharing) stopSystemAudio();
+      break;
+    case 'toggle-receive-audio': {
+      if (room?.role !== 'viewer') break;
+      receiveMuted = !receiveMuted;
+      render();
+      const video = root.querySelector<HTMLVideoElement>('#stream-video');
+      if (video && !receiveMuted)
+        void video.play().catch(() => {
+          receiveMuted = true;
+          notify(
+            'Não foi possível reproduzir o som. Clique em ouvir para tentar novamente.',
+            'error',
+          );
+        });
+      break;
+    }
     case 'export-diagnostics':
       void api
         ?.exportDiagnostics({ preferences, metrics: latestMetrics })
@@ -1427,6 +1577,13 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 const metricsTimer = setInterval(patchMetrics, 2_000);
+
+navigator.mediaDevices?.addEventListener('devicechange', () => {
+  if (!sharing || !liveAudio(localStream).length) return;
+  audioCaptureIssue =
+    'Os dispositivos de áudio mudaram. Confira o som recebido; se ficou em silêncio, reinicie o compartilhamento.';
+  render();
+});
 
 window.addEventListener('beforeunload', () => {
   clearInterval(metricsTimer);

@@ -5,7 +5,8 @@ const api: DiscorjaAPI = {
   getConfig: () => ipcRenderer.invoke('config:get'),
   saveConfig: (config) => ipcRenderer.invoke('config:save', config),
   getSources: () => ipcRenderer.invoke('capture:sources'),
-  selectSource: (id) => ipcRenderer.invoke('capture:select', id),
+  selectSource: (id, audio = false) =>
+    ipcRenderer.invoke('capture:select', id, audio),
   cancelCapture: () => ipcRenderer.invoke('capture:cancel'),
   setSharing: (sharing) => ipcRenderer.invoke('capture:sharing', sharing),
   copyCode: (code) => ipcRenderer.invoke('room:copy', code),

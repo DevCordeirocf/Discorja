@@ -1,5 +1,13 @@
 # Qualidade de vídeo e estabilidade
 
+## Áudio na versão 0.4.0
+
+Som do computador opcional, com limite solicitado de 128 kbps por espectador e reserva de 160 kbps por conexão com áudio antes do orçamento de vídeo. O orçamento mantém 15% de folga. A negociação fica com o navegador, sem alterações manuais de SDP. Microfone e câmera continuam bloqueados.
+
+Vídeo e áudio usam o mesmo stream e conexão para sincronização pelo WebRTC. Silenciar o envio mantém a captura; encerrar o áudio libera a track sem interromper o vídeo. O diagnóstico inclui bitrate, jitter, perda, amostras ocultadas e buffer médio quando disponíveis. Esses números não certificam sincronização labial ou ausência de cortes.
+
+Veja [áudio e Discord](audio.md) para uso e limitações e [validação da 0.4.0](validacao-0.4.0.md) para os testes locais e ensaios operacionais pendentes.
+
 ## Recursos da versão 0.3.0
 
 O orçamento de envio reserva 15% de folga antes de dividir o vídeo entre espectadores. Isso não é um limite absoluto do tráfego da placa de rede: cabeçalhos, retransmissões, sinalização e outros programas também consomem banda. Os valores efetivos continuam visíveis nas medições.

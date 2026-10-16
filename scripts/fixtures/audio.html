@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+  <meta charset="utf-8" />
+  <title>Discorja - teste de som</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: white;
+      font: 24px sans-serif;
+    }
+    canvas {
+      display: block;
+    }
+    button {
+      font: inherit;
+      padding: 15px;
+    }
+  </style>
+  <button id="prepare">Preparar fonte de áudio de teste</button>
+  <canvas width="640" height="360"></canvas>
+  <script>
+    const canvas = document.querySelector('canvas');
+    const graphics = canvas.getContext('2d');
+    let sound;
+    let oscillator;
+    let gain;
+    document.querySelector('#prepare').onclick = async () => {
+      sound = new AudioContext({ sampleRate: 48000 });
+      await sound.resume();
+      window.startTone = () => {
+        oscillator = sound.createOscillator();
+        oscillator.frequency.value = 440;
+        gain = sound.createGain();
+        gain.gain.value = 0.03;
+        oscillator.connect(gain).connect(sound.destination);
+        oscillator.start();
+      };
+      window.silenceTone = (silence) => {
+        gain.gain.value = silence ? 0 : 0.03;
+      };
+    };
+    function draw() {
+      const seconds = sound?.currentTime ?? 0;
+      graphics.fillStyle = Math.floor(seconds) % 2 ? '#459b68' : '#29375f';
+      graphics.fillRect(0, 0, 640, 360);
+      graphics.fillStyle = 'white';
+      graphics.font = '28px sans-serif';
+      graphics.fillText('Som e vídeo de teste', 50, 130);
+      graphics.fillText(seconds.toFixed(2) + ' s', 50, 200);
+      requestAnimationFrame(draw);
+    }
+    draw();
+  </script>
+</html>

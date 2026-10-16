@@ -1,7 +1,8 @@
 # Plano de evolução do Discorja
 
-**Referência:** evolução da 0.2.4 para a implementação local 0.3.0, em 15 de outubro de 2026.  
-**Status:** implementação da 0.3.0 preparada; validação operacional depende da implantação e ensaios externos indicados no registro. Versões posteriores continuam sendo propostas de organização, sem datas garantidas.
+**Referência:** evolução da 0.2.4 para a implementação local 0.4.0, em 15 de outubro de 2026.
+
+**Status:** implementações da 0.3.0 e 0.4.0 preparadas; validação operacional depende da implantação e ensaios externos indicados nos registros. Versões posteriores continuam sendo propostas de organização, sem datas garantidas.
 
 ## Objetivo
 
@@ -91,7 +92,7 @@ Configuração externa necessária deve ser listada ao final da subetapa com ins
 
 ### Registro de progresso e retomada
 
-**Estado atual:** implementação local da **0.3.0 preparada**, com verificações automatizadas aprovadas. C2, E1, E2 e F ainda têm verificações operacionais pendentes; G2 está adiada por ser opcional e não haver TURN próprio disponível. As etapas 0.4 em diante não foram iniciadas. A conclusão de testes locais não certifica a segurança ou capacidade de todo o sistema.
+**Estado atual:** implementação local da **0.4.0 preparada**, incluindo 0.4-A e 0.4-B por solicitação conjunta. A 0.3.0 mantém verificações operacionais pendentes em C2, E1, E2 e F; G2 permanece adiada. A 0.4.0 tem ensaios locais de áudio aprovados, mas ainda exige loopback nativo, dispositivos físicos, uso real com Discord e sincronização prolongada em computadores separados. As etapas 0.5 em diante não foram iniciadas. A conclusão de testes locais não certifica a segurança ou capacidade de todo o sistema.
 
 Ao terminar ou interromper uma subetapa, atualizar este registro no próprio arquivo. Manter uma entrada por subetapa trabalhada; não sobrescrever o histórico de entregas anteriores.
 
@@ -141,6 +142,16 @@ Ao terminar ou interromper uma subetapa, atualizar este registro no próprio arq
 **Fechamento da rodada:** o código final passou em 20 cenários reais no modo de desenvolvimento após corrigir o timer de avisos. A política Device Guard deste Windows bloqueou a última cópia do executável empacotado, portanto sua execução final não foi comprovada. Os ensaios empacotados anteriores não substituem essa verificação. Não foi alterada a política do sistema.
 
 **Ponto de retomada:** implantar o backend preparado, conferir sua configuração, publicar/testar os artefatos e executar os ensaios operacionais pendentes antes de considerar a 0.3.0 validada no ambiente real. Os detalhes estão no relatório de validação. Nenhuma etapa posterior ou serviço pago é necessário para encerrar essas verificações.
+
+#### Entrega 0.4-A e 0.4-B — Som do computador e qualidade de áudio
+
+**Data:** 15 de outubro de 2026. **Estado:** implementação concluída; aguardando validação operacional.
+
+- **Escopo:** consentimento por captura; loopback Windows; negação de microfone/câmera; envio de áudio com vídeo; mute, encerramento independente e volume recebido; reserva de banda; métricas; falhas de fonte/dispositivo e reconexão. Pacote 0.4.0, sem novas dependências ou serviços pagos.
+- **Verificações:** 93 testes em nove arquivos, tipos e build aprovados. Vinte cenários integrados de vídeo e quinze de áudio aprovados; dois minutos adicionais de áudio/vídeo contínuos. O áudio integrado usa somente um frame de teste gerado, em substituição ao loopback nativo, para não capturar som pessoal. Limites em [validacao-0.4.0.md](validacao-0.4.0.md).
+- **Configuração externa:** nenhuma variável nova no servidor. Mesma sinalização e ICE. Usar cliente 0.4.0 nos dois lados, saída de áudio disponível e opção de som marcada por captura. Publicação da release permanece uma ação separada.
+- **Pendências:** loopback em Windows 10/11, troca física de saída, chamada real do Discord, sincronização por trinta minutos e carga em redes distintas. Não há captura exclusiva de processo ou exclusão automática do Discord. Durante a chamada, manter somente vídeo se o isolamento não foi comprovado.
+- **Retomada:** seguir a matriz de validação e o [guia de áudio](audio.md). Não iniciar 0.5 automaticamente. Código local sem commit ou publicação automática nesta entrega.
 
 ## 0.3.0 — Performance, conexão e monitoramento
 
@@ -383,7 +394,7 @@ Executar primeiro amostras curtas para encontrar falhas e depois sessões de pel
 
 ## Próxima entrega recomendada
 
-A implementação local da **0.3.0 está preparada**. Priorizar agora a configuração/validação operacional descrita no registro, sem reimplementar os itens entregues. Após concluir essas verificações, a próxima versão funcional é **0.4-A — Áudio do computador**, mediante solicitação. TURN/SFU próprios continuam opcionais; nenhuma etapa depende de contratar serviços.
+A implementação local da **0.4.0 está preparada**. Priorizar os ensaios de áudio e as configurações operacionais pendentes descritos nos registros, sem reimplementar os itens entregues. A próxima etapa de produto é **0.5-A — Sessão, papéis e protocolo de salas**, mediante solicitação. TURN/SFU próprios continuam opcionais; nenhuma etapa depende de contratar serviços.
 
 ## Referências técnicas
 

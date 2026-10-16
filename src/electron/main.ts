@@ -14,6 +14,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { authorizedFrame, rendererFile, trustedAppUrl } from './security';
+import { CaptureAuthorization, displayMediaPermission } from './capture';
 import type { AppConfig, UpdateState } from '../shared/protocol';
 import {
   DEFAULT_SIGNALING_URL,
@@ -36,7 +37,7 @@ protocol.registerSchemesAsPrivileged([
 app.setName('Discorja');
 
 let window: BrowserWindow | null = null;
-let selected: { id: string; expires: number } | null = null;
+const captureAuthorization = new CaptureAuthorization();
 let knownSources = new Set<string>();
 let sourcesExpire = 0;
 let sharing = false;
@@ -161,6 +162,7 @@ function registerIpc() {
     updatesConfigured: Boolean(
       app.isPackaged && process.platform === 'win32' && release,
     ),
+    systemAudioSupported: process.platform === 'win32',
   }));
   handle('config:save', async (config: unknown) => {
     if (!config || typeof config !== 'object')
@@ -189,17 +191,18 @@ function registerIpc() {
       thumbnail: source.thumbnail.toDataURL(),
     }));
   });
-  handle('capture:select', (id: unknown) => {
+  handle('capture:select', (id: unknown, audio: unknown = false) => {
+    captureAuthorization.cancel();
     if (
       typeof id !== 'string' ||
       Date.now() > sourcesExpire ||
       !knownSources.has(id)
     )
       throw new Error('Atualize a lista e escolha uma janela ou monitor.');
-    selected = { id, expires: Date.now() + 15000 };
+    captureAuthorization.select(id, audio, process.platform);
   });
   handle('capture:cancel', () => {
-    selected = null;
+    captureAuthorization.cancel();
   });
   handle('capture:sharing', (value: unknown) => {
     if (typeof value !== 'boolean')
@@ -281,17 +284,17 @@ async function main() {
     permission === 'fullscreen' ||
     (permission === 'loopback-network' &&
       ['localhost', '127.0.0.1'].includes(new URL(signalingUrl).hostname));
-  const pendingCapture = () =>
-    Boolean(selected && Date.now() <= selected.expires);
   ses.setPermissionRequestHandler((contents, permission, callback, details) => {
     // Chromium requests generic media permission before the desktop capture handler.
     // Display capture has an empty mediaTypes list; camera/microphone requests identify
-    // their devices. The display handler below separately rejects all audio requests.
+    // their devices. The display handler grants only explicitly selected system audio.
     const captureVideo =
       permission === 'media' &&
-      pendingCapture() &&
       'mediaTypes' in details &&
-      details.mediaTypes?.length === 0;
+      displayMediaPermission(
+        captureAuthorization.pending(),
+        details.mediaTypes,
+      );
     callback(
       Boolean(
         window &&
@@ -312,19 +315,21 @@ async function main() {
   ses.setDevicePermissionHandler(() => false);
   ses.on('will-download', (event) => event.preventDefault());
   ses.setDisplayMediaRequestHandler(async (request, callback) => {
-    const pick = selected;
-    selected = null; // One selection authorizes exactly one capture, for fifteen seconds.
+    const reply = (streams: Electron.Streams) => {
+      // A closed requesting frame already aborts its pending capture.
+      if (request.frame && !request.frame.isDestroyed()) callback(streams);
+    };
+    const pick = captureAuthorization.consume(request.audioRequested);
     if (
       !window ||
       request.frame !== window.webContents.mainFrame ||
       !trustedUrl(request.securityOrigin) ||
       !request.userGesture ||
-      request.audioRequested ||
       !request.videoRequested ||
       !pick ||
       Date.now() > pick.expires
     ) {
-      callback({});
+      reply({});
       return;
     }
     try {
@@ -333,9 +338,24 @@ async function main() {
         thumbnailSize: { width: 0, height: 0 },
       });
       const source = sources.find((item) => item.id === pick.id);
-      callback(source ? { video: source } : {});
+      if (
+        !source ||
+        !captureAuthorization.current(pick) ||
+        !window ||
+        request.frame !== window.webContents.mainFrame ||
+        request.frame.isDestroyed()
+      ) {
+        reply({});
+        return;
+      }
+      reply({
+        video: source,
+        ...(request.audioRequested && pick.audio
+          ? { audio: 'loopback' as const }
+          : {}),
+      });
     } catch {
-      callback({});
+      reply({});
     }
   });
   registerIpc();
@@ -374,10 +394,11 @@ async function main() {
     event.preventDefault(),
   );
   window.webContents.on('render-process-gone', () => {
-    selected = null;
+    captureAuthorization.cancel();
     setSharing(false);
   });
   window.on('closed', () => {
+    captureAuthorization.cancel();
     setSharing(false);
     window = null;
   });
@@ -389,7 +410,7 @@ async function main() {
 
 app.on('window-all-closed', () => app.quit());
 app.on('before-quit', () => {
-  selected = null;
+  captureAuthorization.cancel();
   setSharing(false);
 });
 main().catch((error) => {

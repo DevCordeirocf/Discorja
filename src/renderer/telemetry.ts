@@ -375,6 +375,53 @@ export class PeerTelemetry {
       this.selected.delete(scope);
     }
 
+    const audio = [...stats.values()]
+      .filter(
+        (stat) =>
+          stat.type === `${direction}-rtp` &&
+          (stat.kind ?? stat.mediaType) === 'audio' &&
+          stat.isRemote !== true &&
+          stat.active !== false &&
+          stat.ended !== true &&
+          Number.isFinite(stat.timestamp),
+      )
+      .sort((a, b) => b.timestamp - a.timestamp)[0];
+    if (audio) {
+      const key = identity(`${scope}:audio`, audio);
+      const current = snapshot(audio, direction);
+      const previous = this.previous.get(key)?.snapshot;
+      if (
+        previous &&
+        current.timestamp > previous.timestamp &&
+        !reset(current, previous)
+      ) {
+        const bytes = delta(current.bytes, previous.bytes);
+        if (bytes !== undefined)
+          result.audioBitrateKbps =
+            (bytes * 8) / (current.timestamp - previous.timestamp);
+      }
+      const codec = referenced(stats, audio, 'codecId', 'codec');
+      if (
+        typeof codec?.mimeType === 'string' &&
+        /^audio\/(opus|pcmu|pcma)$/i.test(codec.mimeType)
+      )
+        result.audioCodec = codec.mimeType;
+      const remote =
+        direction === 'outbound' ? remoteInbound(stats, audio) : undefined;
+      const measuredAudio = remote ?? audio;
+      const jitter = count(measuredAudio, 'jitter');
+      if (jitter !== undefined) result.audioJitterMs = jitter * 1000;
+      if (direction === 'inbound') {
+        result.audioPacketLossPercent = loss(current, previous);
+        result.audioConcealedSamples = count(audio, 'concealedSamples');
+        const delay = count(audio, 'jitterBufferDelay');
+        const emitted = count(audio, 'jitterBufferEmittedCount');
+        if (delay !== undefined && emitted && emitted > 0)
+          result.audioBufferMs = (delay / emitted) * 1000;
+      }
+      this.remember(scope, key, current, live);
+    }
+
     // Save every eligible stream so activity, rather than lifetime byte totals,
     // selects the current SSRC when Chrome briefly retains the previous one.
     for (const candidate of candidates)

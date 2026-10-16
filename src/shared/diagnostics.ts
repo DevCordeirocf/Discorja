@@ -21,6 +21,11 @@ export function sanitizeDiagnostics(input: unknown, version: string) {
     'freezeCount',
     'totalFreezesDuration',
     'availableOutgoingMbps',
+    'audioBitrateKbps',
+    'audioJitterMs',
+    'audioPacketLossPercent',
+    'audioConcealedSamples',
+    'audioBufferMs',
   ] as const;
   return {
     schemaVersion: 1,
@@ -49,6 +54,11 @@ export function sanitizeDiagnostics(input: unknown, version: string) {
         /^video\/(vp8|vp9|h264|av1)$/i.test(entry.codec)
       )
         safe.codec = entry.codec;
+      if (
+        typeof entry.audioCodec === 'string' &&
+        /^audio\/(opus|pcmu|pcma)$/i.test(entry.audioCodec)
+      )
+        safe.audioCodec = entry.audioCodec;
       for (const key of [
         'powerEfficientEncoder',
         'powerEfficientDecoder',

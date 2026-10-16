@@ -2348,6 +2348,50 @@ main {
   white-space: nowrap;
   z-index: 1;
 }
+.audio-panel,
+.audio-capture-options {
+  padding: 16px 20px;
+  border: 1px solid #34313f;
+  border-radius: 10px;
+  background: #17151f;
+  font-size: 12px;
+}
+.audio-panel p,
+.audio-capture-options p {
+  color: #b7b0c5;
+  line-height: 1.6;
+  margin: 8px 0;
+}
+.audio-panel small {
+  color: #b7b0c5;
+  line-height: 1.6;
+}
+.audio-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.audio-actions input[type='range'] {
+  max-width: 180px;
+  accent-color: #b8a0ff;
+}
+.audio-capture-options {
+  margin: 14px 0;
+}
+.audio-capture-options label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  line-height: 1.6;
+}
+.audio-capture-options input {
+  accent-color: #b8a0ff;
+}
+.source-modal {
+  max-height: 90vh;
+  overflow-y: auto;
+}
 @media (min-width: 1200px) {
   .metric-values {
     grid-template-columns: repeat(6, minmax(0, 1fr));

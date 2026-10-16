@@ -105,7 +105,9 @@ Variáveis de ambiente de endpoint prevalecem sobre o valor salvo ao iniciar. `.
 
 Escolher uma janela ou monitor concede aos participantes acesso ao conteúdo visível naquela fonte. Revise a prévia e feche informações privadas antes de iniciar. Um espectador pode registrar o conteúdo com ferramentas próprias; o aplicativo não consegue impedir isso.
 
-O MVP não inclui aprovação individual de novos participantes, senha adicional, recuperação de sala após reinício, emissão automática de credenciais TURN, múltiplos anfitriões, SFU, câmera ou áudio. A interface mostra o estado da captura e mantém o controle de parar disponível durante a transmissão.
+A versão 0.4.0 adiciona som opcional do computador pelo loopback do Windows. A autorização vale somente para a fonte selecionada e para a escolha explícita de áudio; não concede microfone ou câmera. Áudio e vídeo seguem na mesma conexão WebRTC. A prévia não reproduz som, e cada espectador controla sua recepção. A captura não isola áudio por janela; ver [áudio e Discord](audio.md).
+
+O aplicativo não inclui aprovação individual de novos participantes, senha adicional, recuperação de sala após reinício, emissão automática de credenciais TURN, múltiplos anfitriões, SFU ou câmera. A interface mostra o estado da captura e mantém o controle de parar disponível durante a transmissão.
 
 ## Segurança do aplicativo e do serviço
 

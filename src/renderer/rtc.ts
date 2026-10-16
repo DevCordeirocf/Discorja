@@ -8,6 +8,7 @@ import {
 } from '../shared/quality';
 import { AdaptiveQuality, resolutionScale } from './adaptation';
 import { PeerTelemetry } from './telemetry';
+import { AUDIO_MAX_BITRATE, AUDIO_UPLOAD_RESERVE } from '../shared/audio';
 
 interface Peer {
   connection: RTCPeerConnection;
@@ -29,6 +30,7 @@ interface Peer {
   lastState?: PeerConnectionStatus;
   restartAttempts: number;
   restartInFlight: boolean;
+  receivedStream?: MediaStream;
   setupTimer?: ReturnType<typeof setTimeout>;
   disconnectedTimer?: ReturnType<typeof setTimeout>;
   restartTimer?: ReturnType<typeof setTimeout>;
@@ -116,8 +118,12 @@ export class RoomPeers {
         });
     };
     connection.ontrack = (event) => {
-      if (this.current(peerId, peer))
-        this.onStream(event.streams[0] ?? new MediaStream([event.track]));
+      if (!this.current(peerId, peer)) return;
+      // A streamless audio event must not replace (and hide) the video stream.
+      peer.receivedStream ??= event.streams[0] ?? new MediaStream();
+      if (!peer.receivedStream.getTracks().includes(event.track))
+        peer.receivedStream.addTrack(event.track);
+      this.onStream(peer.receivedStream);
     };
     const stateChanged = () => {
       if (!this.current(peerId, peer)) return;
@@ -220,9 +226,18 @@ export class RoomPeers {
       Date.now() < peer.retryParametersAt
     )
       return;
-    const fairBitrate =
+    const audioSenders = peer.connection
+      .getSenders()
+      .filter(
+        (sender) =>
+          sender.track?.kind === 'audio' && sender.track.readyState !== 'ended',
+      );
+    const fairBitrate = Math.max(
+      1,
       (this.preferences.maxUploadMbps * 850_000) /
-      Math.max(1, this.outgoingCount());
+        Math.max(1, this.outgoingCount()) -
+        (audioSenders.length ? AUDIO_UPLOAD_RESERVE : 0),
+    );
     const target = peer.controller.target(fairBitrate);
     const senders = peer.connection
       .getSenders()
@@ -233,9 +248,32 @@ export class RoomPeers {
     const signature = JSON.stringify([
       target,
       senders.map((sender) => sender.track?.getSettings()),
+      audioSenders.length,
     ]);
     if (!peer.dirty && signature === peer.appliedTarget) return;
     try {
+      let audioParameterError = false;
+      for (const sender of audioSenders) {
+        try {
+          const parameters = sender.getParameters();
+          if (!parameters.encodings?.length)
+            throw new Error('Áudio ainda não negociado.');
+          const active = parameters.encodings.filter(
+            (encoding) => encoding.active !== false,
+          );
+          for (const encoding of active)
+            encoding.maxBitrate = Math.floor(
+              AUDIO_MAX_BITRATE /
+                Math.max(1, active.length) /
+                audioSenders.length,
+            );
+          await sender.setParameters(parameters);
+        } catch {
+          // Unsupported audio limits must not prevent the video budget being applied.
+          audioParameterError = true;
+        }
+        if (!this.current(peerId, peer)) return;
+      }
       for (const sender of senders) {
         if (!this.current(peerId, peer)) return;
         const parameters = sender.getParameters();
@@ -261,8 +299,9 @@ export class RoomPeers {
         await sender.setParameters(parameters);
         if (!this.current(peerId, peer)) return;
       }
-      peer.parameterError = false;
-      peer.dirty = false;
+      peer.parameterError = audioParameterError;
+      peer.dirty = audioParameterError;
+      peer.retryParametersAt = audioParameterError ? Date.now() + 10_000 : 0;
       peer.appliedTarget = signature;
     } catch {
       if (!this.current(peerId, peer)) return;
@@ -278,7 +317,9 @@ export class RoomPeers {
     const peer = this.create(peerId, 'host');
     try {
       await this.run(peerId, peer, async () => {
-        for (const track of stream.getVideoTracks())
+        for (const track of stream
+          .getTracks()
+          .filter((track) => track.readyState !== 'ended'))
           peer.connection.addTrack(track, stream);
         if (
           this.preferences.preferredCodec &&
@@ -348,6 +389,22 @@ export class RoomPeers {
       }
     }
     if (this.current(peerId, peer)) peer.incoming.push(...waiting.slice(-128));
+  }
+
+  /** Stop sending audio without renegotiating or interrupting screen video. */
+  async stopAudio(): Promise<void> {
+    await Promise.all(
+      [...this.peers].map(([id, peer]) =>
+        this.run(id, peer, async () => {
+          if (peer.role !== 'host') return;
+          for (const sender of peer.connection.getSenders())
+            if (sender.track?.kind === 'audio') await sender.replaceTrack(null);
+          peer.dirty = true;
+          peer.retryParametersAt = 0;
+          await this.applyParameters(id, peer);
+        }),
+      ),
+    );
   }
 
   async receive(

@@ -65,6 +65,60 @@ function network(relay: 'local' | 'remote' | false = false): Stat[] {
 }
 
 describe('Telemetria WebRTC por fluxo de vídeo', () => {
+  it('mede áudio separado do vídeo e descarta intervalos repetidos ou contadores reiniciados', () => {
+    const telemetry = new PeerTelemetry();
+    const sample = (
+      timestamp: number,
+      bytes: number,
+      received: number,
+      lost: number,
+      id = 'sound',
+    ) =>
+      telemetry.sample(
+        report(
+          video('inbound', {
+            timestamp,
+            bytesReceived: bytes * 10,
+            framesDecoded: timestamp / 100,
+          }),
+          {
+            id,
+            type: 'inbound-rtp',
+            kind: 'audio',
+            timestamp,
+            bytesReceived: bytes,
+            packetsReceived: received,
+            packetsLost: lost,
+            jitter: 0.012,
+            codecId: 'opus',
+            jitterBufferDelay: 0.8,
+            jitterBufferEmittedCount: 20,
+            concealedSamples: 960,
+          },
+          { id: 'opus', type: 'codec', timestamp, mimeType: 'audio/opus' },
+        ),
+        'peer',
+        'inbound',
+      );
+    expect(sample(1000, 1000, 100, 0).audioBitrateKbps).toBeUndefined();
+    const measured = sample(2000, 17000, 198, 2);
+    expect(measured).toMatchObject({
+      audioCodec: 'audio/opus',
+      audioBitrateKbps: 128,
+      audioJitterMs: 12,
+      audioPacketLossPercent: 2,
+      audioConcealedSamples: 960,
+      audioBufferMs: 40,
+      bitrateMbps: 1.28,
+    });
+    expect(sample(2000, 17000, 198, 2).audioBitrateKbps).toBeUndefined();
+    expect(sample(3000, 10, 1, 0).audioBitrateKbps).toBeUndefined();
+    expect(
+      sample(4000, 1000, 5, 0, 'replacement').audioBitrateKbps,
+    ).toBeUndefined();
+    telemetry.reset();
+    expect(sample(5000, 2000, 10, 0).audioBitrateKbps).toBeUndefined();
+  });
   it('informa encoder e congelamentos somente quando o navegador fornece dados', () => {
     const telemetry = new PeerTelemetry();
     const measured = telemetry.sample(

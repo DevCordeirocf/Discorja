@@ -6,7 +6,7 @@ export interface StreamPreferences {
   preset: QualityPresetId;
   content: ContentMode;
   adaptive: boolean;
-  /** Total video payload budget shared by the host's viewers, in Mbps. */
+  /** Total media budget shared by viewers, including audio and transport headroom. */
   maxUploadMbps: number;
 }
 
@@ -98,6 +98,12 @@ export interface PeerMetrics {
   freezeCount?: number;
   totalFreezesDuration?: number;
   availableOutgoingMbps?: number;
+  audioCodec?: string;
+  audioBitrateKbps?: number;
+  audioJitterMs?: number;
+  audioPacketLossPercent?: number;
+  audioConcealedSamples?: number;
+  audioBufferMs?: number;
   route?: 'direct' | 'relay' | 'unknown';
   limitation?: 'none' | 'cpu' | 'bandwidth' | 'other';
   levelLabel?: string;

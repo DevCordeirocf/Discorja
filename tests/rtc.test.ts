@@ -24,6 +24,9 @@ class FakeSender {
       this.inFlight -= 1;
     }
   });
+  replaceTrack = vi.fn(async (track: MediaStreamTrack | null) => {
+    (this as { track: MediaStreamTrack | null }).track = track;
+  });
 }
 
 class FakePC {
@@ -36,7 +39,7 @@ class FakePC {
   senders: FakeSender[] = [];
   closed = false;
   onicecandidate: (() => void) | null = null;
-  ontrack: (() => void) | null = null;
+  ontrack: ((event: RTCTrackEvent) => void) | null = null;
   onconnectionstatechange: (() => void) | null = null;
   oniceconnectionstatechange: (() => void) | null = null;
   onsignalingstatechange: (() => void) | null = null;
@@ -99,16 +102,19 @@ class FakePC {
   }
 }
 
-const stream = (width = 1920, height = 1080) =>
-  ({
-    getVideoTracks: () => [
-      {
-        kind: 'video',
-        readyState: 'live',
-        getSettings: () => ({ width, height }),
-      },
-    ],
-  }) as unknown as MediaStream;
+const stream = (width = 1920, height = 1080) => {
+  const tracks = [
+    {
+      kind: 'video',
+      readyState: 'live',
+      getSettings: () => ({ width, height }),
+    },
+  ];
+  return {
+    getVideoTracks: () => tracks,
+    getTracks: () => tracks,
+  } as unknown as MediaStream;
+};
 const instances: RoomPeers[] = [];
 function manager(
   preferences = { ...DEFAULT_STREAM_PREFERENCES },
@@ -116,12 +122,13 @@ function manager(
 ) {
   const send = vi.fn();
   const state = vi.fn();
-  const peers = new RoomPeers([], send, vi.fn(), state, {
+  const received = vi.fn();
+  const peers = new RoomPeers([], send, received, state, {
     preferences,
     onMetrics: metrics,
   });
   instances.push(peers);
-  return { peers, send, state, metrics };
+  return { peers, send, state, metrics, received };
 }
 async function connected(peers: RoomPeers, id: string) {
   await peers.offer(id, stream());
@@ -147,6 +154,72 @@ afterEach(() => {
 });
 
 describe('controle RTC e recuperação', () => {
+  it('mantém áudio e vídeo sem stream ID no mesmo MediaStream sem duplicar tracks', async () => {
+    class IncomingStream {
+      tracks: MediaStreamTrack[] = [];
+      getTracks() {
+        return this.tracks;
+      }
+      addTrack(track: MediaStreamTrack) {
+        this.tracks.push(track);
+      }
+    }
+    vi.stubGlobal('MediaStream', IncomingStream);
+    const { peers, received } = manager();
+    await peers.receive('host', { type: 'offer', sdp: 'v=0' }, true);
+    const pc = FakePC.instances[0];
+    const audio = { kind: 'audio' } as MediaStreamTrack;
+    const video = { kind: 'video' } as MediaStreamTrack;
+    for (const track of [audio, video, audio])
+      pc.ontrack?.({ track, streams: [] } as unknown as RTCTrackEvent);
+    const media = received.mock.calls[0][0] as IncomingStream;
+    expect(received.mock.calls.every(([value]) => value === media)).toBe(true);
+    expect(media.getTracks()).toEqual([audio, video]);
+  });
+  it('envia áudio e vídeo juntos, reserva banda e encerra só o som sem renegociar', async () => {
+    const { peers } = manager({
+      ...DEFAULT_STREAM_PREFERENCES,
+      maxUploadMbps: 4,
+    });
+    const videoStream = stream();
+    const video = videoStream.getVideoTracks()[0];
+    const audio = { kind: 'audio', readyState: 'live' } as MediaStreamTrack;
+    const media = { getTracks: () => [video, audio] } as unknown as MediaStream;
+    await peers.offer('viewer', media);
+    await peers.receive('viewer', { type: 'answer', sdp: 'v=0' }, false);
+    const pc = FakePC.instances[0];
+    expect(pc.senders.map((sender) => sender.track.kind)).toEqual([
+      'video',
+      'audio',
+    ]);
+    expect(pc.senders[0].parameters.encodings[0].maxBitrate).toBe(3_240_000);
+    expect(pc.senders[1].parameters.encodings[0].maxBitrate).toBe(128_000);
+    expect(pc.senders[1].parameters.encodings[0].maxFramerate).toBeUndefined();
+    pc.senders[1].setParameters.mockRejectedValueOnce(
+      new Error('unsupported audio limits'),
+    );
+    await peers.configure({ ...DEFAULT_STREAM_PREFERENCES, maxUploadMbps: 6 });
+    expect(pc.senders[0].parameters.encodings[0].maxBitrate).toBe(4_000_000);
+    await peers.configure({ ...DEFAULT_STREAM_PREFERENCES, maxUploadMbps: 4 });
+    await peers.stopAudio();
+    expect(pc.senders[1].replaceTrack).toHaveBeenCalledWith(null);
+    expect(pc.senders[0].track).toBe(video);
+    expect(pc.senders[0].parameters.encodings[0].maxBitrate).toBe(3_400_000);
+    expect(pc.createOffer).toHaveBeenCalledTimes(1);
+  });
+  it('não republica a captura de som encerrada para um espectador novo', async () => {
+    const { peers } = manager();
+    const tracks = [
+      ...stream().getTracks(),
+      { kind: 'audio', readyState: 'ended' } as MediaStreamTrack,
+    ];
+    await peers.offer('late-viewer', {
+      getTracks: () => tracks,
+    } as MediaStream);
+    expect(
+      FakePC.instances[0].senders.map((sender) => sender.track.kind),
+    ).toEqual(['video']);
+  });
   it('não acumula amostras ruins a partir do mesmo relatório de stats em cache', async () => {
     const preferences = {
       ...DEFAULT_STREAM_PREFERENCES,
