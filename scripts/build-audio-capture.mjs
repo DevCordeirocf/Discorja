@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, stat } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -60,12 +60,31 @@ const source = path.join(
   'discord-audio-capture.cpp',
 );
 const output = path.join(outputDirectory, 'discorja-audio-capture.exe');
-const command = `call "${vcvars}" >nul && cl.exe /nologo /std:c++20 /EHsc /O2 /W4 /DUNICODE /D_UNICODE "${source}" /Fo:"${path.join(outputDirectory, 'discord-audio-capture.obj')}" /link Mmdevapi.lib Ole32.lib Uuid.lib /OUT:"${output}"`;
-
-execFileSync('cmd.exe', ['/d', '/s', '/c', command], {
-  cwd: outputDirectory,
-  stdio: 'inherit',
-});
+const compileScript = path.join(outputDirectory, 'compile-audio-capture.cmd');
+const objectFile = path.join(outputDirectory, 'discord-audio-capture.obj');
+await writeFile(
+  compileScript,
+  [
+    '@echo off',
+    `call "${vcvars}" >nul`,
+    'if errorlevel 1 exit /b %errorlevel%',
+    `cl.exe /nologo /std:c++20 /EHsc /O2 /W4 /DUNICODE /D_UNICODE "${source}" /Fo:"${objectFile}" /link Mmdevapi.lib Ole32.lib Uuid.lib /OUT:"${output}"`,
+    'exit /b %errorlevel%',
+    '',
+  ].join('\r\n'),
+  'utf8',
+);
+try {
+  // Calling a batch file avoids cmd.exe reinterpreting the nested quotes in
+  // vcvars64.bat when Node builds the Windows command line.
+  execFileSync('cmd.exe', ['/d', '/c', `"${compileScript}"`], {
+    cwd: outputDirectory,
+    stdio: 'inherit',
+    windowsVerbatimArguments: true,
+  });
+} finally {
+  await rm(compileScript, { force: true });
+}
 const outputInfo = await stat(output).catch(() => null);
 if (!outputInfo?.isFile() || outputInfo.size === 0)
   throw new Error(
