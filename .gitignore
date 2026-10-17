@@ -48,6 +48,8 @@ test-results/
 playwright-report/
 playwright/.cache/
 *.log
+discorja-logs*.json
+discorja-diagnostico*.json
 logs/
 *.dmp
 *.hprof

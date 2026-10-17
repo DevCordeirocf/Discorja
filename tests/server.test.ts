@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
+import type { LogEvent } from '../src/shared/logs.js';
 import {
   createSignalingServer,
   type SignalingOptions,
@@ -879,6 +880,62 @@ describe('sinalização Discorja', () => {
     expect(await one.next('error')).toMatchObject({ code: 'ROOM_NOT_FOUND' });
   });
 
+  it.each([1, 2, 3] as const)(
+    'mantém a sala sem interação após 20 minutos no protocolo %i e respeita o prazo padrão de quatro horas',
+    async (protocol) => {
+      const createdAt = 1000;
+      let clock = createdAt;
+      const logs: LogEvent[] = [];
+      const statsToken = 'test-room-duration-'.padEnd(32, 'x');
+      const { url, httpUrl } = await start({
+        now: () => clock,
+        statsToken,
+        onLog: (event) => logs.push(event),
+      });
+      const roomCount = async () => {
+        const response = await fetch(`${httpUrl}/api/stats`, {
+          headers: { Authorization: `Bearer ${statsToken}` },
+        });
+        expect(response.status).toBe(200);
+        return (await response.json()).activeRooms;
+      };
+      const host =
+        protocol === 1 ? await connect(url) : await modern(url, protocol);
+      const room =
+        protocol === 1 ? await createRoom(host) : await modernRoom(host);
+
+      // Administrative stats run expiry cleanup without participant messages.
+      clock = createdAt + 21 * 60 * 1000;
+      expect(await roomCount()).toBe(1);
+
+      // A new participant must still be able to join the same idle room.
+      const viewer =
+        protocol === 1 ? await connect(url) : await modern(url, protocol);
+      if (protocol === 1) await join(viewer, room.code);
+      else await modernJoin(viewer, room.code);
+
+      clock = createdAt + 4 * 60 * 60 * 1000 - 1;
+      expect(await roomCount()).toBe(1);
+      clock += 1;
+      expect(await roomCount()).toBe(0);
+      const ended = logs.find((entry) => entry.event === 'room.ended');
+      expect(ended?.details).toMatchObject({
+        reason: 'expired',
+        durationMs: 14400000,
+        protocol,
+        participants: 2,
+      });
+      expect(ended?.details?.roomId).toMatch(/^[a-f0-9-]{36}$/);
+      expect(JSON.stringify(logs)).not.toContain(room.code);
+      expect(await host.next('room-closed')).toMatchObject({
+        reason: 'expired',
+      });
+      expect(await viewer.next('room-closed')).toMatchObject({
+        reason: 'expired',
+      });
+    },
+  );
+
   it('encerra salas expiradas, apaga associações e permite criar outra sala', async () => {
     let clock = 1000;
     const { url } = await start({
@@ -1055,7 +1112,11 @@ describe('sinalização Discorja', () => {
   });
 
   it('remove sockets sem pong e limpa suas salas', async () => {
-    const { url, wss } = await start({ heartbeatIntervalMs: 30 });
+    const logs: LogEvent[] = [];
+    const { url, wss } = await start({
+      heartbeatIntervalMs: 30,
+      onLog: (event) => logs.push(event),
+    });
     const host = await connect(url);
     const viewer = await connect(url);
     const room = await createRoom(host);
@@ -1066,5 +1127,24 @@ describe('sinalização Discorja', () => {
     expect(await viewer.next('room-closed')).toMatchObject({
       reason: 'host-left',
     });
+    expect(
+      logs.some((entry) => entry.event === 'connection.heartbeat-timeout'),
+    ).toBe(true);
+    expect(
+      logs.find((entry) => entry.event === 'room.ended')?.details?.reason,
+    ).toBe('host-left');
+  });
+  it('preserva a sala quando o consumidor de logs falha', async () => {
+    const { url } = await start({
+      onLog: () => {
+        throw new Error('fixture');
+      },
+    });
+    const host = await connect(url);
+    const room = await createRoom(host);
+    const viewer = await connect(url);
+    await join(viewer, room.code);
+    host.send({ type: 'close-room' });
+    expect((await viewer.next('room-closed')).reason).toBe('host-closed');
   });
 });

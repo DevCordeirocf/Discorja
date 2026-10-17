@@ -227,6 +227,7 @@ button:not(:disabled):active {
 .main-shell {
   margin-left: 218px;
   width: calc(100% - 218px);
+  min-width: 0;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -323,6 +324,7 @@ main {
 }
 .hero-copy {
   position: relative;
+  min-width: 0;
   z-index: 1;
 }
 .hero-copy h1 {
@@ -773,56 +775,6 @@ main {
 }
 .join-button:hover:not(:disabled) {
   background: #b9ead5;
-}
-.principles {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1.15fr;
-  gap: 20px;
-  border-top: 1px solid #26242e;
-  margin-top: 30px;
-  padding: 24px 1px 0;
-}
-.principles > div {
-  display: flex;
-  gap: 11px;
-  align-items: flex-start;
-}
-.principles .icon {
-  color: #7a6d8d;
-  width: 17px;
-  height: 17px;
-  margin-top: 2px;
-}
-.principles strong {
-  display: block;
-  color: #b0a8bf;
-  font-size: 9px;
-  font-weight: 550;
-  margin-bottom: 5px;
-}
-.principles small {
-  color: #625e70;
-  font-size: 9px;
-}
-.app-footer {
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 45px;
-  border-top: 1px solid #24242d;
-  color: #696575;
-  font-size: 9px;
-  gap: 12px;
-}
-.app-footer > span {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.app-footer .icon {
-  width: 11px;
-  height: 11px;
 }
 .room-header {
   display: flex;
@@ -1693,8 +1645,7 @@ main {
     padding-left: 64px;
     padding-right: 64px;
   }
-  .topbar,
-  .app-footer {
+  .topbar {
     padding-left: 64px;
     padding-right: 64px;
   }
@@ -1733,12 +1684,6 @@ main {
   .video-stage {
     min-height: 390px;
   }
-  .principles strong {
-    font-size: 10px;
-  }
-  .principles small {
-    font-size: 10px;
-  }
   .empty-stream h2 {
     font-size: 20px;
   }
@@ -1769,9 +1714,6 @@ main {
   .topbar {
     padding: 0 28px;
     height: 66px;
-  }
-  .app-footer {
-    padding: 0 28px;
   }
   main {
     padding: 27px 28px 26px;
@@ -1818,18 +1760,6 @@ main {
   }
   .section-heading > span {
     font-size: 9px;
-  }
-  .principles {
-    gap: 12px;
-  }
-  .principles > div {
-    gap: 7px;
-  }
-  .principles small {
-    font-size: 8px;
-  }
-  .principles strong {
-    font-size: 8px;
   }
   .room-grid {
     grid-template-columns: minmax(0, 1fr) 210px;
@@ -1937,8 +1867,7 @@ main {
     padding-left: 23px;
     padding-right: 23px;
   }
-  .topbar,
-  .app-footer {
+  .topbar {
     padding-left: 23px;
     padding-right: 23px;
   }
@@ -2044,16 +1973,6 @@ main {
   .person > .avatar {
     width: 25px;
     height: 25px;
-  }
-  .principles {
-    grid-template-columns: 1fr 1fr 1.1fr;
-  }
-  .principles .icon {
-    width: 14px;
-    height: 14px;
-  }
-  .principles small {
-    font-size: 7px;
   }
   .sidebar-caption {
     font-size: 7px;
@@ -2854,5 +2773,43 @@ video[data-preview-suspended] {
   }
   .diagnostics-heading > span {
     font-size: 7px;
+  }
+}
+
+.home-main .start-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.home-main .hero-art {
+  width: 290px;
+}
+
+@media (max-height: 820px) {
+  .home-main {
+    padding-top: 22px;
+    padding-bottom: 22px;
+  }
+  .home-main .welcome {
+    min-height: 200px;
+    margin-bottom: 20px;
+  }
+  .home-main .hero-copy h1 {
+    font-size: clamp(28px, 2.65vw, 36px);
+  }
+  .home-main .hero-art {
+    height: 200px;
+    transform: scale(0.8);
+    transform-origin: right center;
+  }
+  .home-main .start-card {
+    padding-top: 22px;
+    padding-bottom: 18px;
+  }
+  .home-main .card-symbol {
+    width: 35px;
+    height: 35px;
+    margin-bottom: 14px;
+  }
+  .home-main .start-card p {
+    margin-bottom: 18px;
   }
 }

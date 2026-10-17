@@ -8,6 +8,7 @@ import {
   net,
   powerSaveBlocker,
   protocol,
+  powerMonitor,
   session,
 } from 'electron';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -15,6 +16,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { authorizedFrame, rendererFile, trustedAppUrl } from './security';
 import { CaptureAuthorization, displayMediaPermission } from './capture';
+import { DesktopLogs } from './logs';
+import { errorFields, rendererLogEvent } from '../shared/logs';
 import type { AppConfig, UpdateState } from '../shared/protocol';
 import {
   DEFAULT_SIGNALING_URL,
@@ -37,6 +40,11 @@ protocol.registerSchemesAsPrivileged([
 app.setName('Discorja');
 
 let window: BrowserWindow | null = null;
+let logs: DesktopLogs | undefined;
+let logWindowStarted = 0;
+let rendererLogCount = 0;
+let exportingLogs = false;
+let quitFlushed = false;
 const captureAuthorization = new CaptureAuthorization();
 let knownSources = new Set<string>();
 let sourcesExpire = 0;
@@ -69,6 +77,8 @@ function assertSender(event: Electron.IpcMainInvokeEvent) {
 }
 
 function setSharing(value: boolean) {
+  if (sharing !== value)
+    logs?.write({ event: value ? 'capture.started' : 'capture.stopped' });
   sharing = value;
   if (window && !window.isDestroyed()) {
     window.setTitle(value ? '● Compartilhando — Discorja' : 'Discorja');
@@ -85,6 +95,8 @@ function setSharing(value: boolean) {
 }
 
 function publishUpdate(state: UpdateState) {
+  if (state.status === 'error' && updateState.status !== 'error')
+    logs?.write({ event: 'updater.error' });
   updateState = state;
   if (window && !window.isDestroyed())
     window.webContents.send('updates:state', state);
@@ -168,6 +180,35 @@ function registerIpc() {
     });
   };
   handle('window:foreground', foreground);
+  handle('logs:record', (input: unknown) => {
+    if (Date.now() - logWindowStarted >= 10_000) {
+      logWindowStarted = Date.now();
+      rendererLogCount = 0;
+    }
+    if (++rendererLogCount > 40) return;
+    const safe = rendererLogEvent(input);
+    if (safe) logs?.write(safe);
+  });
+  handle('logs:export', async () => {
+    if (!logs || exportingLogs) return false;
+    exportingLogs = true;
+    try {
+      const result = await dialog.showSaveDialog(window!, {
+        title: 'Salvar logs de erros',
+        defaultPath: 'discorja-logs.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (result.canceled || !result.filePath) return false;
+      await writeFile(
+        result.filePath,
+        JSON.stringify(await logs.snapshot(), null, 2),
+        'utf8',
+      );
+      return true;
+    } finally {
+      exportingLogs = false;
+    }
+  });
   handle('config:get', (): AppConfig => ({
     signalingUrl,
     iceServers,
@@ -296,6 +337,14 @@ function registerIpc() {
 
 async function main() {
   await app.whenReady();
+  logs = new DesktopLogs(
+    path.join(app.getPath('userData'), 'logs'),
+    512 * 1024,
+    app.getVersion(),
+  );
+  logs.write({ event: 'app.started', details: { version: app.getVersion() } });
+  powerMonitor.on('suspend', () => logs?.write({ event: 'power.suspend' }));
+  powerMonitor.on('resume', () => logs?.write({ event: 'power.resume' }));
   const settingsPath = path.join(app.getPath('userData'), 'settings.json');
   try {
     signalingUrl = validateSignalingUrl(
@@ -446,10 +495,18 @@ async function main() {
   window.webContents.on('page-title-updated', (event) =>
     event.preventDefault(),
   );
-  window.webContents.on('render-process-gone', () => {
+  window.webContents.on('render-process-gone', (_event, details) => {
+    logs?.write({
+      event: 'renderer.gone',
+      details: { reason: details.reason, exitCode: details.exitCode },
+    });
     captureAuthorization.cancel();
     setSharing(false);
   });
+  window.on('unresponsive', () =>
+    logs?.write({ event: 'renderer.unresponsive' }),
+  );
+  window.on('responsive', () => logs?.write({ event: 'renderer.responsive' }));
   window.on('closed', () => {
     captureAuthorization.cancel();
     setSharing(false);
@@ -462,11 +519,30 @@ async function main() {
 }
 
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   captureAuthorization.cancel();
   setSharing(false);
+  if (logs && !quitFlushed) {
+    event.preventDefault();
+    quitFlushed = true;
+    logs.write({ event: 'app.stopping' });
+    // A broken disk must not keep the application alive indefinitely.
+    const deadline = setTimeout(() => app.exit(), 2000);
+    void logs.flush().finally(() => {
+      clearTimeout(deadline);
+      app.quit();
+    });
+  }
+});
+process.on('uncaughtExceptionMonitor', (error) =>
+  logs?.fatal({ event: 'app.exception', details: errorFields(error) }),
+);
+process.on('unhandledRejection', (error) => {
+  logs?.write({ event: 'app.rejection', details: errorFields(error) });
+  app.quit();
 });
 main().catch((error) => {
+  logs?.fatal({ event: 'app.start-failed', details: errorFields(error) });
   console.error('Falha ao iniciar Discorja:', error);
   dialog.showErrorBox(
     'Não foi possível iniciar o Discorja',

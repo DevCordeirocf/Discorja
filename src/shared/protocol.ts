@@ -154,6 +154,8 @@ export interface UpdateState {
 }
 
 export interface DiscorjaAPI {
+  recordLog(event: import('./logs.js').LogEvent): Promise<void>;
+  exportLogs(): Promise<boolean>;
   getForeground(): Promise<boolean>;
   onForeground(callback: (foreground: boolean) => void): () => void;
   getConfig(): Promise<AppConfig>;

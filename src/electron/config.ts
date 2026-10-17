@@ -19,7 +19,7 @@ export function validateSignalingUrl(value: unknown): string {
     url.hash
   ) {
     throw new Error(
-      'Use WSS para servidores públicos. WS é permitido apenas no próprio computador.',
+      'Use WS para servidores públicos. WS é permitido apenas no próprio computador.',
     );
   }
   return url.toString();

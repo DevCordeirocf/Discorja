@@ -7,6 +7,11 @@ import {
 } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
+import {
+  errorFields,
+  sanitizeLogEvent,
+  type LogEvent,
+} from '../shared/logs.js';
 import type {
   ClientMessage,
   IceCandidate,
@@ -31,6 +36,7 @@ export interface RateLimit {
 
 /** Limits count attempts, including failed requests. IPs use the TCP address, never forwarded headers. */
 export interface SignalingOptions {
+  onLog?: (entry: LogEvent) => void;
   statsToken?: string;
   resumeGraceMs?: number;
   /** Exact WebSocket Origin allowlist; defaults to the desktop app and local Vite development. */
@@ -86,6 +92,8 @@ interface Client {
   signals: Map<string, Counter>;
 }
 interface Room {
+  logId: string;
+  createdAt: number;
   protocol: 1 | 2 | 3;
   publications: Map<
     string,
@@ -300,6 +308,25 @@ export function createSignalingServer(options: SignalingOptions = {}): {
   close: () => Promise<void>;
 } {
   const now = options.now ?? Date.now;
+  let rejectedLogStart = now();
+  let rejectedLogCount = 0;
+  const log = (entry: LogEvent): void => {
+    if (entry.event === 'room.rejected') {
+      if (now() - rejectedLogStart >= 10_000) {
+        rejectedLogStart = now();
+        rejectedLogCount = 0;
+      }
+      if (++rejectedLogCount > 40) return;
+    }
+    const safe = sanitizeLogEvent(entry);
+    if (safe) {
+      try {
+        options.onLog?.(safe);
+      } catch {
+        /* Logging must not interrupt rooms. */
+      }
+    }
+  };
   const origins = new Set(options.allowedOrigins ?? DEFAULT_ORIGINS);
   const maxViewers = positiveInteger(options.maxViewers, 4, 'maxViewers');
   const maxPublishers = positiveInteger(
@@ -388,8 +415,13 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     if (client.socket.readyState === WebSocket.OPEN)
       client.socket.send(JSON.stringify(message));
   };
-  const error = (client: Client, code: string, message: string) =>
+  const error = (client: Client, code: string, message: string) => {
+    log({
+      event: 'room.rejected',
+      details: { serverCode: code, roomId: client.room?.logId },
+    });
     send(client, { type: 'error', code, message });
+  };
   const members = (room: Room) => [room.host, ...room.viewers.values()];
   const roomState = (
     room: Room,
@@ -473,6 +505,16 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     reason: 'host-left' | 'host-closed' | 'expired',
   ) => {
     if (!rooms.delete(room.code)) return;
+    log({
+      event: 'room.ended',
+      details: {
+        reason,
+        roomId: room.logId,
+        protocol: room.protocol,
+        durationMs: Math.max(0, now() - room.createdAt),
+        participants: room.viewers.size + 1,
+      },
+    });
     for (const member of [room.host, ...room.viewers.values()]) {
       sessions.delete(member.resumeToken);
       member.room = undefined;
@@ -677,10 +719,17 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     socket.on('pong', () => {
       client.alive = true;
     });
-    socket.on('error', () => {
-      /* close performs membership cleanup after a failed transport. */
+    socket.on('error', (error) => {
+      log({
+        event: 'connection.error',
+        details: { ...errorFields(error), roomId: client.room?.logId },
+      });
     });
-    socket.on('close', () => {
+    socket.on('close', (code) => {
+      log({
+        event: 'connection.closed',
+        details: { code, roomId: client.room?.logId },
+      });
       clients.delete(socket);
       if (
         !closing &&
@@ -850,6 +899,8 @@ export function createSignalingServer(options: SignalingOptions = {}): {
             ).join('');
           } while (rooms.has(code));
           const room: Room = {
+            logId: randomUUID(),
+            createdAt: now(),
             protocol: client.protocol,
             publications: new Map(),
             name: message.roomName ?? `Sala de ${message.name}`.slice(0, 40),
@@ -863,6 +914,14 @@ export function createSignalingServer(options: SignalingOptions = {}): {
             sharing: false,
           };
           rooms.set(code, room);
+          log({
+            event: 'room.created',
+            details: {
+              roomId: room.logId,
+              protocol: room.protocol,
+              roomTtlMs: ttl,
+            },
+          });
           client.room = room;
           client.name = message.name;
           sessions.set(client.resumeToken, client);
@@ -1285,6 +1344,10 @@ export function createSignalingServer(options: SignalingOptions = {}): {
   const heartbeat = setInterval(() => {
     for (const client of clients.values()) {
       if (!client.alive) {
+        log({
+          event: 'connection.heartbeat-timeout',
+          details: { roomId: client.room?.logId, reason: 'timeout' },
+        });
         client.socket.terminate();
         continue;
       }

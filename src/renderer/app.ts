@@ -9,6 +9,7 @@ import type {
   Publication,
 } from '../shared/protocol';
 import { SignalConnection } from './signal';
+import { errorFields, type LogEventName } from '../shared/logs';
 import { RoomPeers } from './rtc';
 import { SYSTEM_AUDIO_CONSTRAINTS } from '../shared/audio';
 import { knownRooms, rememberRoom, type KnownRoom } from './rooms';
@@ -81,7 +82,26 @@ announcements.setAttribute('role', 'status');
 announcements.setAttribute('aria-live', 'polite');
 announcements.setAttribute('aria-atomic', 'true');
 document.body.append(announcements);
+let sessionEpoch = 0;
 const api = window.discorja;
+function recordLog(
+  event: LogEventName,
+  details: Record<string, unknown> = {},
+): void {
+  void api
+    ?.recordLog({ event, details: { session: sessionEpoch, ...details } })
+    .catch(() => undefined);
+}
+window.addEventListener('error', (event) =>
+  recordLog('renderer.error', {
+    ...errorFields(event.error),
+    line: event.lineno,
+    column: event.colno,
+  }),
+);
+window.addEventListener('unhandledrejection', (event) =>
+  recordLog('renderer.rejection', errorFields(event.reason)),
+);
 let nativeForeground = !api;
 let config: AppConfig = {
   signalingUrl: 'ws://127.0.0.1:8787',
@@ -165,7 +185,6 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined;
 let update: UpdateState = { status: 'disabled' };
 let socket: SignalConnection | null = null;
 let peers: RoomPeers | null = null;
-let sessionEpoch = 0;
 let captureEpoch = 0;
 let remoteTimer: ReturnType<typeof setTimeout> | undefined;
 let pending: {
@@ -285,6 +304,7 @@ function createWatchPeers(): void {
       if (!current()) return;
       connectionReconnecting = state === 'reconnecting';
       if (state === 'failed') {
+        recordLog('rtc.failed');
         stopTracks(remoteStream);
         remoteStream = null;
         connectionIssue =
@@ -463,6 +483,7 @@ function leaveRoom(
   kind: 'error' | 'info' = 'info',
   tellServer = true,
 ): void {
+  if (room) recordLog('room.left', { reason: tellServer ? 'user' : 'unknown' });
   clearTimeout(toastTimer);
   clearTimeout(resumeTimer);
   clearTimeout(resumeDeadline);
@@ -576,6 +597,7 @@ function createPeers(): void {
     },
     (peerId, state) => {
       if (epoch !== sessionEpoch) return;
+      if (state === 'failed') recordLog('rtc.failed');
       const viewer = viewers.get(peerId);
       if (viewer) {
         viewer.connected = state === 'connected';
@@ -817,6 +839,13 @@ function applyRoomState(message: RoomState): void {
 }
 
 function onMessage(message: ServerMessage): void {
+  if (message.type === 'room-state' && message.reason !== 'updated')
+    recordLog(
+      message.reason === 'resumed'
+        ? 'signal.resumed'
+        : `room.${message.reason}`,
+      { protocol: message.protocol },
+    );
   switch (message.type) {
     case 'stream-signal':
       if (!multiState()) return;
@@ -965,10 +994,13 @@ function onMessage(message: ServerMessage): void {
       break;
     }
     case 'room-closed':
+      recordLog('room.closed', { reason: message.reason });
       leaveRoom(
         message.reason === 'expired'
           ? 'A sala expirou. Crie ou entre em uma nova sala.'
-          : 'A sala foi encerrada pelo dono.',
+          : message.reason === 'host-left'
+            ? 'A sala foi encerrada porque o dono saiu ou perdeu a conexão.'
+            : 'A sala foi encerrada pelo dono.',
         'info',
         false,
       );
@@ -977,6 +1009,7 @@ function onMessage(message: ServerMessage): void {
       leaveRoom('Você foi removido da sala.', 'info', false);
       break;
     case 'error': {
+      recordLog('room.rejected', { serverCode: message.code });
       if (multiState() && !signalRecovering) {
         if (
           [
@@ -1014,6 +1047,7 @@ function recoverSignaling(): void {
     return;
   }
   signalRecovering = true;
+  recordLog('signal.recovery-started');
   connectionReconnecting = true;
   latestMetrics = [];
   peers?.dispose();
@@ -1025,23 +1059,27 @@ function recoverSignaling(): void {
   const epoch = sessionEpoch;
   let attempt = 0;
   resumeDeadline = setTimeout(() => {
-    if (epoch === sessionEpoch && signalRecovering)
+    if (epoch === sessionEpoch && signalRecovering) {
+      recordLog('signal.recovery-failed', { reason: 'deadline' });
       leaveRoom(
         'Não foi possível retomar a sala. A transmissão foi encerrada.',
         'error',
         false,
       );
+    }
   }, 18_000);
   const retry = async () => {
     if (epoch !== sessionEpoch || !signalRecovering) return;
+    recordLog('signal.retry', { attempt: ++attempt });
     let opened = false;
     const connection = new SignalConnection(
       config.signalingUrl,
       (message) => {
         if (epoch === sessionEpoch) onMessage(message);
       },
-      () => {
+      (details) => {
         if (epoch !== sessionEpoch) return;
+        recordLog('signal.closed', details);
         if (!signalRecovering) recoverSignaling();
         else if (opened) resumeTimer = setTimeout(() => void retry(), 1000);
       },
@@ -1055,12 +1093,13 @@ function recoverSignaling(): void {
         return;
       }
       connection.send({ type: 'resume-room', token: resumeToken });
-    } catch {
+    } catch (error) {
+      recordLog('signal.connect-failed', errorFields(error));
       connection.disconnect();
       if (epoch === sessionEpoch && signalRecovering)
         resumeTimer = setTimeout(
           () => void retry(),
-          Math.min(3000, 500 * 2 ** attempt++),
+          Math.min(3000, 500 * 2 ** (attempt - 1)),
         );
     }
   };
@@ -1089,19 +1128,24 @@ async function connectRoom(kind: 'create' | 'join'): Promise<void> {
   notice = null;
   busy = 'room';
   const epoch = ++sessionEpoch;
+  recordLog('signal.connecting');
   const connection = new SignalConnection(
     config.signalingUrl,
     (message) => {
       if (epoch === sessionEpoch) onMessage(message);
     },
-    () => {
-      if (epoch === sessionEpoch) recoverSignaling();
+    (details) => {
+      if (epoch === sessionEpoch) {
+        recordLog('signal.closed', details);
+        recoverSignaling();
+      }
     },
   );
   socket = connection;
   render();
   try {
     await connection.connect();
+    recordLog('signal.connected');
     if (epoch !== sessionEpoch) {
       connection.disconnect();
       return;
@@ -1129,6 +1173,7 @@ async function connectRoom(kind: 'create' | 'join'): Promise<void> {
         : { type: 'join-room', name, code: joinCode },
     );
   } catch (error) {
+    recordLog('signal.connect-failed', errorFields(error));
     if (epoch === sessionEpoch)
       leaveRoom(
         error instanceof Error
@@ -1311,6 +1356,7 @@ async function startSharing(): Promise<void> {
     render();
   } catch (error) {
     stopTracks(stream);
+    recordLog('capture.failed', errorFields(error));
     if (!current()) return;
     busy = null;
     modal = null;
@@ -1375,17 +1421,6 @@ async function saveSettings(): Promise<void> {
   } finally {
     busy = null;
     render();
-  }
-}
-
-function endpointLabel(): string {
-  try {
-    const url = new URL(config.signalingUrl);
-    return ['localhost', '127.0.0.1'].includes(url.hostname)
-      ? 'Servidor local'
-      : url.hostname;
-  } catch {
-    return 'Servidor não configurado';
   }
 }
 
@@ -1723,15 +1758,14 @@ function patchMetrics(): void {
 function renderHome(): string {
   const disabled = !api || !loaded || !!busy;
   return `<section class="welcome">
-    <div class="hero-copy"><span class="eyebrow"><span class="tiny-spark">✦</span> PERTO, MESMO DE LONGE</span><h1>Sua tela.<br>Uma boa <span>companhia.</span></h1><p>Mostre uma ideia, acompanhe um jogo ou só fique junto.<br>Crie uma sala e convide quem faz parte do momento.</p></div>
+    <div class="hero-copy"><span class="eyebrow"><span class="tiny-spark">✦</span>Criado por Pretágoras</span><h1>Censura? <br>A tecnologia é apenas uma<span> ferramenta.</span></h1><p>o problema não é a criação, mas o uso que se faz dela.<br>Crie uma sala e convide alguem</p></div>
     <div class="hero-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><span class="art-spark spark-one">✧</span><span class="art-spark spark-two">✦</span><div class="art-window art-back"><div class="art-dots"><i></i><i></i><i></i></div><div class="art-landscape"><span></span><i></i></div></div><div class="art-window art-front"><div class="art-dots"><i></i><i></i><i></i></div><div class="art-play">${icon('screen')}</div><div class="art-line"></div><div class="art-line short"></div><div class="art-avatars"><i>M</i><i>A</i><i>+</i></div><span class="art-live"><i></i> juntos agora</span></div></div>
   </section>
-  <section class="start-section" aria-labelledby="start-heading"><div class="section-heading"><h2 id="start-heading">Onde a gente se encontra?</h2><span>Sem complicar. É só chegar.</span></div>
+  <section class="start-section" aria-labelledby="start-heading"><div class="section-heading"><h2 id="start-heading">Onde a gente se encontra?</h2><span>Sem Janja, apenas transmissão.</span></div>
     <div class="identity-field"><label for="display-name">Como você quer ser chamado?</label><div class="name-input">${icon('users')}<input id="display-name" autocomplete="nickname" maxlength="32" placeholder="Seu nome" value="${escape(displayName)}" ${busy ? 'disabled' : ''}></div></div>
-    <div class="start-grid"><article class="start-card create-card"><div class="card-symbol purple">${icon('screen')}</div><h3>O momento é seu</h3><p>Abra uma sala privada e compartilhe<br>uma janela ou sua tela inteira.</p><button class="button primary wide" data-action="create" ${disabled ? 'disabled' : ''}>${busy === 'room' ? '<span class="spinner"></span> Conectando…' : `${icon('plus')} Criar uma sala`}</button><span class="card-footnote">Você escolhe o que mostrar.</span></article>
-    <article class="start-card join-card"><div class="card-symbol mint">${icon('users')}</div><h3>Tem alguém esperando?</h3><p>Recebeu um convite? Digite o código<br>e entre para acompanhar.</p><form id="join-form"><label class="sr-only" for="room-code">Código da sala com 8 caracteres</label><div class="join-input"><span>#</span><input id="room-code" aria-label="Código da sala com 8 caracteres" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="9" placeholder="CÓDIGO DA SALA" value="${escape(joinCode)}" ${busy ? 'disabled' : ''}><button type="submit" class="join-button" aria-label="Entrar na sala" ${disabled ? 'disabled' : ''}>${icon('arrow')}</button></div></form><span class="card-footnote">8 caracteres, um lugar para estar.</span></article></div>
-  </section>
-  <section class="principles" aria-label="Como funciona"><div>${icon('lock')}<span><strong>Só quem você convida</strong><small>Entre com o código da sala.</small></span></div><div>${icon('screen')}<span><strong>Você no controle</strong><small>Comece e pare quando quiser.</small></span></div><div>${icon('shield')}<span><strong>O momento fica no momento</strong><small>Sem gravação automática.</small></span></div></section>`;
+    <div class="start-grid"><article class="start-card create-card"><div class="card-symbol purple">${icon('screen')}</div><h3>Crie uma sala</h3><p>Abra uma sala privada e compartilhe<br>uma janela ou sua tela inteira.</p><button class="button primary wide" data-action="create" ${disabled ? 'disabled' : ''}>${busy === 'room' ? '<span class="spinner"></span> Conectando…' : `${icon('plus')} CRIAR SALA`}</button></article>
+    <article class="start-card join-card"><div class="card-symbol mint">${icon('users')}</div><h3>Possui um código? </h3><p>Recebeu um convite? Digite o código<br>e entre para acompanhar.</p><form id="join-form"><label class="sr-only" for="room-code">Código da sala com 8 caracteres</label><div class="join-input"><span>#</span><input id="room-code" aria-label="Código da sala com 8 caracteres" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="9" placeholder="CÓDIGO DA SALA" value="${escape(joinCode)}" ${busy ? 'disabled' : ''}><button type="submit" class="join-button" aria-label="Entrar na sala" ${disabled ? 'disabled' : ''}>${icon('arrow')}</button></div></form><span class="card-footnote">8 caracteres.</span></article></div>
+  </section>`;
 }
 
 function renderRoomV2(): string {
@@ -1818,7 +1852,7 @@ function renderModal(): string {
     error: update.message ?? 'Não foi possível consultar atualizações.',
     current: 'Você está na versão mais recente.',
   };
-  return `<div class="modal-overlay"><section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-heading"><div><span class="eyebrow">DO SEU JEITO</span><h2 id="modal-title">Configurações</h2></div><button class="icon-button" data-action="close-modal" aria-label="Fechar configurações" ${busy === 'settings' ? 'disabled' : ''}>${icon('close')}</button></div><form id="settings-form"><label class="field-label" for="signaling-url">Servidor de sinalização</label><p class="field-help">O servidor conecta as pessoas da sala. Todos precisam usar o mesmo endereço.</p><input id="signaling-url" class="text-input" type="url" required spellcheck="false" autocomplete="off" placeholder="wss://seu-servidor.exemplo" value="${escape(settingUrl)}" ${room || busy ? 'disabled' : ''}><span class="field-hint">Use wss:// para servidores públicos. O endereço local serve para desenvolvimento.</span>${room ? '<p class="settings-warning">Encerre ou saia da sala para alterar o servidor.</p>' : ''}<div class="settings-divider"></div><div class="settings-update"><div class="settings-app-icon">${logo}</div><div><strong>Discorja <span>v${escape(config.version)}</span></strong><p>${escape(updateText[update.status])}</p></div></div><div class="update-actions">${update.status === 'available' ? '<button type="button" class="button secondary" data-action="download-update">Baixar atualização</button>' : update.status === 'downloaded' ? `<button type="button" class="button secondary" data-action="install-update" >Reiniciar e instalar</button>` : `<button type="button" class="button subtle" data-action="check-update" ${!api || !config.updatesConfigured || ['checking', 'downloading', 'available'].includes(update.status) ? 'disabled' : ''}>${icon('refresh')} Verificar atualizações</button>`}</div><div class="modal-footer"><button type="button" class="button subtle" data-action="close-modal" ${busy === 'settings' ? 'disabled' : ''}>Fechar</button><button type="submit" class="button primary" ${!api || !!room || !!busy ? 'disabled' : ''}>${busy === 'settings' ? '<span class="spinner"></span>' : ''}Salvar configurações</button></div></form></section></div>`;
+  return `<div class="modal-overlay"><section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-heading"><div><span class="eyebrow">DO SEU JEITO</span><h2 id="modal-title">Configurações</h2></div><button class="icon-button" data-action="close-modal" aria-label="Fechar configurações" ${busy === 'settings' ? 'disabled' : ''}>${icon('close')}</button></div><form id="settings-form"><div class="settings-divider"></div><p class="field-help">Se a sala cair ou o app apresentar erro, salve os logs para investigar. Os registros continuam disponíveis após reabrir o aplicativo.</p><button type="button" class="button secondary" data-action="export-logs">Salvar logs de erros</button><div class="settings-divider"></div><label class="field-label" for="signaling-url">Servidor de sinalização</label><p class="field-help">O servidor conecta as pessoas da sala. Todos precisam usar o mesmo endereço.</p><input id="signaling-url" class="text-input" type="url" required spellcheck="false" autocomplete="off" placeholder="wss://seu-servidor.exemplo" value="${escape(settingUrl)}" ${room || busy ? 'disabled' : ''}><span class="field-hint">Use wss:// para servidores públicos. O endereço local serve para desenvolvimento.</span>${room ? '<p class="settings-warning">Encerre ou saia da sala para alterar o servidor.</p>' : ''}<div class="settings-divider"></div><div class="settings-update"><div class="settings-app-icon">${logo}</div><div><strong>Discorja <span>v${escape(config.version)}</span></strong><p>${escape(updateText[update.status])}</p></div></div><div class="update-actions">${update.status === 'available' ? '<button type="button" class="button secondary" data-action="download-update">Baixar atualização</button>' : update.status === 'downloaded' ? `<button type="button" class="button secondary" data-action="install-update" >Reiniciar e instalar</button>` : `<button type="button" class="button subtle" data-action="check-update" ${!api || !config.updatesConfigured || ['checking', 'downloading', 'available'].includes(update.status) ? 'disabled' : ''}>${icon('refresh')} Verificar atualizações</button>`}</div><div class="modal-footer"><button type="button" class="button subtle" data-action="close-modal" ${busy === 'settings' ? 'disabled' : ''}>Fechar</button><button type="submit" class="button primary" ${!api || !!room || !!busy ? 'disabled' : ''}>${busy === 'settings' ? '<span class="spinner"></span>' : ''}Salvar configurações</button></div></form></section></div>`;
 }
 
 function render(): void {
@@ -1854,7 +1888,7 @@ function render(): void {
   const interaction = rememberInteraction(root);
   const hadModal = !!root.querySelector('[role="dialog"]');
   const stage = room ? 'Sua sala' : 'Início';
-  root.innerHTML = `<div class="app-shell"><a class="skip-link" href="#main-content">Ir para o conteúdo</a><aside class="sidebar"><div class="brand"><span class="brand-mark">${logo}</span><span>discorja<span class="brand-period">.</span></span></div><div class="sidebar-caption">SEU PONTO DE ENCONTRO</div><nav aria-label="Navegação principal"><button class="nav-item ${!room ? 'active' : ''}" data-action="home">${icon('home')} Início${!room ? '<span></span>' : ''}</button>${room ? `<button class="nav-item active" data-action="room">${icon('screen')} Sua sala <span></span></button>` : ''}</nav><div class="sidebar-bottom"><div class="little-note"><span>Um código.<br>Um momento.<br><strong>Todo mundo perto.</strong></span><i>✳</i></div><button class="nav-item" data-action="settings">${icon('settings')} Configurações</button><div class="version-label">DISCORJA <span>v${escape(config.version)}</span></div></div></aside><div class="main-shell"><header class="topbar"><div class="breadcrumb">Seu espaço <span>/</span> <strong>${stage}</strong></div><div class="topbar-status"><span class="${sharing ? 'live-dot' : 'online-dot'}"></span>${sharing ? 'Você está transmitindo' : room ? 'Conectado à sala' : 'Pronto para conectar'}<span class="topbar-separator"></span><span class="private-label">${icon('lock')} Feito para a sua turma</span></div></header><main id="main-content" tabindex="-1">${!api ? `<div class="preview-notice">${icon('screen')} Prévia da interface. Abra o aplicativo desktop para criar salas e compartilhar sua tela.</div>` : ''}${notice ? `<div class="notice ${notice.kind}" aria-label="Aviso">${icon(notice.kind === 'error' ? 'alert' : notice.kind === 'success' ? 'check' : 'network')}<span>${escape(notice.text)}</span><button class="icon-button" data-action="dismiss" aria-label="Dispensar aviso">${icon('close')}</button></div>` : ''}${room ? renderRoom() : renderHome()}</main><footer class="app-footer"><span><i class="${socket && room ? 'online-dot' : 'server-dot'}"></i>${escape(endpointLabel())}${socket && room ? ' · conectado' : ''}</span><span>${icon('shield')} Captura por sua escolha. Sempre.</span></footer></div></div>${renderModal()}`;
+  root.innerHTML = `<div class="app-shell"><a class="skip-link" href="#main-content">Ir para o conteúdo</a><aside class="sidebar"><div class="brand"><span class="brand-mark">${logo}</span><span>discorja<span class="brand-period">.</span></span></div><div class="sidebar-caption">SEU PONTO DE ENCONTRO</div><nav aria-label="Navegação principal"><button class="nav-item ${!room ? 'active' : ''}" data-action="home">${icon('home')} Início${!room ? '<span></span>' : ''}</button>${room ? `<button class="nav-item active" data-action="room">${icon('screen')} Sua sala <span></span></button>` : ''}</nav><div class="sidebar-bottom"><div class="little-note"><span>Um código.<br>Um momento.<br><strong>Todo mundo perto.</strong></span><i>✳</i></div><button class="nav-item" data-action="settings">${icon('settings')} Configurações</button><div class="version-label">DISCORJA <span>v${escape(config.version)}</span></div></div></aside><div class="main-shell"><header class="topbar"><div class="breadcrumb">Seu espaço <span>/</span> <strong>${stage}</strong></div><div class="topbar-status"><span class="${sharing ? 'live-dot' : 'online-dot'}"></span>${sharing ? 'Você está transmitindo' : room ? 'Conectado à sala' : 'Pronto para conectar'}<span class="topbar-separator"></span><span class="private-label">${icon('lock')} Feito para a sua turma</span></div></header><main id="main-content" class="${room ? 'room-main' : 'home-main'}" tabindex="-1">${!api ? `<div class="preview-notice">${icon('screen')} Prévia da interface. Abra o aplicativo desktop para criar salas e compartilhar sua tela.</div>` : ''}${notice ? `<div class="notice ${notice.kind}" aria-label="Aviso">${icon(notice.kind === 'error' ? 'alert' : notice.kind === 'success' ? 'check' : 'network')}<span>${escape(notice.text)}</span><button class="icon-button" data-action="dismiss" aria-label="Dispensar aviso">${icon('close')}</button></div>` : ''}${room ? renderRoom() : renderHome()}</main></div></div>${renderModal()}`;
   root
     .querySelector('nav')
     ?.insertAdjacentHTML(
@@ -2162,6 +2196,23 @@ root.addEventListener('click', (event) => {
           },
         })
         .catch(() => notify('Não foi possível salvar o diagnóstico.', 'error'));
+      break;
+    case 'export-logs':
+      void api
+        ?.exportLogs()
+        .then((saved) => {
+          if (saved)
+            notify(
+              'Logs salvos. Eles incluem os eventos anteriores à queda.',
+              'success',
+            );
+        })
+        .catch(() =>
+          notify(
+            'Não foi possível salvar os logs. Confira o espaço em disco e tente novamente.',
+            'error',
+          ),
+        );
       break;
     case 'defer-update':
       updateDismissed = true;

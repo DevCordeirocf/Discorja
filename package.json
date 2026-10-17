@@ -1,6 +1,6 @@
 {
   "name": "discorja",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "Compartilhe uma janela ou tela com seus amigos.",
   "author": "Discorja",
@@ -26,6 +26,7 @@
     "test:rooms": "node scripts/rooms-smoke.mjs",
     "test:multistream": "node scripts/multistream-smoke.mjs",
     "test:accessibility": "node scripts/accessibility-smoke.mjs",
+    "test:logs": "node scripts/logs-smoke.mjs",
     "test:soak": "node scripts/multistream-smoke.mjs --soak-minutes=30",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

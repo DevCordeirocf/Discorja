@@ -7,7 +7,11 @@ class Socket {
   static current: Socket;
   readyState = 0;
   onopen?: () => void;
-  onclose?: () => void;
+  onclose?: (event?: {
+    code: number;
+    wasClean: boolean;
+    reason?: string;
+  }) => void;
   onerror?: () => void;
   onmessage?: (event: { data: string }) => void;
   send = vi.fn();
@@ -45,6 +49,24 @@ afterEach(() => {
 });
 
 describe('Compatibilidade da sinalização', () => {
+  it('informa código, fechamento limpo e duração sem encaminhar o motivo livre recebido pela rede', async () => {
+    const { value, onDisconnect } = connection();
+    const connected = value.connect();
+    Socket.current.open();
+    Socket.current.message({ type: 'hello', protocol: 3 });
+    await connected;
+    Socket.current.onclose?.({
+      code: 1006,
+      wasClean: false,
+      reason: 'private',
+    });
+    expect(onDisconnect).toHaveBeenCalledWith({
+      code: 1006,
+      clean: false,
+      durationMs: expect.any(Number),
+    });
+    expect(JSON.stringify(onDisconnect.mock.calls)).not.toContain('private');
+  });
   it('só libera a sessão depois de confirmar o protocolo e encaminha mensagens válidas', async () => {
     const { value, onMessage } = connection();
     let connected = false;

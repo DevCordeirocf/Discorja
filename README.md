@@ -83,6 +83,7 @@ Na versão 0.8.0, atualize primeiro o servidor e use clientes com protocolo 3 na
 - [Validação da versão 0.7.0](docs/validacao-0.7.0.md) — várias telas, prévia e verificações locais.
 - [Validação da versão 0.8.0](docs/validacao-0.8.0.md) — consolidação, acessibilidade, bitrate e distribuição.
 - [Operação e validação com o grupo](docs/operacao.md) — diagnóstico do servidor e próximos ensaios.
+- [Logs de erros](docs/logs.md) — registros locais, exportação e investigação de quedas.
 - [Validação da versão 0.5.0](docs/validacao-0.5.0.md) — testes e pendências desta etapa.
 - [Validação da versão 0.4.0](docs/validacao-0.4.0.md) — testes de áudio e verificações pendentes.
 - [Validação da versão 0.3.0](docs/validacao-0.3.0.md) — entregas, testes e verificações de implantação pendentes.

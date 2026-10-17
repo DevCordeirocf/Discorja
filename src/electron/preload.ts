@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DiscorjaAPI, UpdateState } from '../shared/protocol';
 
 const api: DiscorjaAPI = {
+  recordLog: (event) => ipcRenderer.invoke('logs:record', event),
+  exportLogs: () => ipcRenderer.invoke('logs:export'),
   getForeground: () => ipcRenderer.invoke('window:foreground'),
   onForeground: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, value: unknown) => {

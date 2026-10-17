@@ -56,6 +56,22 @@ Para cada cenário, registre **passou/falhou/não executado**, duração, quanti
 
 ## Manutenção e incidente
 
+### Sala encerrando depois de aproximadamente 20 minutos
+
+Na versão 0.8.1, use **Configurações → Salvar logs de erros** depois da ocorrência. Atualize também o servidor para registrar motivo e duração do encerramento. Consulte [logs.md](logs.md) para localização dos arquivos, leitura dos eventos e limites de retenção.
+
+O servidor não tem um limite padrão de 20 minutos, nem encerra a sala apenas porque o dono ficou sozinho. `ROOM_TTL_MS` define a duração máxima desde a criação, mesmo quando há transmissão; o padrão é `14400000` (quatro horas). `RESUME_GRACE_MS=20000` significa **20 segundos para retomar uma conexão interrompida**, não 20 minutos de duração. Uma verificação com relógio simulado cobre salas dos protocolos 1, 2 e 3 após 21 minutos sem mensagens dos participantes e mantém a expiração em quatro horas; isso não reproduz as condições da hospedagem real.
+
+Registre a mensagem exata e o horário da queda antes de mudar limites:
+
+- **“A sala expirou”**: confira `ROOM_TTL_MS` no processo que realmente está rodando. `1200000` equivale a 20 minutos; `14400000`, a quatro horas. Alterar apenas o `.env` local não altera a hospedagem. `server:start` não carrega `.env` automaticamente; use as variáveis do host ou `node --env-file=.env dist/server/index.js` no computador próprio. Reiniciar o servidor para aplicar alterações encerra as salas existentes.
+- **“O dono saiu ou perdeu a conexão”**: o dono saiu voluntariamente ou sua conexão não foi retomada dentro do prazo. Não é prova de que ele clicou em encerrar. Confira suspensão do computador, perda de rede e logs do servidor/proxy no mesmo horário.
+- **“Não foi possível retomar a sala”**: confira indisponibilidade, reinício, novo deploy ou perda da sessão no servidor. As salas e tokens ficam em memória e não sobrevivem à substituição do processo.
+
+Na [Render gratuita](https://render.com/docs/free), um serviço pode suspender após 15 minutos sem tráfego de entrada, incluindo mensagens WebSocket; reinícios também podem ocorrer. A [documentação de WebSocket](https://render.com/docs/websocket) não estabelece duração máxima fixa para a conexão e recomenda ping/pong, já enviados pelo servidor Discorja a cada 30 segundos. A coincidência de tempo sozinha não confirma suspensão: procure o evento de parada, reinício ou deploy nos logs. Não é necessário contratar um plano pago para investigar esse problema. Evite serviços externos de ping permanente: eles não recuperam salas perdidas após reinícios.
+
+Nas versões anteriores à correção da mensagem, **“A sala foi encerrada pelo dono”** também era exibido quando a conexão do dono era perdida definitivamente. A interface atual distingue esse caso do encerramento explícito.
+
 Use usuário sem privilégios para a sinalização; mantenha só as portas necessárias e as restrições de [seguranca.md](seguranca.md). Não guarde credenciais de publicação do GitHub nessa máquina. Limite e rotacione logs, preserve somente o necessário para investigar erros e não registre conteúdo completo de SDP/ICE ou tokens.
 
 Se houver suspeita de invasão, interrompa o serviço afetado e preserve logs pertinentes sem divulgar segredos. Revogue tokens administrativos e de publicação que possam ter sido expostos, revise acessos, atualize a máquina/dependências e recoloque o serviço somente após corrigir a causa. Reiniciar a sinalização invalida as salas anteriores; rotação de `STATS_TOKEN` exige reiniciar o serviço e atualizar somente o consumidor administrativo.

@@ -17,10 +17,15 @@ export class SignalConnection {
   constructor(
     private readonly url: string,
     private readonly onMessage: (message: ServerMessage) => void,
-    private readonly onDisconnect: () => void,
+    private readonly onDisconnect: (details: {
+      code: number;
+      clean: boolean;
+      durationMs: number;
+    }) => void,
   ) {}
 
   connect(timeoutMs = 10_000): Promise<void> {
+    const startedAt = Date.now();
     return new Promise((resolve, reject) => {
       let settled = false;
       let socket: WebSocket;
@@ -101,10 +106,15 @@ export class SignalConnection {
         fail(
           'Não foi possível conectar. Verifique o servidor e sua conexão com a internet.',
         );
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         clearTimeout(timer);
         fail('A conexão com o servidor foi encerrada.');
-        if (!this.intentional) this.onDisconnect();
+        if (!this.intentional)
+          this.onDisconnect({
+            code: event?.code ?? 1006,
+            clean: event?.wasClean ?? false,
+            durationMs: Math.max(0, Date.now() - startedAt),
+          });
       };
     });
   }
