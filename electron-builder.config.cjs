@@ -9,6 +9,12 @@ module.exports = {
   productName: 'Discorja',
   directories: { output: 'release', buildResources: 'build' },
   files: ['dist/electron/**', 'dist/renderer/**', 'package.json'],
+  extraResources: [
+    {
+      from: 'build/native/discorja-audio-capture.exe',
+      to: 'discorja-audio-capture.exe',
+    },
+  ],
   asar: true,
   artifactName: 'Discorja-Setup-${version}.${ext}',
   forceCodeSigning: Boolean(release?.publisherName),

@@ -40,7 +40,7 @@ Manter Electron + TypeScript para o aplicativo e WebRTC para mídia. A base ser�
 
 Uma SFU recebe os fluxos publicados e encaminha aos assinantes. Isso reduz a necessidade de cada transmissor enviar uma cópia para cada espectador. O servidor passa a transportar vídeo e áudio, com exigências próprias de rede, operação e banda.
 
-**Limites iniciais do piloto:** cinco participantes totais por padrão, uma tela por pessoa, duas telas simultâneas e expansão para quatro somente após medições. Cada participante escolhe **uma única transmissão para assistir por vez**; entrar na sala não recebe vídeos automaticamente. São limites de configuração, não capacidades garantidas. Captura própria e recepção escolhida são independentes.
+**Limites atuais do piloto:** até dez participantes totais por sala, uma tela por pessoa e duas telas simultâneas. Cada participante escolhe **uma única transmissão para assistir por vez**; entrar na sala não recebe vídeos automaticamente. São limites de configuração, não capacidades garantidas. Captura própria e recepção escolhida são independentes.
 
 ## Sequência de entregas
 

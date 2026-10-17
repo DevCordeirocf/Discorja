@@ -64,6 +64,7 @@ async function join(page, code) {
 }
 async function capture(page) {
   await page.locator('[data-action=choose-source]').click();
+  await page.getByRole('tab', { name: 'Guias' }).click();
   await page
     .locator('.source-option')
     .filter({ hasText: 'Discorja - janela de teste' })

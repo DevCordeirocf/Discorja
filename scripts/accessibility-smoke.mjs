@@ -98,22 +98,57 @@ try {
   checks.push(
     'Escape closes participant controls and returns focus to their summary',
   );
-  await page.locator('#quality-details > summary').focus();
-  await page.keyboard.press('Enter');
-  await page.locator('#quality-preset').selectOption('1080p60');
-  await expect(page.locator('#video-bitrate')).toHaveValue('12');
-  await page.locator('#video-bitrate').fill('24');
-  await page.locator('#video-bitrate').press('Tab');
-  await expect(page.locator('#video-bitrate-help')).toContainText('3 MB/s');
-  await expect(page.locator('#video-bitrate-help')).toContainText(
+  await page.locator('[data-action=settings]').click();
+  await expect(page.locator('#settings-quality-preset')).toBeVisible();
+  await expect(page.locator('.settings-advanced')).toHaveCount(0);
+  await expect(
+    page.locator('#setting-resolution, #setting-fps, #setting-content'),
+  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page
+        .locator('.settings-page')
+        .evaluate(
+          (element) => element.scrollHeight <= element.clientHeight + 1,
+        ),
+    )
+    .toBe(true);
+  checks.push(
+    'Transmission quality is shown once, without a collapsed advanced section',
+  );
+  await page.locator('#settings-quality-preset').selectOption('1080p120');
+  await expect(page.locator('#settings-video-bitrate')).toHaveValue('30');
+  await expect(page.locator('#settings-upload-budget')).toHaveAttribute(
+    'max',
+    '500',
+  );
+  await expect(page.locator('#settings-video-bitrate')).toHaveAttribute(
+    'max',
+    '100',
+  );
+  await page.locator('#settings-quality-preset').selectOption('1080p60');
+  await page.locator('#settings-quality-preset').focus();
+  await page.locator('#settings-quality-preset').selectOption('1080p60');
+  await expect(page.locator('#settings-video-bitrate')).toHaveValue('12');
+  await page.locator('#settings-video-bitrate').fill('24');
+  await page.locator('#settings-video-bitrate').press('Tab');
+  await expect(page.locator('#settings-video-bitrate-help')).toContainText(
+    '3 MB/s',
+  );
+  await expect(page.locator('#settings-video-bitrate-help')).toContainText(
     'Personalizado',
   );
-  await page.locator('[data-action=reset-bitrate]').click();
-  await expect(page.locator('#video-bitrate')).toHaveValue('12');
-  checks.push(
-    'Per-viewer bitrate and MB/s hint can be changed and reset to the preset',
+  await page.locator('#settings-video-bitrate').fill('12');
+  await page.locator('#settings-video-bitrate').press('Tab');
+  await expect(page.locator('#settings-video-bitrate')).toHaveValue('12');
+  await expect(page.locator('#settings-video-bitrate-help')).toContainText(
+    'Padrão do perfil',
   );
-  await page.locator('[data-action=settings]').click();
+  checks.push(
+    'Per-viewer bitrate and MB/s hint can be changed and returned to the profile default',
+  );
+  await page.locator('.video-stage').hover();
+  await page.locator('[data-action=show-diagnostics]').click();
   await expect(page.locator('.app-shell')).toHaveAttribute('inert', '');
   await page.locator('[role=dialog]').evaluate((dialog) => {
     const select = document.createElement('select');
@@ -124,7 +159,10 @@ try {
   await page.locator('#test-dialog-select').focus();
   await page.keyboard.press('Tab');
   await expect(
-    page.getByRole('button', { name: 'Fechar configurações', exact: true }),
+    page.getByRole('button', {
+      name: 'Fechar diagnóstico',
+      exact: true,
+    }),
   ).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(page.locator('#test-dialog-select')).toBeFocused();
@@ -132,7 +170,7 @@ try {
     'Modal keyboard navigation includes selects, wraps in both directions and excludes background controls',
   );
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-action=settings]')).toBeFocused();
+  await expect(page.locator('[data-action=show-diagnostics]')).toBeFocused();
   checks.push('Closing a dialog restores focus to its trigger');
   await page.evaluate(() => {
     window.__announcer = document.querySelector('#session-announcement');

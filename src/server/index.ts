@@ -51,7 +51,7 @@ const service = createSignalingServer({
     .filter(Boolean),
   statsToken: process.env.STATS_TOKEN || undefined,
   resumeGraceMs,
-  maxViewers: integerEnv('MAX_VIEWERS', 4),
+  maxViewers: integerEnv('MAX_VIEWERS', 9),
   maxPublishers: integerEnv('MAX_PUBLISHERS', 2),
   roomTtlMs,
   maxRooms: integerEnv('MAX_ROOMS', 5),

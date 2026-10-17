@@ -8,11 +8,13 @@ import { isServerMessage, MAX_MESSAGE_BYTES } from '../shared/validation';
 export { isServerMessage } from '../shared/validation';
 
 export class SignalConnection {
+  private static readonly roomHeartbeatIntervalMs = 5 * 60_000;
   private socket: WebSocket | null = null;
   private intentional = false;
   private abortOpen: (() => void) | null = null;
   private messages = 0;
   private windowStarted = Date.now();
+  private roomHeartbeat: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly url: string,
@@ -125,8 +127,36 @@ export class SignalConnection {
     this.socket.send(JSON.stringify(message));
   }
 
+  setRoomActive(active: boolean): void {
+    if (!active) {
+      if (this.roomHeartbeat) clearInterval(this.roomHeartbeat);
+      this.roomHeartbeat = null;
+      return;
+    }
+    if (this.roomHeartbeat || this.intentional) return;
+    this.roomHeartbeat = setInterval(() => {
+      if (this.socket?.readyState !== WebSocket.OPEN) return;
+      try {
+        const healthUrl = new URL(this.url);
+        healthUrl.protocol = healthUrl.protocol === 'wss:' ? 'https:' : 'http:';
+        healthUrl.pathname = '/health';
+        healthUrl.search = '';
+        healthUrl.hash = '';
+        void fetch(healthUrl, {
+          method: 'GET',
+          mode: 'no-cors',
+          cache: 'no-store',
+          credentials: 'omit',
+        }).catch(() => undefined);
+      } catch {
+        // A missed keep-alive must not interrupt an otherwise active room.
+      }
+    }, SignalConnection.roomHeartbeatIntervalMs);
+  }
+
   disconnect(): void {
     this.intentional = true;
+    this.setRoomActive(false);
     this.abortOpen?.();
     this.abortOpen = null;
     if (this.socket && this.socket.readyState < WebSocket.CLOSING)

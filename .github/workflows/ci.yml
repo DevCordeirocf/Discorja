@@ -21,6 +21,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run audio:build
       - run: npm audit --audit-level=moderate
       - run: npm run typecheck
       - run: npm run format:check

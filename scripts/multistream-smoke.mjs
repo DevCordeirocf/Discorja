@@ -69,6 +69,7 @@ async function join(page, code) {
 }
 async function capture(page) {
   await page.locator('[data-action=choose-source]').click();
+  await page.getByRole('tab', { name: 'Guias' }).click();
   await page
     .locator('.source-option')
     .filter({ hasText: 'Discorja - piloto simultâneo' })
@@ -166,14 +167,17 @@ try {
   await join(c, code);
   const { page: d } = await launch('Davi');
   await join(d, code);
-  await a.locator('#quality-details > summary').click();
-  await a.locator('#quality-preset').selectOption('1080p60');
+  await a.locator('[data-action=settings]').click();
+  await a.locator('#settings-quality-preset').selectOption('1080p60');
+  await a.locator('[data-action=close-settings]').click();
   await capture(a);
   await capture(b);
-  await expect(c.locator('.screen-card')).toHaveCount(2);
+  await expect(
+    c.locator('.person-stream-choice[data-action=watch-screen]'),
+  ).toHaveCount(2);
   assert.equal(await active(c), 0);
   assert.equal(await active(a, 'send'), 0);
-  await expect(c.locator('.screen-card video')).toHaveCount(0);
+  await expect(c.locator('#stream-video')).toHaveCount(0);
   await expect(c.locator('[data-action=choose-source]')).toBeDisabled();
   checks.push(
     'Two simultaneous publications; cards have no remote video or hidden subscriptions; pilot limit is visible',
@@ -334,7 +338,9 @@ try {
   }
   await b.locator('[data-action=stop]').click();
   await expect(c.locator('#stream-video')).toHaveCount(0);
-  await expect(d.locator('.screen-card')).toHaveCount(1);
+  await expect(
+    d.locator('.person-stream-choice[data-action=watch-screen]'),
+  ).toHaveCount(1);
   const surviving = await receivedFrames(d);
   await d.waitForTimeout(1200);
   assert.ok((await receivedFrames(d)) > surviving);
@@ -349,7 +355,9 @@ try {
       if (count) await a.locator('[data-action=stop-watching]').click();
     });
   await capture(c);
-  await expect(a.locator('.screen-card')).toHaveCount(2);
+  await expect(
+    a.locator('.person-stream-choice[data-action=watch-screen]'),
+  ).toHaveCount(2);
   await a.locator('summary[aria-label="Ações de Carla"]').click();
   await a
     .getByRole('button', { name: 'Encerrar tela de Carla', exact: true })

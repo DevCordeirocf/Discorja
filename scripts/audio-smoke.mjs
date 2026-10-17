@@ -81,6 +81,7 @@ async function launch(testCapture = false) {
 
 async function start(host, audio = true) {
   await host.locator('[data-action=choose-source]').click();
+  await host.getByRole('tab', { name: 'Guias' }).click();
   await host
     .locator('.source-option')
     .filter({ hasText: 'Discorja - teste de som' })
@@ -88,8 +89,7 @@ async function start(host, audio = true) {
   await expect(host.locator('#include-system-audio')).not.toBeChecked();
   if (audio) {
     await host.locator('#include-system-audio').check();
-    await expect(host.locator('[data-action=start-share]')).toBeDisabled();
-    await host.locator('#accept-audio-scope').check();
+    await expect(host.locator('[data-action=start-share]')).toBeEnabled();
   }
   await host.locator('[data-action=start-share]').click();
 }
@@ -270,17 +270,12 @@ try {
     'Local preview and initial receiver playback muted, without duplicate audio elements',
   );
 
-  // Exercise playback without audible sound on the developer computer.
-  await viewer.locator('#receive-volume').fill('0');
+  // Exercise playback and muting without a volume slider.
   await viewer.locator('[data-action=toggle-receive-audio]').click();
   assert.equal((await sample(viewer)).muted, false);
-  assert.equal((await sample(viewer)).volume, 0);
   await viewer.locator('[data-action=toggle-receive-audio]').click();
-  await viewer.locator('#receive-volume').fill('37');
-  await host.locator('[data-action=copy]').click();
-  assert.equal((await sample(viewer)).volume, 0.37);
   checks.push(
-    'Receiver can play, mute and adjust volume while host preview stays muted',
+    'Receiver can play and mute the transmission while host preview stays muted',
   );
 
   await host.locator('[data-action=toggle-send-audio]').click();
@@ -352,7 +347,6 @@ try {
     const videoAfter = after.stats.find((stat) => stat.kind === 'video');
     assert.equal(after.audioTracks, 1);
     assert.equal(after.videoTracks, 1);
-    assert.equal(after.volume, 0.37);
     assert.ok(
       audioAfter.bytes > audioBefore.bytes &&
         videoAfter.frames > videoBefore.frames,
@@ -363,7 +357,7 @@ try {
   }
   await host.screenshot({ path: 'test-results/audio-host.png' });
   await viewer.screenshot({ path: 'test-results/audio-viewer.png' });
-  await host.locator('[data-action=stop-audio]').click();
+  await host.locator('[data-action=toggle-send-audio]').click();
   await expect
     .poll(async () => (await sample(viewer)).rms)
     .toBeLessThan(0.0005);
@@ -371,14 +365,12 @@ try {
     await host.evaluate(() =>
       window.__audioTestTracks
         .filter((track) => track.kind === 'audio')
-        .every((track) => track.readyState === 'ended'),
+        .every((track) => track.readyState === 'live' && !track.enabled),
     ),
     true,
   );
   await video(viewer);
-  checks.push(
-    'Stopping only audio ends capture tracks and preserves screen video',
-  );
+  checks.push('Muting audio keeps capture tracks and screen video active');
   await host.locator('[data-action=stop]').click();
   await expect(viewer.locator('#stream-video')).toHaveCount(0);
 

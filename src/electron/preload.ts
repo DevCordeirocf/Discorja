@@ -17,6 +17,24 @@ const api: DiscorjaAPI = {
   getSources: () => ipcRenderer.invoke('capture:sources'),
   selectSource: (id, audio = false) =>
     ipcRenderer.invoke('capture:select', id, audio),
+  startDiscordAudioCapture: () =>
+    ipcRenderer.invoke('capture:filtered-audio:start'),
+  stopDiscordAudioCapture: () =>
+    ipcRenderer.invoke('capture:filtered-audio:stop'),
+  onFilteredAudioData: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: Uint8Array) =>
+      callback(data);
+    ipcRenderer.on('capture:filtered-audio:data', listener);
+    return () =>
+      ipcRenderer.removeListener('capture:filtered-audio:data', listener);
+  },
+  onFilteredAudioError: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, message: string) =>
+      callback(message);
+    ipcRenderer.on('capture:filtered-audio:error', listener);
+    return () =>
+      ipcRenderer.removeListener('capture:filtered-audio:error', listener);
+  },
   cancelCapture: () => ipcRenderer.invoke('capture:cancel'),
   setSharing: (sharing) => ipcRenderer.invoke('capture:sharing', sharing),
   copyCode: (code) => ipcRenderer.invoke('room:copy', code),

@@ -162,6 +162,10 @@ export interface DiscorjaAPI {
   saveConfig(config: { signalingUrl: string }): Promise<void>;
   getSources(): Promise<CaptureSource[]>;
   selectSource(id: string, audio?: boolean): Promise<void>;
+  startDiscordAudioCapture(): Promise<number>;
+  stopDiscordAudioCapture(): Promise<void>;
+  onFilteredAudioData(callback: (data: Uint8Array) => void): () => void;
+  onFilteredAudioError(callback: (message: string) => void): () => void;
   cancelCapture(): Promise<void>;
   setSharing(sharing: boolean): Promise<void>;
   copyCode(code: string): Promise<void>;

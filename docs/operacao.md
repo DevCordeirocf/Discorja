@@ -9,7 +9,7 @@
 | Servidor                   | Código compatível       | Implantar o servidor 0.8 antes dos clientes; protocolo 3 para as salas novas.                                                                         |
 | Servidor                   | Endereço público        | WSS acessível ao grupo e TLS válido, usando o ambiente gratuito já escolhido.                                                                         |
 | Servidor                   | `ALLOWED_ORIGINS`       | `app://discorja` em produção.                                                                                                                         |
-| Servidor                   | `MAX_VIEWERS`           | `4`: cinco participantes totais.                                                                                                                      |
+| Servidor                   | `MAX_VIEWERS`           | `9`: até dez participantes totais por sala, incluindo o criador.                                                                                      |
 | Servidor                   | `MAX_PUBLISHERS`        | `2`: piloto de duas telas simultâneas; uma por pessoa.                                                                                                |
 | Servidor, opcional         | `STATS_TOKEN`           | Segredo administrativo de 32 a 256 caracteres; não distribuir aos amigos. Sem ele, `/api/stats` fica desabilitada.                                    |
 | Aplicativos                | Servidor de sinalização | Todos usam o mesmo endpoint nas Configurações.                                                                                                        |

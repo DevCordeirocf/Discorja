@@ -90,7 +90,7 @@ export function isServerMessage(v: unknown): v is ServerMessage {
         !peerId(v.publisherId) ||
         !Number.isInteger(v.maxParticipants) ||
         Number(v.maxParticipants) < 2 ||
-        Number(v.maxParticipants) > 101 ||
+        Number(v.maxParticipants) > 10 ||
         !Array.isArray(v.participants) ||
         v.participants.length < 1 ||
         v.participants.length > Number(v.maxParticipants) ||
@@ -191,7 +191,7 @@ export function isServerMessage(v: unknown): v is ServerMessage {
         identity() &&
         Number.isInteger(v.maxViewers) &&
         Number(v.maxViewers) > 0 &&
-        Number(v.maxViewers) <= 100 &&
+        Number(v.maxViewers) <= 9 &&
         session()
       );
     case 'room-joined':
@@ -228,7 +228,7 @@ export function isServerMessage(v: unknown): v is ServerMessage {
         ['host', 'viewer'].includes(String(v.role)) &&
         Number.isInteger(v.maxViewers) &&
         Number(v.maxViewers) > 0 &&
-        Number(v.maxViewers) <= 100 &&
+        Number(v.maxViewers) <= 9 &&
         token(v.resumeToken) &&
         Array.isArray(v.viewers) &&
         v.viewers.length <= 100 &&

@@ -2,7 +2,7 @@
 
 ## Consolidação 0.8.0
 
-O diagnóstico schema 2 permite apenas estados, contagens, métricas numéricas e versões previstas. O processo principal fornece o runtime; nomes, tokens, endpoint, dados brutos de ICE/SDP e conteúdo não são exportados. Testes tentam inserir esses campos e verificam seu descarte. O novo teto de vídeo é limitado de 1 a 30 Mbps por espectador e continua sujeito ao orçamento total; não altera permissões de captura ou papéis.
+O diagnóstico schema 2 permite apenas estados, contagens, métricas numéricas e versões previstas. O processo principal fornece o runtime; nomes, tokens, endpoint, dados brutos de ICE/SDP e conteúdo não são exportados. Testes tentam inserir esses campos e verificam seu descarte. O teto de vídeo é limitado de 1 a 100 Mbps por espectador e continua sujeito ao orçamento total; não altera permissões de captura ou papéis.
 
 O workflow de distribuição confere versão, nomes de arquivos, tamanho, SHA-512 e blockmap antes de selecionar os artefatos enviados. Rejeita manifesto incompatível e caminhos externos. A assinatura de código permanece opcional; quando configurada, sua validação continua obrigatória. Testes locais do atualizador usam um provedor de fixtures e não executam o instalador baixado.
 
@@ -12,7 +12,7 @@ A navegação acessível não amplia a ponte IPC. Modais mantêm o fundo inativo
 
 No protocolo 3, a sinalização associa cada ID de publicação a um membro da sala e cada participante a no máximo uma seleção. SDP/ICE só é encaminhado entre publicador e assinante autorizado, com formato, tamanho e frequência limitados. Autoassinatura, IDs obsoletos, sinalização entre salas e ofertas de quem apenas assiste são rejeitados. Parar uma tela remove sua seleção nos receptores e os contadores de negociação correspondentes.
 
-O limite padrão é duas publicações e cinco participantes. O aplicativo não decodifica os demais cartões; trocar de tela encerra a recepção anterior. Snapshots recebidos do servidor são validados antes de gerar a interface, incluindo unicidade, vínculos entre IDs, limites e papéis. Nomes continuam escapados como texto. A pausa da prévia não altera a autorização da captura nem expõe APIs de janela ao renderer: a ponte recebe somente um estado booleano de primeiro plano.
+O limite padrão é duas publicações e dez participantes. O aplicativo não decodifica os demais cartões; trocar de tela encerra a recepção anterior. Snapshots recebidos do servidor são validados antes de gerar a interface, incluindo unicidade, vínculos entre IDs, limites e papéis. Nomes continuam escapados como texto. A pausa da prévia não altera a autorização da captura nem expõe APIs de janela ao renderer: a ponte recebe somente um estado booleano de primeiro plano.
 
 Dono/moderador podem interromper uma publicação individual; a autoridade é verificada no servidor. O participante não pode encerrar a tela de outro ou inventar papel. Captura continua exigindo escolha e consentimento locais. O som recebido pelo Discorja fica bloqueado enquanto houver captura de áudio do computador para evitar recaptura; isso não isola vozes do Discord.
 

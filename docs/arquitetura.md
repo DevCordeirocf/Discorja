@@ -43,15 +43,21 @@ O processo principal usa isolamento de contexto e uma ponte de preload com opera
 | `src/electron/main.ts`                        | Cria a janela, autoriza captura, lê/salva endpoint, protege IPC e integra o atualizador. |
 | `src/electron/preload.ts`                     | Expõe apenas as operações tipadas de `DiscorjaAPI` à interface.                          |
 | `src/electron/config.ts`                      | Valida endpoint e lista de servidores ICE do cliente.                                    |
-| `src/renderer/app.ts`                         | Controla interface, sala, captura, preferências e atualização das métricas visíveis.     |
-| `src/renderer/signal.ts`                      | Conexão WebSocket e validação das respostas de sinalização.                              |
+| `src/renderer/app.ts`                         | Coordena estado da janela, eventos e fluxos da sala/captura.                             |
+| `src/renderer/views/`                         | Templates de telas, navegação, configurações e sala; sem acesso a IPC ou WebRTC.         |
+| `src/renderer/html.ts` / `icons.ts`           | Escape comum para conteúdo HTML e SVGs reutilizáveis da interface.                       |
+| `src/renderer/signal.ts`                      | Conexão WebSocket, heartbeat de sala e validação das respostas.                          |
 | `src/renderer/rtc.ts`                         | Conexões de mídia, parâmetros de envio e recuperação ICE.                                |
 | `src/renderer/adaptation.ts` / `telemetry.ts` | Decisões de qualidade e interpretação das estatísticas disponíveis.                      |
+| `src/renderer/audio-capture.ts`               | Ponte do áudio filtrado do Discord para uma faixa local.                                 |
 | `src/server/index.ts`                         | Entrada do serviço: variáveis de ambiente, porta e encerramento.                         |
-| `src/server/server.ts`                        | Salas, limites, validação e encaminhamento das mensagens.                                |
-| `src/shared/protocol.ts` / `quality.ts`       | Tipos das mensagens e perfis compartilhados.                                             |
+| `src/server/server.ts`                        | Estado das salas, limites, permissões e encaminhamento.                                  |
+| `src/server/message-validation.ts`            | Valida e normaliza mensagens WebSocket recebidas antes do processamento.                 |
+| `src/shared/`                                 | Contratos, validação de snapshots, qualidade, logs e diagnósticos comuns.                |
 
-O servidor não importa a interface nem o Electron. Seu build pode rodar como processo Node.js ou container Linux. O pacote desktop inclui o processo principal e a interface, sem iniciar um servidor de sinalização embutido.
+O fluxo de dependências é unidirecional: `shared` não depende das camadas do app; renderer e server podem usar `shared`; somente `main` chama operações privilegiadas do sistema e as expõe pelo preload. O servidor não importa a interface nem o Electron. Seu build pode rodar como processo Node.js ou container Linux. O pacote desktop inclui o processo principal e a interface, sem iniciar um servidor de sinalização embutido.
+
+Para uma mudança nova, coloque markup puro em `renderer/views/`, regras reutilizáveis em um módulo renderer específico e valide mensagens externas em `shared/validation.ts` ou `server/message-validation.ts`. Deixe `app.ts` ligar ações da interface ao estado e aos serviços; não coloque captura, protocolo ou política de autorização dentro dos templates. O CSS base está em `style.css`; `app.css` contém o layout aprovado e ajustes de produto, e é carregado depois para que suas regras tenham precedência.
 
 ## Ciclo de uma transmissão
 
@@ -131,7 +137,7 @@ Variáveis de ambiente de endpoint prevalecem sobre o valor salvo ao iniciar. `.
 
 Escolher uma janela ou monitor concede aos participantes acesso ao conteúdo visível naquela fonte. Revise a prévia e feche informações privadas antes de iniciar. Um espectador pode registrar o conteúdo com ferramentas próprias; o aplicativo não consegue impedir isso.
 
-A versão 0.4.0 adiciona som opcional do computador pelo loopback do Windows. A autorização vale somente para a fonte selecionada e para a escolha explícita de áudio; não concede microfone ou câmera. Áudio e vídeo seguem na mesma conexão WebRTC. A prévia não reproduz som, e cada espectador controla sua recepção. A captura não isola áudio por janela; ver [áudio e Discord](audio.md).
+O som opcional do computador usa o loopback do Windows; a opção de exclusão do Discord troca essa faixa por captura WASAPI do áudio do sistema excluindo a árvore de processos do aplicativo Discord. O helper envia PCM localmente ao renderer, que o adapta a uma faixa WebRTC; não grava o conteúdo nem silencia a reprodução local. A captura só começa por ação do anfitrião. Se a API nativa falhar, o app permanece em vídeo sem áudio. Microfone e câmera continuam negados; ver [áudio e Discord](audio.md).
 
 O aplicativo não inclui aprovação individual de novos participantes, senha adicional, recuperação de sala após reinício, emissão automática de credenciais TURN, múltiplos anfitriões, SFU ou câmera. A interface mostra o estado da captura e mantém o controle de parar disponível durante a transmissão.
 

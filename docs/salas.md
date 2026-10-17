@@ -2,7 +2,7 @@
 
 ## Versão 0.7.0: várias telas, uma recepção por pessoa
 
-Qualquer participante pode selecionar uma janela e iniciar sua própria captura enquanto houver espaço. O piloto permite **duas telas simultâneas**, uma por pessoa, e **cinco participantes totais**. Entrar na sala não recebe vídeo automaticamente: escolha **Assistir** no cartão da pessoa desejada. Os cartões contêm somente informações, sem vídeos ou recepções ocultas.
+Qualquer participante pode selecionar uma janela e iniciar sua própria captura enquanto houver espaço. O piloto permite **duas telas simultâneas**, uma por pessoa, e **dez participantes totais**. Entrar na sala não recebe vídeo automaticamente: escolha **Assistir** no cartão da pessoa desejada. Os cartões contêm somente informações, sem vídeos ou recepções ocultas.
 
 Você pode compartilhar e assistir à tela de outra pessoa ao mesmo tempo. A prévia da própria captura fica ao lado do destaque. Trocar a tela escolhida fecha os peers e tracks de recepção anteriores, mantendo somente uma transmissão recebida. **Parar de assistir** libera essa recepção; **Parar de compartilhar** encerra apenas sua publicação. Outras telas e seus espectadores continuam.
 
@@ -16,7 +16,7 @@ O dono concede moderação pelo menu **···** de cada pessoa. Dono e moderador
 
 1. Atualize o servidor antes dos aplicativos. Reiniciar o processo fecha as salas em memória.
 2. Mantenha `MAX_PUBLISHERS=2` no ambiente do servidor. O intervalo aceito é 1 a 4, sem ultrapassar `MAX_VIEWERS + 1`; quatro telas ainda precisam de medição representativa. Essa variável é um limite, não uma garantia de capacidade.
-3. `MAX_VIEWERS=4` representa quatro vagas além do criador: cinco participantes totais, independentemente de quem transmite. Cada participante recebe no máximo uma tela.
+3. `MAX_VIEWERS=9` representa nove vagas além do criador: dez participantes totais, independentemente de quem transmite. O servidor recusa valores maiores. Cada participante recebe no máximo uma tela.
 4. Distribua clientes 0.7.0 e crie novas salas. Elas usam o **protocolo 3**, com publicação e seleção independentes. Protocolos 1 e 2 permanecem no servidor em salas separadas; não se misturam na mesma sala.
 5. Confira WSS e `ALLOWED_ORIGINS=app://discorja` no servidor de produção. Não inclua `STATS_TOKEN` nem credenciais administrativas nos clientes. O diagnóstico de [operação](operacao.md) verifica saúde e compatibilidade.
 
@@ -83,7 +83,7 @@ A 0.5.0 usa o **protocolo de salas 2**, confirmado antes da entrada por `hello`.
 
 O servidor 0.5.0 conserva o protocolo anterior para os aplicativos 0.3/0.4 continuarem em suas próprias salas durante a transição. Esses clientes mantêm o modelo anterior de anfitrião único. O protocolo 2 tem snapshots com dono, transmissor e participantes; cada conexão recebe apenas seu próprio token de retomada. Atualizar o servidor normalmente reinicia o processo e encerra as salas em memória; avise o grupo antes da implantação.
 
-O limite padrão continua em **cinco participantes totais**: um transmissor e até quatro receptores. `MAX_VIEWERS` limita receptores independentemente de quem é dono. Em `/api/stats`, a contagem de publicadores informados acompanha o transmissor atual e não o proprietário.
+O limite padrão atual é **dez participantes totais**: o criador e até nove receptores. `MAX_VIEWERS` limita receptores independentemente de quem é dono e aceita no máximo `9`. Em `/api/stats`, a contagem de publicadores informados acompanha o transmissor atual e não o proprietário.
 
 ## Validação local
 

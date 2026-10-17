@@ -72,7 +72,7 @@ docker run --rm --name discorja-signaling -p 127.0.0.1:8787:8787 -e ALLOWED_ORIG
 Esse exemplo fica em primeiro plano e remove o container quando ele termina. Para um serviço persistente, execute em segundo plano com política de reinício, em vez do exemplo anterior:
 
 ```powershell
-docker run -d --name discorja-signaling --restart unless-stopped -p 127.0.0.1:8787:8787 -e ALLOWED_ORIGINS=app://discorja -e MAX_VIEWERS=4 -e ROOM_TTL_MS=14400000 discorja-signaling
+docker run -d --name discorja-signaling --restart unless-stopped -p 127.0.0.1:8787:8787 -e ALLOWED_ORIGINS=app://discorja -e MAX_VIEWERS=9 -e ROOM_TTL_MS=14400000 discorja-signaling
 docker logs --tail 100 discorja-signaling
 docker inspect --format '{{.State.Health.Status}}' discorja-signaling
 ```
@@ -129,7 +129,7 @@ Configure o health check HTTP em `/health` e confirme suporte a WebSocket, ausê
 | `HOST`            | Interface de escuta; no container, `0.0.0.0`. Use `127.0.0.1` para um processo restrito à máquina local.                                                            |
 | `PORT`            | Porta HTTP/WebSocket; padrão `8787`.                                                                                                                                |
 | `ALLOWED_ORIGINS` | Lista de origens permitidas separadas por vírgula. Padrão: `app://discorja,http://127.0.0.1:5173,http://localhost:5173`. Em produção, restrinja a `app://discorja`. |
-| `MAX_VIEWERS`     | Número máximo de espectadores por sala; padrão `4`.                                                                                                                 |
+| `MAX_VIEWERS`     | Número máximo de espectadores além do criador; padrão e máximo `9` (10 participantes totais).                                                                       |
 | `MAX_PUBLISHERS`  | Telas simultâneas no protocolo 3; padrão `2`, intervalo de 1 a 4 sem ultrapassar `MAX_VIEWERS + 1`. Manter duas no piloto.                                          |
 | `ROOM_TTL_MS`     | Duração máxima de uma sala em milissegundos; padrão `14400000` (quatro horas).                                                                                      |
 | `MAX_ROOMS`       | Limite de salas simultâneas no processo; padrão `5`.                                                                                                                |

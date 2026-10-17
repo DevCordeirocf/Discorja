@@ -12,7 +12,6 @@ coverage/
 /docs/desenvolvimento.md
 # Em build/, somente os icones sao entradas do projeto.
 /build/*
-!/build/icon.svg
 !/build/icon.png
 !/build/icon.ico
 

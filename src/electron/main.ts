@@ -11,6 +11,8 @@ import {
   powerMonitor,
   session,
 } from 'electron';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -51,6 +53,8 @@ let sourcesExpire = 0;
 let sourceQueue: Promise<void> = Promise.resolve();
 let sourceRequests = 0;
 let sharing = false;
+let filteredAudioProcess: ChildProcessWithoutNullStreams | null = null;
+let stoppingFilteredAudio = false;
 let powerBlock: number | undefined;
 let signalingUrl = DEFAULT_SIGNALING_URL;
 let iceServers: RTCIceServer[] = [];
@@ -80,6 +84,7 @@ function setSharing(value: boolean) {
   if (sharing !== value)
     logs?.write({ event: value ? 'capture.started' : 'capture.stopped' });
   sharing = value;
+  if (!value) void stopFilteredAudioCapture();
   if (window && !window.isDestroyed()) {
     window.setTitle(value ? '● Compartilhando — Discorja' : 'Discorja');
     // Keep quality monitoring and recovery timers running when the host minimizes
@@ -92,6 +97,151 @@ function setSharing(value: boolean) {
     powerSaveBlocker.stop(powerBlock);
     powerBlock = undefined;
   }
+}
+
+function filteredAudioExecutable(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'discorja-audio-capture.exe')
+    : path.join(
+        app.getAppPath(),
+        'build',
+        'native',
+        'discorja-audio-capture.exe',
+      );
+}
+
+function filteredAudioMessage(details: string): string {
+  if (details.includes('DISCORD_NOT_FOUND_OR_MULTIPLE'))
+    return 'Abra o aplicativo Discord e mantenha apenas uma instância aberta para excluir o áudio da transmissão.';
+  if (details.includes('DISCORD_INSTANCE_CHANGED'))
+    return 'A instância do Discord mudou ou foi encerrada. O áudio foi interrompido e a transmissão segue sem áudio.';
+  if (details.includes('LOOPBACK_UNAVAILABLE'))
+    return 'A captura filtrada do Discord exige uma versão compatível do Windows. O vídeo continuará sem áudio.';
+  if (details.includes('LOOPBACK_INIT'))
+    return 'O Windows não conseguiu iniciar a captura filtrada. Atualize o Windows e tente novamente; o vídeo continuará sem áudio.';
+  return 'Não foi possível excluir o Discord do áudio. O vídeo continuará sem áudio.';
+}
+
+function startFilteredAudioCapture(): Promise<number> {
+  if (process.platform !== 'win32')
+    return Promise.reject(
+      new Error('A exclusão de áudio está disponível no Windows.'),
+    );
+  if (filteredAudioProcess)
+    return Promise.reject(new Error('A captura filtrada já está ativa.'));
+  const executable = filteredAudioExecutable();
+  if (!existsSync(executable))
+    return Promise.reject(
+      new Error(
+        'Esta versão do Discorja foi empacotada sem o componente de áudio filtrado. Atualize para uma versão criada com esse recurso; o áudio não será capturado sem o filtro.',
+      ),
+    );
+
+  const child = spawn(executable, ['--capture-discord'], {
+    windowsHide: true,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  filteredAudioProcess = child;
+  stoppingFilteredAudio = false;
+
+  return new Promise((resolve, reject) => {
+    let ready = false;
+    let settled = false;
+    let stderrBuffer = '';
+    let runtimeFailure = '';
+    let audioBuffer = Buffer.alloc(0);
+    const startupTimeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      reject(new Error('A captura filtrada demorou demais para iniciar.'));
+    }, 10_000);
+    startupTimeout.unref();
+
+    const sendAudio = () => {
+      const packetBytes = 7_680; // 40 ms at 48 kHz, stereo, 16-bit PCM.
+      while (audioBuffer.length >= packetBytes) {
+        const packet = audioBuffer.subarray(0, packetBytes);
+        audioBuffer = audioBuffer.subarray(packetBytes);
+        if (window && !window.isDestroyed())
+          window.webContents.send(
+            'capture:filtered-audio:data',
+            new Uint8Array(packet),
+          );
+      }
+    };
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      audioBuffer = Buffer.concat([audioBuffer, chunk]);
+      sendAudio();
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderrBuffer += chunk.toString('utf8');
+      const lines = stderrBuffer.split(/\r?\n/u);
+      stderrBuffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const match = /^READY (\d+)$/u.exec(line.trim());
+        if (match) {
+          ready = true;
+          if (!settled) {
+            settled = true;
+            clearTimeout(startupTimeout);
+            resolve(Number(match[1]));
+          }
+        } else if (line.startsWith('ERROR ')) {
+          const message = filteredAudioMessage(line);
+          if (!ready && !settled) {
+            settled = true;
+            clearTimeout(startupTimeout);
+            reject(new Error(message));
+          } else runtimeFailure = message;
+        }
+      }
+    });
+    child.once('error', (error) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(startupTimeout);
+        reject(error);
+      }
+    });
+    child.once('exit', (code) => {
+      clearTimeout(startupTimeout);
+      const expected = stoppingFilteredAudio;
+      filteredAudioProcess = null;
+      stoppingFilteredAudio = false;
+      if (!settled) {
+        settled = true;
+        reject(
+          new Error(
+            filteredAudioMessage(stderrBuffer || `EXIT ${String(code)}`),
+          ),
+        );
+      } else if (ready && !expected && window && !window.isDestroyed()) {
+        window.webContents.send(
+          'capture:filtered-audio:error',
+          runtimeFailure ||
+            'A captura filtrada do Discord foi interrompida. O vídeo continua; reinicie o compartilhamento para enviar áudio.',
+        );
+      }
+    });
+  });
+}
+
+async function stopFilteredAudioCapture(): Promise<void> {
+  const child = filteredAudioProcess;
+  if (!child) return;
+  stoppingFilteredAudio = true;
+  const exited = new Promise<void>((resolve) =>
+    child.once('exit', () => resolve()),
+  );
+  child.stdin.end('x');
+  const timeout = setTimeout(() => {
+    if (child.exitCode === null) child.kill();
+  }, 1_000);
+  timeout.unref();
+  await exited;
+  clearTimeout(timeout);
 }
 
 function publishUpdate(state: UpdateState) {
@@ -271,6 +421,8 @@ function registerIpc() {
       throw new Error('Atualize a lista e escolha uma janela ou monitor.');
     captureAuthorization.select(id, audio, process.platform);
   });
+  handle('capture:filtered-audio:start', startFilteredAudioCapture);
+  handle('capture:filtered-audio:stop', stopFilteredAudioCapture);
   handle('capture:cancel', () => {
     captureAuthorization.cancel();
   });
@@ -456,8 +608,9 @@ async function main() {
     height: 860,
     minWidth: 940,
     minHeight: 700,
-    backgroundColor: '#0c0e13',
+    backgroundColor: '#101115',
     title: 'Discorja',
+    icon: path.join(__dirname, 'icon.ico'),
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
@@ -483,7 +636,7 @@ async function main() {
   window.on('hide', () => publishForeground(false));
   window.removeMenu();
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  window.webContents.on('will-navigate', (event, url) => {
+  window.webContents.on('will-navigate', (event) => {
     event.preventDefault();
   });
   window.webContents.on('will-frame-navigate', (event) =>

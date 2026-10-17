@@ -89,6 +89,37 @@ describe('Compatibilidade da sinalização', () => {
       sharing: false,
     });
   });
+  it('consulta a saúde a cada cinco minutos somente enquanto uma sala está ativa', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('fetch', fetchMock);
+    const { value } = connection();
+    const connected = value.connect();
+    const socket = Socket.current;
+    socket.open();
+    socket.message({ type: 'hello', protocol: 3 });
+    await connected;
+
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    value.setRoomActive(true);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL('http://127.0.0.1:8787/health'),
+      {
+        method: 'GET',
+        mode: 'no-cors',
+        cache: 'no-store',
+        credentials: 'omit',
+      },
+    );
+
+    value.setRoomActive(false);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
   it('explica a incompatibilidade com servidor antigo e não tenta recuperar uma sessão inexistente', async () => {
     const { value, onDisconnect } = connection();
     const pending = value.connect();

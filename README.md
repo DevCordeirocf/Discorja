@@ -10,18 +10,18 @@ Aplicativo de compartilhamento de tela para **Windows 10/11 x64**, feito para pe
 - Cartões para escolher quem assistir e controles independentes para compartilhar sua própria tela.
 - Prévia local pausada em segundo plano, preservando a captura enviada aos amigos.
 - Captura de janela ou monitor com prévia e controles para iniciar e parar.
-- Som do computador opcional no Windows, com controle de envio e volume recebido.
-- Até cinco participantes por sala na configuração padrão, com dono e moderadores.
-- Perfis de **720p/30 FPS**, **1080p/30 FPS** e **1080p/60 FPS**.
+- Som do computador opcional no Windows; em sistemas compatíveis, pode excluir o áudio do aplicativo Discord sem silenciá-lo localmente.
+- Até dez participantes por sala na configuração padrão, com dono e moderadores.
+- Perfis de **720p/30 FPS**, **1080p/30 FPS**, **1080p/60 FPS** e **1080p/120 FPS**.
 - Prioridade para detalhes ou movimento, adaptação por espectador e limite de envio.
-- Teto de vídeo ajustável até 30 Mbps por espectador, com indicação em MB/s e orçamento total compartilhado.
+- Teto de vídeo ajustável até 100 Mbps por espectador, com indicação em MB/s e orçamento total compartilhado de até 500 Mbps.
 - Navegação por teclado com foco preservado durante atualizações da sala.
 - Indicadores de qualidade da transmissão e controle de participantes.
 - Diagnóstico exportável, preferência de formato de vídeo e recuperação de quedas breves.
 - Aviso de atualização ao abrir, com opção de atualizar ou adiar.
 - Instalador Windows e atualizações por GitHub Releases, com assinatura de código opcional.
 
-Microfone, câmera e gravação não fazem parte do aplicativo. O som compartilhado pode incluir outros programas, inclusive o Discord; não há isolamento de áudio por janela. A qualidade recebida depende da fonte, do computador e da conexão.
+Microfone, câmera e gravação não fazem parte do aplicativo. O som geral pode incluir outros programas; a opção de exclusão filtra o processo do Discord instalado em versões compatíveis do Windows. A qualidade recebida depende da fonte, do computador e da conexão.
 <img width="1917" height="1011" alt="Captura de tela 2026-10-14 230554" src="https://github.com/user-attachments/assets/13a6b040-d873-4337-b494-ae7241931d07" />
 <img width="1918" height="1007" alt="Captura de tela 2026-10-14 230619" src="https://github.com/user-attachments/assets/5ec9745b-16bb-48b1-9a0a-e6d50589a1b0" />
 <img width="1348" height="607" alt="Captura de tela 2026-10-14 230629" src="https://github.com/user-attachments/assets/16cb8698-e2c5-48ad-8c44-d552e3db91e7" />
@@ -36,6 +36,7 @@ Para executar o projeto em desenvolvimento:
 
 - Windows 10/11 x64.
 - Node.js **22.12 ou superior** e npm.
+- Visual Studio Build Tools com **Desenvolvimento para desktop com C++** para compilar ou empacotar o filtro de áudio nativo.
 
 Quem utiliza o aplicativo instalado não precisa instalar Node.js ou npm.
 
@@ -53,6 +54,14 @@ Inicie a sinalização em um terminal:
 npm run server:dev
 ```
 
+Para testar em desenvolvimento a opção de excluir o Discord do áudio, compile o helper nativo uma vez:
+
+```powershell
+npm run audio:build
+```
+
+Os comandos `npm run dist:win` e `npm run pack:win` compilam e incluem o helper automaticamente. Quem instala o aplicativo não precisa do Visual Studio Build Tools.
+
 Em outro terminal, abra o aplicativo:
 
 ```powershell
@@ -66,7 +75,7 @@ O endereço local padrão é `ws://127.0.0.1:8787`. Para testar com outro comput
 1. Abra o Discorja e configure o servidor de sinalização.
 2. Informe seu nome e crie uma sala.
 3. Escolha a qualidade e a janela ou monitor que deseja transmitir.
-4. Se quiser transmitir som, marque a opção e confira o aviso antes de iniciar. Durante chamadas no Discord, prefira somente vídeo até validar uma saída de som isolada.
+4. Se quiser transmitir som durante uma call, marque **Excluir o áudio do Discord da transmissão**. Se o Windows não suportar o filtro, o vídeo seguirá sem áudio.
 5. Inicie a transmissão e compartilhe o código com os amigos. Eles entram na sala e escolhem **Assistir** no cartão desejado.
 6. Outra pessoa pode usar **Compartilhar minha tela** enquanto houver espaço. Você pode transmitir e assistir a outra pessoa simultaneamente; trocar de cartão encerra a recepção anterior.
 7. Quem recebe pode usar **Ouvir transmissão** e ajustar o volume. O som recebido fica bloqueado enquanto captura o som do próprio computador, para evitar retorno.

@@ -154,14 +154,39 @@ async function startCapture(page) {
   );
   const sourcePrefix = sourceId.split(':').slice(0, 2).join(':') + ':';
   const option = page.locator(`.source-option[data-source^="${sourcePrefix}"]`);
+  await expect(page.getByRole('tab', { name: 'Tela' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.getByRole('tab', { name: 'Guias' })).toHaveAttribute(
+    'aria-selected',
+    'false',
+  );
+  await page.getByRole('tab', { name: 'Guias' }).click();
+  await expect(page.getByRole('tab', { name: 'Guias' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await expect(page.locator('[data-action=refresh-sources]')).toBeEnabled();
   if (!(await option.count())) {
     environment.sourceListRefreshes =
       (environment.sourceListRefreshes ?? 0) + 1;
     await page.locator('[data-action=refresh-sources]').click();
+    await page.getByRole('tab', { name: 'Guias' }).click();
   }
   await expect(option).toHaveCount(1);
+  const sourceList = page.locator('.source-groups');
+  const scrollBeforeSelection = await sourceList.evaluate((element) => {
+    element.scrollTop = Math.min(
+      80,
+      element.scrollHeight - element.clientHeight,
+    );
+    return element.scrollTop;
+  });
   await option.click();
+  await expect
+    .poll(() => sourceList.evaluate((element) => element.scrollTop))
+    .toBe(scrollBeforeSelection);
   await page.locator('[data-action=start-share]').click();
   await expect(page.locator('[data-action=stop]')).toBeVisible({
     timeout: 15000,
@@ -199,15 +224,12 @@ async function expectVideo(page) {
 }
 
 async function chooseQuality(page, preset) {
-  if (
-    !(await page
-      .locator('#quality-details')
-      .evaluate((element) => element.open))
-  )
-    await page.locator('#quality-details > summary').click();
-  await expect(page.locator('#quality-preset')).toBeEnabled();
-  await page.locator('#quality-preset').selectOption(preset);
-  await expect(page.locator('#quality-preset')).toBeEnabled();
+  if (!(await page.locator('#settings-quality-preset').count())) {
+    await page.locator('[data-action=settings]').click();
+  }
+  await expect(page.locator('#settings-quality-preset')).toBeEnabled();
+  await page.locator('#settings-quality-preset').selectOption(preset);
+  await page.locator('[data-action=close-settings]').click();
 }
 
 async function expectSenderProfile(host, { width, height, fps, cap }) {
@@ -367,11 +389,14 @@ try {
   );
   assert.match(code, /^[A-Z2-9]{8}$/);
   console.log('Room created');
-  await host.locator('#quality-details > summary').click();
-  await expect(host.locator('#adaptive-quality')).toBeChecked();
-  await host.locator('#adaptive-quality').uncheck();
+  await host.locator('[data-action=settings]').click();
+  await expect(host.locator('#settings-adaptive-quality')).toBeChecked();
+  await host.locator('#settings-adaptive-quality').uncheck();
+  await host.locator('[data-action=close-settings]').click();
   await chooseQuality(host, '1080p60');
-  await host.locator('#content-mode').selectOption('motion');
+  await host.locator('[data-action=settings]').click();
+  await host.locator('#settings-content-mode').selectOption('motion');
+  await host.locator('[data-action=close-settings]').click();
   await host.locator('[data-action=choose-source]').click();
   await expect(
     host.locator('[data-action=cancel-sources]').first(),
@@ -420,7 +445,8 @@ try {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath });
   }, diagnosticPath);
   try {
-    await host.locator('#diagnostics-details > summary').click();
+    await host.locator('.video-stage').hover();
+    await host.locator('[data-action=show-diagnostics]').click();
     await host.locator('[data-action=export-diagnostics]').click();
     await expect
       .poll(async () => {
@@ -443,6 +469,7 @@ try {
       'version',
     ]);
     assert.equal(JSON.stringify(exported).includes(code), false);
+    await host.getByRole('button', { name: 'Fechar diagnóstico' }).click();
   } finally {
     await hostApp.evaluate(({ dialog }) => {
       dialog.showSaveDialog = globalThis.originalDiscorjaSaveDialog;
@@ -485,6 +512,7 @@ try {
   );
 
   for (const [preset, width, height, fps, cap] of [
+    ['1080p120', 1920, 1080, 120, 30_000_000],
     ['1080p30', 1920, 1080, 30, 8_000_000],
     ['720p30', 1280, 720, 30, 4_000_000],
   ]) {
@@ -509,15 +537,19 @@ try {
       receiver: await collectQuality(viewer),
     });
     if (preset === '1080p30') {
-      await host.locator('#content-mode').selectOption('detail');
-      await expect(host.locator('#content-mode')).toBeEnabled();
+      await host.locator('[data-action=settings]').click();
+      await host.locator('#settings-content-mode').selectOption('detail');
+      await expect(host.locator('#settings-content-mode')).toBeEnabled();
+      await host.locator('[data-action=close-settings]').click();
       recordQuality({
         profile: '1080p30-detail',
         host: await qualitySnapshot(host),
         receiver: await collectQuality(viewer),
       });
-      await host.locator('#content-mode').selectOption('motion');
-      await expect(host.locator('#content-mode')).toBeEnabled();
+      await host.locator('[data-action=settings]').click();
+      await host.locator('#settings-content-mode').selectOption('motion');
+      await expect(host.locator('#settings-content-mode')).toBeEnabled();
+      await host.locator('[data-action=close-settings]').click();
     }
     assert.equal(
       await viewer.evaluate(
@@ -531,8 +563,9 @@ try {
     'Live 1080p30 and 720p30 changes preserve the stream, room and video element',
   );
   await chooseQuality(host, '1080p60');
-  await host.locator('#video-bitrate').fill('24');
-  await host.locator('#video-bitrate').press('Tab');
+  await host.locator('[data-action=settings]').click();
+  await host.locator('#settings-video-bitrate').fill('24');
+  await host.locator('#settings-video-bitrate').press('Tab');
   await expect
     .poll(async () => {
       const snapshot = await qualitySnapshot(host);
@@ -552,7 +585,8 @@ try {
     host: await qualitySnapshot(host),
     receiver: await collectQuality(viewer, 2500),
   });
-  await host.locator('[data-action=reset-bitrate]').click();
+  await host.locator('#video-bitrate').fill('12');
+  await host.locator('#video-bitrate').press('Tab');
   await expectSenderProfile(host, {
     width: 1920,
     height: 1080,
@@ -560,8 +594,18 @@ try {
     cap: 12_000_000,
   });
   checks.push(
-    'A 24Mbps per-viewer video ceiling applies to real RTP parameters and resets without restarting capture',
+    'A 24Mbps per-viewer video ceiling applies to real RTP parameters and returns to the profile default without restarting capture',
   );
+  await host.locator('.quality-panel').screenshot({
+    path: 'test-results/quality-controls.png',
+  });
+  await host.locator('[data-action=close-settings]').click();
+  await host.locator('.video-stage').hover();
+  await host.locator('[data-action=show-diagnostics]').click();
+  await host
+    .locator('.stream-diagnostics')
+    .screenshot({ path: 'test-results/quality-diagnostics.png' });
+  await host.getByRole('button', { name: 'Fechar diagnóstico' }).click();
   await expectSenderProfile(host, {
     width: 1920,
     height: 1080,
@@ -597,12 +641,6 @@ try {
   checks.push('Minimizing the host keeps capture and monitoring active');
   await viewer.screenshot({ path: 'test-results/viewer.png' });
   await host.screenshot({ path: 'test-results/sharing.png' });
-  await host
-    .locator('.quality-panel')
-    .screenshot({ path: 'test-results/quality-controls.png' });
-  await host
-    .locator('.stream-diagnostics')
-    .screenshot({ path: 'test-results/quality-diagnostics.png' });
   await viewer.locator('[data-action=fullscreen]').click();
   await viewer.waitForFunction(() => Boolean(document.fullscreenElement));
   await viewer.evaluate(() => document.exitFullscreen());
@@ -657,10 +695,11 @@ try {
   ).toBeVisible();
   assert.equal(await host.locator('.person strong b').count(), 0);
   checks.push('Late viewer receives video; participant names render as text');
-  await host.locator('#adaptive-quality').check();
-  await expect(host.locator('#upload-budget')).toBeEnabled();
-  await host.locator('#upload-budget').fill('4');
-  await host.locator('#upload-budget').press('Tab');
+  await host.locator('[data-action=settings]').click();
+  await host.locator('#settings-adaptive-quality').check();
+  await expect(host.locator('#settings-upload-budget')).toBeEnabled();
+  await host.locator('#settings-upload-budget').fill('4');
+  await host.locator('#settings-upload-budget').press('Tab');
   await expect
     .poll(
       async () => {
@@ -688,8 +727,9 @@ try {
     receiver: await collectQuality(viewer, 2500),
   });
   checks.push('Two viewers share the configured total upload budget');
-  await host.locator('#upload-budget').fill('40');
-  await host.locator('#upload-budget').press('Tab');
+  await host.locator('#settings-upload-budget').fill('40');
+  await host.locator('#settings-upload-budget').press('Tab');
+  await host.locator('[data-action=close-settings]').click();
 
   if (networkStress) {
     const cdp = await host.context().newCDPSession(host);
@@ -729,8 +769,6 @@ try {
         (codec) => codec.mimeType,
       ),
     );
-    await host.locator('#upload-budget').fill('40');
-    await host.locator('#upload-budget').press('Tab');
     for (const codec of ['VP8', 'H264']) {
       if (
         !environment.videoCodecs?.some(
@@ -739,9 +777,11 @@ try {
       )
         continue;
       await host.locator('[data-action=stop]').click();
-      await expect(host.locator('#preferred-codec')).toBeEnabled();
-      await host.locator('#preferred-codec').selectOption(codec);
-      await expect(host.locator('#preferred-codec')).toBeEnabled();
+      await host.locator('[data-action=settings]').click();
+      await expect(host.locator('#settings-preferred-codec')).toBeEnabled();
+      await host.locator('#settings-preferred-codec').selectOption(codec);
+      await expect(host.locator('#settings-preferred-codec')).toBeEnabled();
+      await host.locator('[data-action=close-settings]').click();
       await startCapture(host);
       await expectVideo(viewer);
       await viewer.waitForTimeout(4000);

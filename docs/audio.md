@@ -1,17 +1,21 @@
 # Som do computador e uso com Discord
 
-## O que a 0.4.0 oferece
+## O que o Discorja oferece
 
-O anfitrião pode compartilhar vídeo com o som do computador no Windows 10/11 x64. Continua existindo um transmissor por sala. Não é preciso configurar outra rota no servidor, instalar um serviço de áudio ou contratar infraestrutura: o WebRTC negocia a faixa de áudio pela sinalização existente. Microfone e câmera continuam negados.
+O anfitrião pode compartilhar vídeo com o som do computador. O modo padrão captura o loopback geral do Windows. Há também a opção **Excluir o áudio do Discord da transmissão**, que usa a captura nativa por processo do Windows para remover o aplicativo Discord e seus processos filhos, mantendo a call audível localmente. São reconhecidos Discord, Discord PTB e Discord Canary; mantenha apenas uma instância aberta. Microfone e câmera continuam negados.
 
-O modo usa o loopback do Windows autorizado pelo Electron. **Selecionar uma janela limita a imagem, mas não isola seu áudio.** Discord, notificações, navegador e outros programas podem entrar no som capturado. Não há filtro automático para excluir Discord ou outros processos. O retorno da própria prévia fica sempre silenciado.
+Ao desenvolver ou empacotar no Windows, `npm run audio:build` compila o helper com Visual Studio Build Tools gratuito e a carga **Desenvolvimento para desktop com C++**. `npm run dist:win` e `npm run pack:win` fazem essa compilação automaticamente e incluem o executável no pacote. Quem instala o Discorja não precisa instalar ferramentas de desenvolvimento.
+
+Se aparecer **“A captura filtrada não foi incluída nesta instalação”**, essa cópia do Discorja foi empacotada sem o helper nativo. Instale uma release criada a partir do código que inclui esse recurso. Ao gerar uma release manualmente, use `npm run dist:win`; o workflow do GitHub também verifica se o helper entrou no pacote. Até instalar essa versão, use somente vídeo ou mantenha o áudio desligado.
+
+O modo padrão usa o loopback do Windows autorizado pelo Electron. **Selecionar uma janela limita a imagem, mas não isola seu áudio.** Notificações, navegador e outros programas podem entrar no som capturado. A opção de exclusão substitui o loopback do Electron por um helper nativo WASAPI e exclui a árvore de processos do aplicativo Discord. O helper não grava áudio em arquivo nem altera o volume local. Ele requer Windows 11 ou Windows 10 build 20348 ou superior. Se a API não estiver disponível, o Discorja mostra um erro e continua somente com vídeo; nunca muda silenciosamente para o loopback geral. O retorno da própria prévia fica sempre silenciado.
 
 ## Para transmitir
 
 1. Confira a saída padrão de reprodução nas configurações de som do Windows e reproduza um conteúdo conhecido. O dispositivo precisa estar disponível.
 2. Crie a sala e clique em **Escolher o que compartilhar**.
 3. Selecione a janela ou monitor e, se desejar, marque **Compartilhar som do computador**. A opção começa desmarcada em cada nova captura.
-4. Leia o aviso e confirme o alcance do som. Sem essa confirmação, iniciar com áudio permanece bloqueado.
+4. Durante uma call no aplicativo Discord, marque **Excluir o áudio do Discord da transmissão**. Você continuará ouvindo as pessoas localmente. Se usar o loopback geral, leia o aviso e confirme o alcance do som antes de iniciar.
 5. Clique em **Iniciar compartilhamento**. Peça a um espectador para conferir som e imagem antes de continuar.
 
 | Controle do anfitrião   | Comportamento                                                                                                                                         |
@@ -36,10 +40,11 @@ Há um único elemento de reprodução para vídeo e som. O navegador cuida dos 
 | Discord para voz + Discorja somente vídeo               | Caminho recomendado para continuar conversando sem recapturar a chamada.                                                                       |
 | Som do computador sem chamada ou outro áudio indesejado | Modo oferecido; conferir a saída e o conteúdo ouvido pelo espectador.                                                                          |
 | Discord para voz + som geral na mesma saída             | Pode devolver as vozes aos espectadores com atraso. Não é uma configuração anunciada como isolada.                                             |
+| Discord instalado + opção de exclusão ativada           | Exclui o Discord e seus processos filhos do áudio transmitido, preservando a reprodução local, em versões compatíveis do Windows.              |
 | Discord e conteúdo em saídas diferentes                 | Possível experimento com dispositivos já existentes; exige ensaio no Windows alvo. Não considerar isolado apenas por mudar o seletor de saída. |
-| Áudio exclusivo de jogo/janela/processo                 | Não implementado. O parâmetro `loopback` do Electron não oferece seleção de um processo externo.                                               |
+| Áudio exclusivo de jogo/janela/processo                 | Não implementado. A opção atual exclui somente o aplicativo Discord reconhecido.                                                               |
 
-Fones evitam parte do retorno acústico, mas **não impedem a recaptura digital** do loopback. Reduzir o volume recebido também não exclui as vozes do Discord no computador transmissor. Se houver eco, silencie o envio no Discorja e encerre a captura de som. Continue somente com vídeo.
+Fones evitam parte do retorno acústico, mas **não impedem a recaptura digital** do loopback geral. Reduzir o volume recebido também não exclui as vozes do Discord no computador transmissor. Para usar o filtro, todos devem usar o aplicativo Discord instalado, e o computador transmissor precisa de uma versão compatível do Windows. Se houver eco ou o filtro falhar, silencie o envio no Discorja e encerre a captura de som. Continue somente com vídeo.
 
 Para experimentar saídas separadas sem comprar nada, use apenas dispositivos que já possui. No Windows, direcione o conteúdo e o Discord para saídas distintas; os menus variam entre versões. Faça o teste abaixo com os outros aplicativos fechados. Não há garantia de isolamento dessa configuração até conferir o resultado no computador usado. Se não funcionar, mantenha somente vídeo durante a chamada. Drivers, cabos virtuais ou serviços externos não são requisitos desta versão.
 

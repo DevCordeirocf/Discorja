@@ -63,6 +63,12 @@ jobs:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify filtered audio helper is packaged
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath 'release/win-unpacked/resources/discorja-audio-capture.exe' -PathType Leaf)) {
+            throw 'The Windows package is missing the filtered audio helper.'
+          }
       - name: Verify installer signatures and updater artifacts
         shell: pwsh
         run: |

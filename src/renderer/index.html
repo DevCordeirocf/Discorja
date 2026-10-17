@@ -5,11 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' wss: ws://127.0.0.1:* ws://localhost:*; img-src 'self' data:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https: wss: ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*; img-src 'self' data:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'"
     />
     <meta name="theme-color" content="#101115" />
+    <!-- Keep the shared foundation first; app.css contains product-level overrides. -->
     <link rel="stylesheet" href="/style.css" />
-    <title>Discorja — perto, mesmo de longe</title>
+    <link rel="stylesheet" href="/app.css" />
+    <link rel="icon" type="image/png" href="./assets/logo.png" />
+    <title>Discorja</title>
   </head>
   <body>
     <div id="app"></div>

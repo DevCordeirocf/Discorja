@@ -490,6 +490,12 @@ afterEach(async () => {
 });
 
 describe('sinalização Discorja', () => {
+  it('limita cada sala a dez participantes no total', () => {
+    expect(() => createSignalingServer({ maxViewers: 10 })).toThrow(
+      /maxViewers deve ser no máximo 9/,
+    );
+  });
+
   it('conta somente conexões abertas durante retomada e limpa salas expiradas', async () => {
     let time = 100000;
     const statsToken = 'c'.repeat(64);
@@ -691,7 +697,7 @@ describe('sinalização Discorja', () => {
     ]);
     const room = await createRoom(host);
     expect(room.code).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/u);
-    expect(room.maxViewers).toBe(4);
+    expect(room.maxViewers).toBe(9);
     const first = await join(
       one,
       `${room.code.slice(0, 4)}- ${room.code.slice(4)}`.toLowerCase(),

@@ -2,19 +2,19 @@
 
 ## Bitrate ajustável — 0.8.0
 
-Em **Qualidade da sua transmissão**, o campo **Teto de vídeo por espectador** aceita de 1 a 30 Mbps. O valor padrão acompanha o perfil: 4 Mbps em 720p/30, 8 Mbps em 1080p/30 e 12 Mbps em 1080p/60. Ao editar, o teto personalizado permanece durante trocas de perfil até clicar em **Usar padrão do perfil**. A preferência é salva no computador e pode ser alterada enquanto transmite, sem iniciar nova captura.
+Em **Qualidade da sua transmissão**, o campo **Teto por espectador** aceita de 1 a 100 Mbps. O valor padrão acompanha o perfil: 4 Mbps em 720p/30, 8 Mbps em 1080p/30, 12 Mbps em 1080p/60 e 30 Mbps em 1080p/120. Ao editar, o teto personalizado permanece durante trocas de perfil. Para voltar ao valor padrão do perfil selecionado, digite o valor correspondente no campo. A preferência é salva no computador e pode ser alterada enquanto transmite, sem iniciar nova captura.
 
-**Mbps significa megabits por segundo; MB/s significa megabytes por segundo.** Divida por oito: 12 Mbps = 1,5 MB/s, 24 Mbps = 3 MB/s e 30 Mbps = 3,75 MB/s. Esses valores são tetos de vídeo por espectador, antes de considerar o orçamento total e o áudio.
+**Mbps significa megabits por segundo; MB/s significa megabytes por segundo.** Divida por oito: 12 Mbps = 1,5 MB/s, 30 Mbps = 3,75 MB/s e 100 Mbps = 12,5 MB/s. Esses valores são tetos de vídeo por espectador, antes de considerar o orçamento total e o áudio.
 
-O **Limite total de envio** continua independente, de 4 a 100 Mbps. Reserva 15% de folga, divide o restante entre quem assiste à sua tela e desconta a reserva de áudio quando ele está ativo. O menor limite prevalece: configurar 24 Mbps por pessoa não permite ultrapassar o orçamento total.
+O **Limite total de envio** vai de 4 a 500 Mbps, começa em 100 Mbps e reserva 15% de folga. O restante é dividido entre quem assiste à sua tela e considera uma reserva para áudio. O menor limite prevalece: configurar 30 Mbps por pessoa não permite ultrapassar o orçamento total.
 
-| Exemplo de configuração                                               | Resultado máximo antes da adaptação                                       |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Uma pessoa assistindo, teto de 24 Mbps e orçamento total de 40 Mbps   | O teto individual pode chegar a 24 Mbps.                                  |
-| Duas pessoas assistindo, teto de 24 Mbps e orçamento total de 40 Mbps | O orçamento limita cada uma a cerca de 17 Mbps, um pouco menos com áudio. |
-| Duas pessoas assistindo, teto de 24 Mbps e orçamento total de 60 Mbps | Há orçamento para o teto individual de 24 Mbps.                           |
+| Exemplo de configuração                                                | Resultado máximo antes da adaptação                                       |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Uma pessoa assistindo, teto de 24 Mbps e orçamento total de 40 Mbps    | O teto individual pode chegar a 24 Mbps.                                  |
+| Duas pessoas assistindo, teto de 24 Mbps e orçamento total de 40 Mbps  | O orçamento limita cada uma a cerca de 17 Mbps, um pouco menos com áudio. |
+| Duas pessoas assistindo, teto de 30 Mbps e orçamento total de 100 Mbps | Há orçamento para o teto individual de 30 Mbps.                           |
 
-Defina o total dentro do upload disponível no computador, deixando espaço para o Discord e outros programas. A adaptação e o controle de congestionamento continuam ativos quando habilitados. O campo aumenta a permissão de envio; **não força consumo constante**. Uma tela parada ou fácil de comprimir pode usar pouco tráfego mesmo com teto alto, e limitações de CPU ou do receptor podem impedir ganho de qualidade.
+Defina o total dentro do upload disponível no computador, deixando espaço para o Discord e outros programas. A adaptação e o controle de congestionamento continuam ativos quando habilitados. O campo aumenta a permissão de envio; **não força consumo constante**. Uma tela parada ou fácil de comprimir pode usar pouco tráfego mesmo com teto alto, e limitações de CPU, captura, codificador ou receptor podem impedir ganho de qualidade.
 
 No teste local 0.8, o parâmetro de envio de vídeo aceitou 24.000.000 bits/s e o receptor mediu aproximadamente 6,25 Mbps naquela amostra, a cerca de 51,7 FPS e 1920 × 1032. Isso confirma o ajuste de teto, sem prometer 3 MB/s reais ou 1080p/60 sustentado. Detalhes em [validacao-0.8.0.md](validacao-0.8.0.md).
 
@@ -56,13 +56,14 @@ Os resultados e limites da execução desta versão estão em [validação local
 
 ## Perfis e orçamento de envio
 
-| Perfil         | Resolução e FPS solicitados | Teto inicial por espectador | Uso sugerido                                            |
-| -------------- | --------------------------- | --------------------------- | ------------------------------------------------------- |
-| 720p · 30 FPS  | 1280 × 720, até 30 FPS      | 4 Mbps                      | Ponto inicial com menor carga.                          |
-| 1080p · 30 FPS | 1920 × 1080, até 30 FPS     | 8 Mbps                      | Texto, código e apresentações com mais detalhe.         |
-| 1080p · 60 FPS | 1920 × 1080, até 60 FPS     | 12 Mbps                     | Movimento, quando fonte, computador e rede sustentarem. |
+| Perfil          | Resolução e FPS solicitados | Teto inicial por espectador | Uso sugerido                                            |
+| --------------- | --------------------------- | --------------------------- | ------------------------------------------------------- |
+| 720p · 30 FPS   | 1280 × 720, até 30 FPS      | 4 Mbps                      | Ponto inicial com menor carga.                          |
+| 1080p · 30 FPS  | 1920 × 1080, até 30 FPS     | 8 Mbps                      | Texto, código e apresentações com mais detalhe.         |
+| 1080p · 60 FPS  | 1920 × 1080, até 60 FPS     | 12 Mbps                     | Movimento, quando fonte, computador e rede sustentarem. |
+| 1080p · 120 FPS | 1920 × 1080, até 120 FPS    | 30 Mbps                     | Alta fluidez, com fonte e hardware compatíveis.         |
 
-Esses valores são decisões do Discorja, não requisitos mínimos universais de banda. O padrão é 720p/30 FPS, conteúdo com detalhes e adaptação habilitada. O orçamento total padrão é 40 Mbps, editável entre 4 e 100 Mbps; ele deve caber no upload disponível, com folga para o restante da conexão.
+Esses valores são decisões do Discorja, não requisitos mínimos universais de banda. O padrão é 720p/30 FPS, conteúdo com detalhes e adaptação habilitada. O orçamento total padrão é 100 Mbps, editável entre 4 e 500 Mbps; ajuste-o ao upload real disponível e deixe folga para o restante da conexão.
 
 O aplicativo solicita para cada envio o menor teto entre o perfil e sua parcela do orçamento total. Com quatro espectadores em 1080p/60 FPS e orçamento de 40 Mbps, a parcela inicial é de até 10 Mbps por pessoa, em vez de quatro envios de 12 Mbps. A adaptação pode reduzir cada envio abaixo dessa parcela. O orçamento não mede a velocidade contratada e não reserva banda no roteador.
 
@@ -72,9 +73,9 @@ Os controles são aplicados com `RTCRtpSender.setParameters()`. Se o navegador n
 
 ## Detalhes ou movimento
 
-Use **Textos e detalhes** para ler texto e preservar contornos; use **Vídeos e jogos** quando a fluidez for mais importante. O aplicativo comunica essa preferência ao codificador e usa uma sequência de redução coerente com ela: detalhes reduz primeiro FPS; movimento reduz primeiro resolução. As [indicações de conteúdo do W3C](https://www.w3.org/TR/mst-content-hint/#video-content-hints) descrevem essa troca entre nitidez e fluidez. Elas orientam o navegador; não garantem legibilidade ou uma taxa fixa.
+Use **Textos e detalhes** para ler texto e preservar contornos; use **Vídeos e jogos** quando a fluidez for mais importante. O aplicativo comunica essa preferência ao codificador e usa uma sequência de redução coerente com ela: detalhe prioriza resolução e movimento prioriza cadência. O perfil de 120 FPS também reduz resolução antes de reduzir FPS. As [indicações de conteúdo do W3C](https://www.w3.org/TR/mst-content-hint/#video-content-hints) descrevem essa troca entre nitidez e fluidez. Elas orientam o navegador; não garantem legibilidade ou uma taxa fixa.
 
-Uma fonte pequena não ganha detalhes reais ao escolher 1080p. Para avaliar 1080p/60, use conteúdo com área nativa suficiente, movimento contínuo e atualização compatível. Uma janela parada pode gerar poucos quadros novos sem haver travamento. Uma fonte a 30 FPS, uma janela com atualização limitada ou falta de recursos de codificação impede 60 FPS efetivos.
+Uma fonte pequena não ganha detalhes reais ao escolher 1080p. Para avaliar 1080p/60 ou 1080p/120, use conteúdo com área nativa suficiente, movimento contínuo e atualização compatível. Uma janela parada pode gerar poucos quadros novos sem haver travamento. Um monitor ou conteúdo a 60 FPS não produz 120 quadros distintos; falta de recursos de captura ou codificação também impede atingir o perfil.
 
 1080p/60 processa aproximadamente 4,5 vezes mais pixels por segundo que 720p/30, antes das diferenças de codec e de conteúdo. Isso não significa uma multiplicação exata do uso de CPU, mas explica por que aumentar qualidade afeta captura, escala, codificação e decodificação, além da rede.
 

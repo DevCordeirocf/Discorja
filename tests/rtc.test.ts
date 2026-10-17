@@ -304,6 +304,16 @@ describe('controle RTC e recuperação', () => {
         { maxBitrate: 4_000_000, maxFramerate: 30, scaleResolutionDownBy: 1.5 },
       ],
     });
+    await peers.configure({
+      preset: '1080p120',
+      content: 'detail',
+      adaptive: true,
+      maxUploadMbps: 100,
+    });
+    expect(sender.parameters).toMatchObject({
+      degradationPreference: 'maintain-framerate',
+      encodings: [{ maxBitrate: 30_000_000, maxFramerate: 120 }],
+    });
     expect(sender.track).toBe(track);
     expect(FakePC.instances).toHaveLength(1);
     expect(pc.createOffer).toHaveBeenCalledTimes(1);

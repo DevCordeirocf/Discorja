@@ -2,7 +2,12 @@ import { build } from 'esbuild';
 import { build as buildRenderer } from 'vite';
 import { mkdir, copyFile, writeFile, access } from 'node:fs/promises';
 
+await import('./generate-icon.mjs');
 await mkdir('dist/electron', { recursive: true });
+await Promise.all([
+  copyFile('build/icon.ico', 'dist/electron/icon.ico'),
+  copyFile('build/icon.png', 'dist/electron/icon.png'),
+]);
 await Promise.all([
   build({
     entryPoints: ['src/electron/main.ts'],
@@ -24,6 +29,11 @@ await Promise.all([
   }),
   buildRenderer(),
 ]);
+await mkdir('dist/renderer/assets', { recursive: true });
+await copyFile(
+  'src/renderer/assets/fonts/OFL.txt',
+  'dist/renderer/assets/Roboto-OFL.txt',
+);
 try {
   await access('build/release.json');
   await copyFile('build/release.json', 'dist/electron/release.json');

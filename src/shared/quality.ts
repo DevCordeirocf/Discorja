@@ -1,4 +1,4 @@
-export type QualityPresetId = '720p30' | '1080p30' | '1080p60';
+export type QualityPresetId = '720p30' | '1080p30' | '1080p60' | '1080p120';
 export type ContentMode = 'motion' | 'detail';
 
 export interface StreamPreferences {
@@ -34,13 +34,20 @@ export const QUALITY_PRESETS = {
     fps: 60,
     bitrate: 12_000_000,
   },
+  '1080p120': {
+    label: '1080p · 120 FPS',
+    width: 1920,
+    height: 1080,
+    fps: 120,
+    bitrate: 30_000_000,
+  },
 } as const;
 
 export const DEFAULT_STREAM_PREFERENCES: StreamPreferences = {
   preset: '720p30',
   content: 'detail',
   adaptive: true,
-  maxUploadMbps: 40,
+  maxUploadMbps: 100,
 };
 
 export function normalizePreferences(input: unknown): StreamPreferences {
@@ -52,7 +59,7 @@ export function normalizePreferences(input: unknown): StreamPreferences {
     ...(typeof value.videoBitrateMbps === 'number' &&
     Number.isFinite(value.videoBitrateMbps) &&
     value.videoBitrateMbps > 0
-      ? { videoBitrateMbps: Math.max(1, Math.min(30, value.videoBitrateMbps)) }
+      ? { videoBitrateMbps: Math.max(1, Math.min(100, value.videoBitrateMbps)) }
       : {}),
     ...(value.preferredCodec &&
     ['H264', 'VP8', 'VP9', 'AV1'].includes(value.preferredCodec)
@@ -67,8 +74,8 @@ export function normalizePreferences(input: unknown): StreamPreferences {
     maxUploadMbps:
       typeof value.maxUploadMbps === 'number' &&
       Number.isFinite(value.maxUploadMbps)
-        ? Math.max(4, Math.min(100, value.maxUploadMbps))
-        : 40,
+        ? Math.max(4, Math.min(500, value.maxUploadMbps))
+        : 100,
   };
 }
 
