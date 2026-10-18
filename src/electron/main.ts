@@ -40,6 +40,8 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 app.setName('Discorja');
+// The bundled startup sound is timed with the splash and should not require a click.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 let window: BrowserWindow | null = null;
 let logs: DesktopLogs | undefined;

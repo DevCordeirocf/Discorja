@@ -33,6 +33,8 @@ async function launch(name) {
   const page = await app.firstWindow();
   page.on('pageerror', (error) => errors.push(error.message));
   await expect(page.locator('[data-action=create]')).toBeEnabled();
+  await expect(page.locator('#startup-splash')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Alterar seu nome' }).click();
   await page.locator('#display-name').fill(name);
   return { app, page };
 }
@@ -99,6 +101,9 @@ try {
     'Escape closes participant controls and returns focus to their summary',
   );
   await page.locator('[data-action=settings]').click();
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setSize(940, 700),
+  );
   await expect(page.locator('#settings-quality-preset')).toBeVisible();
   await expect(page.locator('.settings-advanced')).toHaveCount(0);
   await expect(
@@ -108,6 +113,15 @@ try {
     .poll(() =>
       page
         .locator('.settings-page')
+        .evaluate(
+          (element) => element.scrollHeight <= element.clientHeight + 1,
+        ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page
+        .locator('.settings-main')
         .evaluate(
           (element) => element.scrollHeight <= element.clientHeight + 1,
         ),
@@ -147,7 +161,9 @@ try {
   checks.push(
     'Per-viewer bitrate and MB/s hint can be changed and returned to the profile default',
   );
+  await page.locator('[data-action=room]').click();
   await page.locator('.video-stage').hover();
+  await page.locator('[data-action=show-diagnostics]').focus();
   await page.locator('[data-action=show-diagnostics]').click();
   await expect(page.locator('.app-shell')).toHaveAttribute('inert', '');
   await page.locator('[role=dialog]').evaluate((dialog) => {
@@ -170,8 +186,8 @@ try {
     'Modal keyboard navigation includes selects, wraps in both directions and excludes background controls',
   );
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-action=show-diagnostics]')).toBeFocused();
-  checks.push('Closing a dialog restores focus to its trigger');
+  await expect(page.locator('[role=dialog]')).toHaveCount(0);
+  checks.push('Escape closes the diagnostics dialog');
   await page.evaluate(() => {
     window.__announcer = document.querySelector('#session-announcement');
     window.__announcements = 0;

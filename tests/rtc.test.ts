@@ -461,12 +461,37 @@ describe('controle RTC e recuperação', () => {
       pc.createOffer.mock.calls.filter(([options]) => options?.iceRestart),
     ).toHaveLength(2);
     await vi.advanceTimersByTimeAsync(12000);
-    expect(state).toHaveBeenLastCalledWith('viewer', 'failed');
+    expect(state).toHaveBeenLastCalledWith('viewer', 'failed', {
+      connectionState: 'failed',
+      iceConnectionState: 'failed',
+      role: 'host',
+    });
     await vi.advanceTimersByTimeAsync(60000);
     expect(
       pc.createOffer.mock.calls.filter(([options]) => options?.iceRestart),
     ).toHaveLength(2);
     expect(FakePC.instances).toHaveLength(1);
+  });
+
+  it('encerra a espera de uma recepção WebRTC falha em 12 segundos', async () => {
+    const { peers, state } = manager();
+    await peers.receive(
+      'host',
+      { type: 'offer', sdp: 'v=0\r\na=ice-ufrag:remote\r\n' },
+      true,
+    );
+    const pc = FakePC.instances[0];
+    pc.state('connected');
+    pc.state('failed');
+
+    await vi.advanceTimersByTimeAsync(11_999);
+    expect(state).not.toHaveBeenCalledWith('host', 'failed');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(state).toHaveBeenLastCalledWith('host', 'failed', {
+      connectionState: 'failed',
+      iceConnectionState: 'failed',
+      role: 'viewer',
+    });
   });
 
   it('cancela recuperação transitória ao reconectar antes do timeout', async () => {

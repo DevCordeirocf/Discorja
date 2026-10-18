@@ -66,6 +66,11 @@ export class RoomPeers {
     private readonly onState: (
       peerId: string,
       state: PeerConnectionStatus,
+      details?: {
+        connectionState: RTCPeerConnectionState;
+        iceConnectionState: RTCIceConnectionState;
+        role: Peer['role'];
+      },
     ) => void,
     private readonly options?: RoomPeerOptions,
   ) {
@@ -492,20 +497,31 @@ export class RoomPeers {
     peerId: string,
     peer: Peer,
     state: PeerConnectionStatus,
+    details?: {
+      connectionState: RTCPeerConnectionState;
+      iceConnectionState: RTCIceConnectionState;
+      role: Peer['role'];
+    },
   ): void {
     if (peer.lastState === state) return;
     peer.lastState = state;
-    this.onState(peerId, state);
+    if (details) this.onState(peerId, state, details);
+    else this.onState(peerId, state);
   }
 
   private fail(peerId: string, peer: Peer): void {
     if (!this.current(peerId, peer) || peer.failed) return;
+    const details = {
+      connectionState: peer.connection.connectionState,
+      iceConnectionState: peer.connection.iceConnectionState,
+      role: peer.role,
+    };
     this.clearRecoveryTimers(peer);
     peer.recovering = false;
     peer.failed = true;
     this.detach(peer);
     peer.connection.close();
-    this.notify(peerId, peer, 'failed');
+    this.notify(peerId, peer, 'failed', details);
     void this.rebalance();
     this.emitMetrics();
   }
@@ -519,7 +535,7 @@ export class RoomPeers {
       peer.restartTimer = setTimeout(() => {
         peer.restartTimer = undefined;
         this.fail(peerId, peer);
-      }, 40_000);
+      }, 12_000);
       return;
     }
     if (peer.restartAttempts >= 2) {

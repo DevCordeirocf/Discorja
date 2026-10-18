@@ -193,21 +193,41 @@
 
 @media (max-width: 860px) {
   .settings-main {
-    height: auto;
-    min-height: 100dvh;
-    overflow: auto;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
   }
   .settings-page {
-    grid-template-columns: minmax(0, 1fr);
-    flex: 0 0 auto;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: 8px;
   }
-  .settings-column,
-  .settings-column:last-child {
-    grid-template-rows: auto;
-    align-content: start;
+  .settings-column {
+    gap: 8px;
+  }
+  .settings-card {
+    padding: 10px;
+    border-radius: 12px;
+  }
+  .settings-card h2 {
+    font-size: 15px;
+    line-height: 20px;
+    margin-bottom: 7px;
+  }
+  .settings-card p {
+    margin-bottom: 7px;
+    font-size: 11px;
+    line-height: 15px;
+  }
+  .server-actions {
+    margin-top: 8px;
   }
   .settings-page-actions {
-    margin-top: 4px;
+    gap: 6px;
+  }
+  .settings-page-actions .button {
+    min-height: 36px;
+    padding-inline: 9px;
+    font-size: 11px;
   }
 }
 
@@ -244,6 +264,46 @@
   .transmission-settings .quality-field select,
   .transmission-settings .budget-input {
     height: 34px;
+  }
+}
+
+@media (max-height: 700px) {
+  .settings-main {
+    padding-block: 12px;
+  }
+  .settings-main .page-heading {
+    min-height: 38px;
+    margin-bottom: 8px;
+  }
+  .settings-main .page-heading h1 {
+    font-size: 22px;
+    line-height: 28px;
+  }
+  .settings-page {
+    gap: 8px;
+  }
+  .settings-column {
+    gap: 7px;
+  }
+  .settings-card {
+    padding: 10px;
+  }
+  .transmission-settings .quality-heading {
+    margin-bottom: 7px;
+  }
+  .transmission-settings .quality-heading p,
+  .transmission-settings .quality-help {
+    display: none;
+  }
+  .transmission-settings .quality-controls {
+    gap: 7px 9px;
+  }
+  .transmission-settings .quality-field select,
+  .transmission-settings .budget-input {
+    height: 31px;
+  }
+  .settings-page-actions .button {
+    min-height: 34px;
   }
 }
 

@@ -115,6 +115,61 @@ async function modernJoin(peer: Peer, code: string, name = 'Amigo') {
 }
 
 describe('Salas do protocolo 2', () => {
+  it('registra requisições HTTP e WebSocket sem expor os dados enviados', async () => {
+    const logs: LogEvent[] = [];
+    const { url, httpUrl } = await start({
+      onLog: (event) => logs.push(event),
+    });
+    const peer = await modern(url, 3);
+    peer.send({
+      type: 'create-room',
+      name: 'NOME-PRIVADO',
+      roomName: 'SALA-PRIVADA',
+    });
+    await state(peer, (value) => value.reason === 'created');
+    expect((await fetch(`${httpUrl}/health`)).status).toBe(200);
+
+    const requests = logs.filter((entry) => entry.event === 'request.received');
+    expect(requests).toEqual(
+      expect.arrayContaining([
+        {
+          event: 'request.received',
+          details: {
+            channel: 'websocket',
+            operation: 'handshake',
+            statusCode: 101,
+          },
+        },
+        {
+          event: 'request.received',
+          details: {
+            channel: 'websocket-message',
+            operation: 'hello',
+            clientProtocol: 3,
+          },
+        },
+        {
+          event: 'request.received',
+          details: {
+            channel: 'websocket-message',
+            operation: 'create-room',
+            clientProtocol: 3,
+          },
+        },
+        {
+          event: 'request.received',
+          details: {
+            channel: 'http',
+            operation: 'health',
+            method: 'GET',
+            statusCode: 200,
+          },
+        },
+      ]),
+    );
+    expect(JSON.stringify(requests)).not.toMatch(/NOME-PRIVADO|SALA-PRIVADA/);
+  });
+
   it('separa dono, transmissor e participante e restringe a negociação à publicação autorizada', async () => {
     const { url } = await start();
     const owner = await modern(url),
@@ -400,7 +455,10 @@ describe('Publicações e seleção única no protocolo 3', () => {
     expect((await watch(viewer, null)).watching).toBeNull();
   });
   it('aplica limite, rejeita publicação obsoleta e mantém a outra tela ao parar uma delas', async () => {
-    const { url, httpUrl } = await start({ statsToken: 'd'.repeat(64) });
+    const { url, httpUrl } = await start({
+      statsToken: 'd'.repeat(64),
+      maxPublishers: 2,
+    });
     const a = await modern(url, 3),
       b = await modern(url, 3),
       c = await modern(url, 3);
@@ -437,6 +495,28 @@ describe('Publicações e seleção única no protocolo 3', () => {
     );
     expect(after.watching).toBeNull();
     expect(after.publications[0].publicationId).toBe('publication-A');
+  });
+  it('permite que os dez participantes publiquem simultaneamente no limite máximo', async () => {
+    const { url } = await start({ maxPublishers: 10 });
+    const peers = await Promise.all(
+      Array.from({ length: 10 }, () => modern(url, 3)),
+    );
+    const room = await modernRoom(peers[0]);
+    for (let index = 1; index < peers.length; index++)
+      await modernJoin(peers[index], room.code, `Participante ${index + 1}`);
+
+    for (let index = 0; index < peers.length; index++)
+      await publish(peers[index], `publication-${index + 1}`);
+
+    const full = await multiSnapshot(
+      peers[0],
+      (snapshot) => snapshot.publications.length === 10,
+    );
+    expect(full.maxPublishers).toBe(10);
+    expect(full.participants).toHaveLength(10);
+    expect(
+      new Set(full.publications.map((entry) => entry.publisherId)).size,
+    ).toBe(10);
   });
   it('bloqueia autoassinatura, negociação sem assinatura e sinais entre salas', async () => {
     const { url } = await start();

@@ -6,7 +6,8 @@ import { createSignalingServer } from '../dist/server/server.js';
 import { installQualityProbe } from './quality-probe.mjs';
 
 await mkdir('test-results', { recursive: true });
-const service = createSignalingServer();
+// Keep the smoke run focused on a deliberately constrained capacity profile.
+const service = createSignalingServer({ maxPublishers: 2 });
 await new Promise((done) => service.server.listen(0, '127.0.0.1', done));
 const applications = [],
   pages = [],
@@ -45,6 +46,7 @@ async function launch(name) {
   pages.push(page);
   page.on('pageerror', (error) => errors.push(error.message));
   await expect(page.locator('[data-action=create]')).toBeEnabled();
+  await expect(page.locator('#startup-splash')).toHaveCount(0);
   await installQualityProbe(page);
   await page.evaluate(() => {
     window.__captureStreams = [];

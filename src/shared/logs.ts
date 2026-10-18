@@ -36,6 +36,7 @@ const EVENTS = [
   'connection.closed',
   'connection.error',
   'connection.heartbeat-timeout',
+  'request.received',
 ] as const;
 
 export type LogEventName = (typeof EVENTS)[number];
@@ -114,6 +115,7 @@ export function sanitizeLogEvent(input: unknown): LogEvent | null {
       'durationMs',
       'participants',
       'protocol',
+      'clientProtocol',
       'code',
       'roomTtlMs',
       'resumeGraceMs',
@@ -128,6 +130,82 @@ export function sanitizeLogEvent(input: unknown): LogEvent | null {
       )
         details[key] = value;
     }
+    if (
+      fields.channel === 'http' ||
+      fields.channel === 'websocket' ||
+      fields.channel === 'websocket-message'
+    )
+      details.channel = fields.channel;
+    if (
+      typeof fields.operation === 'string' &&
+      [
+        'health',
+        'stats',
+        'not-found',
+        'handshake',
+        'invalid',
+        'rate-limited',
+        'hello',
+        'create-room',
+        'join-room',
+        'resume-room',
+        'leave-room',
+        'close-room',
+        'host-state',
+        'signal',
+        'publish-state',
+        'watch-publication',
+        'stream-signal',
+        'stop-publication',
+        'set-publisher',
+        'set-moderator',
+        'kick',
+      ].includes(fields.operation)
+    )
+      details.operation = fields.operation;
+    if (
+      typeof fields.method === 'string' &&
+      ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'].includes(
+        fields.method,
+      )
+    )
+      details.method = fields.method;
+    if (
+      Number.isInteger(fields.statusCode) &&
+      Number(fields.statusCode) >= 100 &&
+      Number(fields.statusCode) <= 599
+    )
+      details.statusCode = fields.statusCode;
+    if (
+      Number.isInteger(fields.clientProtocol) &&
+      [1, 2, 3].includes(Number(fields.clientProtocol))
+    )
+      details.clientProtocol = fields.clientProtocol;
+    if (
+      [
+        'new',
+        'connecting',
+        'connected',
+        'disconnected',
+        'failed',
+        'closed',
+      ].includes(String(fields.connectionState))
+    )
+      details.connectionState = fields.connectionState;
+    if (
+      [
+        'new',
+        'checking',
+        'connected',
+        'completed',
+        'disconnected',
+        'failed',
+        'closed',
+      ].includes(String(fields.iceConnectionState))
+    )
+      details.iceConnectionState = fields.iceConnectionState;
+    if (fields.role === 'host' || fields.role === 'viewer')
+      details.role = fields.role;
     if (typeof fields.clean === 'boolean') details.clean = fields.clean;
     if (
       ['main', 'preload', 'renderer', 'server'].includes(

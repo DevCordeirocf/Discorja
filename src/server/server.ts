@@ -102,6 +102,16 @@ export function createSignalingServer(options: SignalingOptions = {}): {
       }
     }
   };
+  const logRequest = (
+    channel: 'http' | 'websocket' | 'websocket-message',
+    operation: string,
+    details: Record<string, unknown> = {},
+  ): void => {
+    log({
+      event: 'request.received',
+      details: { channel, operation, ...details },
+    });
+  };
   const {
     origins,
     maxViewers,
@@ -297,6 +307,19 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         leave(client);
   };
   const server = createServer((request, response) => {
+    const pathname = request.url?.split('?', 1)[0];
+    const operation =
+      pathname === '/health'
+        ? 'health'
+        : pathname === '/api/stats'
+          ? 'stats'
+          : 'not-found';
+    response.once('finish', () =>
+      logRequest('http', operation, {
+        method: request.method,
+        statusCode: response.statusCode,
+      }),
+    );
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
     if (request.url === '/api/stats' && statsHash) {
@@ -384,6 +407,8 @@ export function createSignalingServer(options: SignalingOptions = {}): {
   });
   server.on('upgrade', (request, socket, head) => {
     const reject = (status: string) => {
+      const statusCode = Number.parseInt(status, 10);
+      logRequest('websocket', 'handshake', { statusCode });
       socket.end(
         `HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
       );
@@ -439,6 +464,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         joins: freshCounter(),
       };
       clients.set(websocket, client);
+      logRequest('websocket', 'handshake', { statusCode: 101 });
       wss.emit('connection', websocket, request);
     });
   });
@@ -482,6 +508,10 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         !consume(client.messages, limits.socketMessages) ||
         !consume(client.ipState.messages, limits.ipMessages)
       ) {
+        logRequest('websocket-message', 'rate-limited', {
+          clientProtocol: client.protocol,
+          roomId: client.room?.logId,
+        });
         error(
           client,
           'RATE_LIMITED',
@@ -500,6 +530,10 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         /* Invalid JSON is rejected below. */
       }
       if (!message) {
+        logRequest('websocket-message', 'invalid', {
+          clientProtocol: client.protocol,
+          roomId: client.room?.logId,
+        });
         error(client, 'INVALID_MESSAGE', 'Mensagem inválida.');
         if (++client.invalidMessages >= 3) {
           leave(client);
@@ -507,6 +541,11 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         }
         return;
       }
+      logRequest('websocket-message', message.type, {
+        clientProtocol:
+          message.type === 'hello' ? message.protocol : client.protocol,
+        roomId: client.room?.logId,
+      });
       if (message.type === 'hello') {
         if (client.room || (message.protocol !== 2 && message.protocol !== 3)) {
           error(

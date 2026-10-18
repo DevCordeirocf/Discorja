@@ -70,12 +70,12 @@ export function resolveSignalingConfig(
   const maxViewers = positiveInteger(options.maxViewers, 9, 'maxViewers');
   const maxPublishers = positiveInteger(
     options.maxPublishers,
-    2,
+    Math.min(10, maxViewers + 1),
     'maxPublishers',
   );
-  if (maxPublishers > 4 || maxPublishers > maxViewers + 1)
+  if (maxPublishers > 10 || maxPublishers > maxViewers + 1)
     throw new Error(
-      'maxPublishers deve ser no máximo 4 e não exceder os participantes.',
+      'maxPublishers deve ser no máximo 10 e não exceder os participantes.',
     );
   if (maxViewers > 9) throw new Error('maxViewers deve ser no máximo 9.');
 

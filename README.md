@@ -29,11 +29,13 @@ A sinalização coordena salas e conexões, mas não recebe o vídeo. O áudio e
 
 - Salas por convite, com até **10 participantes** por sala por padrão.
 - Compartilhamento de janela ou tela inteira, com prévia e controles para iniciar e parar.
-- Até **duas telas transmitidas ao mesmo tempo** por sala na configuração padrão; cada pessoa assiste a uma transmissão por vez.
+- Todos os **10 participantes** podem transmitir ao mesmo tempo; cada pessoa assiste a uma transmissão por vez.
 - Perfis de **720p/30 FPS**, **1080p/30 FPS**, **1080p/60 FPS** e **1080p/120 FPS**. A qualidade real depende da captura, do computador e da rede.
 - Áudio opcional do computador e controle de volume da transmissão. A exclusão do áudio do Discord depende do Windows e da compatibilidade do aplicativo instalado.
 - Ajustes de qualidade, adaptação à conexão, diagnóstico exportável e registros locais de erro.
 - Notificação de atualização quando a distribuição do aplicativo está configurada para GitHub Releases.
+
+As transmissões usam conexão ponto a ponto. Se várias pessoas assistirem à mesma tela, o computador que transmite envia uma cópia para cada espectador; o upload disponível e a capacidade de codificação podem reduzir a qualidade real.
 
 O Discorja não captura microfone nem câmera e não grava transmissões.
 

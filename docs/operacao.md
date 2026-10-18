@@ -10,7 +10,7 @@
 | Servidor                   | Endereço público        | WSS acessível ao grupo e TLS válido, usando o ambiente gratuito já escolhido.                                                                         |
 | Servidor                   | `ALLOWED_ORIGINS`       | `app://discorja` em produção.                                                                                                                         |
 | Servidor                   | `MAX_VIEWERS`           | `9`: até dez participantes totais por sala, incluindo o criador.                                                                                      |
-| Servidor                   | `MAX_PUBLISHERS`        | `2`: piloto de duas telas simultâneas; uma por pessoa.                                                                                                |
+| Servidor                   | `MAX_PUBLISHERS`        | `10`: até todos os participantes publicarem; cada pessoa assiste a uma tela por vez.                                                                  |
 | Servidor, opcional         | `STATS_TOKEN`           | Segredo administrativo de 32 a 256 caracteres; não distribuir aos amigos. Sem ele, `/api/stats` fica desabilitada.                                    |
 | Aplicativos                | Servidor de sinalização | Todos usam o mesmo endpoint nas Configurações.                                                                                                        |
 | Distribuição               | Atualização por GitHub  | Conferir variáveis e workflow de [releases](releases.md), publicar instalador, metadados e arquivos auxiliares gerados. Assinatura continua opcional. |
@@ -80,7 +80,7 @@ Se uma versão falhar, interrompa sua distribuição e confira o rollback do ser
 
 ## Próximo ponto de retomada
 
-Executar o piloto acima com o grupo, registrar as medições e validar a atualização instalada. Só ampliar `MAX_PUBLISHERS` após comprovar capacidade. O código e o pacote 0.8.0 estão preparados localmente; a homologação externa da 0.8-A permanece pendente. Não representa a versão 1.0 nem uma release publicada.
+Executar o piloto acima com o grupo e registrar as medições. O limite permite dez publicações, mas não garante que as máquinas e conexões sustentem dez transmissões com qualidade alta. O código e o pacote 0.8.0 estão preparados localmente; a homologação externa da 0.8-A permanece pendente. Não representa a versão 1.0 nem uma release publicada.
 
 ## Ferramentas da 0.8.0
 

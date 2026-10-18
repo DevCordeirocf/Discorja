@@ -10,10 +10,10 @@ const snapshot = {
   selfId: 'member',
   ownerId: 'owner',
   publisherId: 'owner',
-  maxParticipants: 5,
+  maxParticipants: 10,
   sharing: true,
   resumeToken: 'a'.repeat(64),
-  maxPublishers: 2,
+  maxPublishers: 10,
   participants: [
     { peerId: 'owner', name: 'Dono', role: 'owner', connected: true },
     { peerId: 'member', name: 'Amigo', role: 'participant', connected: true },
@@ -46,7 +46,7 @@ describe('Validação das publicações antes de usar dados remotos', () => {
   });
   it.each([
     { maxPublishers: 0 },
-    { maxPublishers: 5 },
+    { maxPublishers: 11 },
     { maxPublishers: 1 },
     { publications: undefined },
     { publications: [snapshot.publications[0], snapshot.publications[0]] },

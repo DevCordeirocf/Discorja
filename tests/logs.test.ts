@@ -79,6 +79,52 @@ describe('Logs de suporte sem dados livres', () => {
       column: 11,
     });
   });
+  it('registra somente estados WebRTC enumerados para diagnosticar falhas de vídeo', () => {
+    expect(
+      sanitizeLogEvent({
+        event: 'rtc.failed',
+        details: {
+          connectionState: 'failed',
+          iceConnectionState: 'disconnected',
+          role: 'viewer',
+          sdp: 'private',
+          candidate: 'private',
+        },
+      })?.details,
+    ).toEqual({
+      connectionState: 'failed',
+      iceConnectionState: 'disconnected',
+      role: 'viewer',
+    });
+    expect(
+      sanitizeLogEvent({
+        event: 'rtc.failed',
+        details: { connectionState: 'failed private', role: 'owner' },
+      })?.details,
+    ).toEqual({});
+  });
+  it('registra metadados de requisição sem aceitar valores livres', () => {
+    const event = sanitizeLogEvent({
+      event: 'request.received',
+      details: {
+        channel: 'websocket-message',
+        operation: 'join-room',
+        clientProtocol: 3,
+        roomId: '123e4567-e89b-12d3-a456-426614174000',
+        code: 'PRIVATE-CODE',
+        name: 'PRIVATE-NAME',
+        sdp: 'PRIVATE-SDP',
+      },
+    });
+    expect(event?.details).toEqual({
+      channel: 'websocket-message',
+      operation: 'join-room',
+      clientProtocol: 3,
+      roomId: '123e4567-e89b-12d3-a456-426614174000',
+    });
+    expect(JSON.stringify(event)).not.toMatch(/PRIVATE/);
+    expect(rendererLogEvent({ event: 'request.received' })).toBeNull();
+  });
   it('serializa gravações, limita a três arquivos e preserva os eventos mais recentes após reabrir', async () => {
     const root = await directory();
     const logger = new DesktopLogs(root, 1024);

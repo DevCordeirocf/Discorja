@@ -7,7 +7,7 @@ describe('configuração do servidor de sinalização', () => {
     const config = resolveSignalingConfig();
 
     expect(config.maxViewers).toBe(9);
-    expect(config.maxPublishers).toBe(2);
+    expect(config.maxPublishers).toBe(10);
     expect(config.maxViewers + 1).toBe(10);
     expect(config.origins).toContain('app://discorja');
     expect(config.heartbeatMs).toBe(30_000);
@@ -18,8 +18,8 @@ describe('configuração do servidor de sinalização', () => {
     expect(() => resolveSignalingConfig({ maxViewers: 10 })).toThrow(
       'maxViewers deve ser no máximo 9.',
     );
-    expect(() => resolveSignalingConfig({ maxPublishers: 5 })).toThrow(
-      'maxPublishers deve ser no máximo 4',
+    expect(() => resolveSignalingConfig({ maxPublishers: 11 })).toThrow(
+      'maxPublishers deve ser no máximo 10',
     );
     expect(() => resolveSignalingConfig({ resumeGraceMs: 60_001 })).toThrow(
       'resumeGraceMs inválido.',

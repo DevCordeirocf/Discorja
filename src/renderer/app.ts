@@ -196,6 +196,8 @@ let watching: Publication | null = null;
 let watchRequest: string | null = null;
 let watchPeers: RoomPeers | null = null;
 let watchEpoch = 0;
+let watchRetryAttempts = 0;
+let watchRetryTimer: ReturnType<typeof setTimeout> | undefined;
 let localPublicationId = '';
 let publicationConfirmed = false;
 let incomingMetrics: PeerMetrics[] = [];
@@ -204,6 +206,8 @@ const multiState = (): MultiRoomState | null =>
   roomState?.protocol === 3 ? roomState : null;
 
 function clearWatchMedia(): void {
+  clearTimeout(watchRetryTimer);
+  watchRetryTimer = undefined;
   watchEpoch++;
   watchPeers?.dispose();
   watchPeers = null;
@@ -247,6 +251,9 @@ function createWatchPeers(): void {
       remoteStream = stream;
       connectionIssue = '';
       connectionReconnecting = false;
+      watchRetryAttempts = 0;
+      clearTimeout(watchRetryTimer);
+      watchRetryTimer = undefined;
       clearTimeout(remoteTimer);
       for (const track of stream.getVideoTracks())
         track.onended = () => {
@@ -262,15 +269,22 @@ function createWatchPeers(): void {
         };
       render();
     },
-    (_peerId, state) => {
+    (_peerId, state, details) => {
       if (!current()) return;
       connectionReconnecting = state === 'reconnecting';
       if (state === 'failed') {
-        recordLog('rtc.failed');
+        recordLog('rtc.failed', details);
         stopTracks(remoteStream);
         remoteStream = null;
         connectionIssue =
           'Não foi possível receber esta tela. Tente novamente ou escolha outra transmissão.';
+        if (watchRetryAttempts < 2 && !watchRetryTimer) {
+          watchRetryTimer = setTimeout(() => {
+            watchRetryTimer = undefined;
+            watchRetryAttempts++;
+            selectPublication(publication.publicationId, true);
+          }, 1500);
+        }
       }
       render();
     },
@@ -288,9 +302,10 @@ function createWatchPeers(): void {
   waitForVideo();
 }
 
-function selectPublication(id: string | null): void {
+function selectPublication(id: string | null, recovery = false): void {
   const state = multiState();
   if (!state || signalRecovering) return;
+  if (!recovery) watchRetryAttempts = 0;
   const publication = state.publications.find(
     (entry) => entry.publicationId === id && entry.publisherId !== state.selfId,
   );
@@ -342,6 +357,7 @@ const liveAudio = (stream: MediaStream | null): MediaStreamTrack[] =>
 function updatePlayback(): void {
   const video = root.querySelector<HTMLVideoElement>('#stream-video');
   if (!video) return;
+  video.controls = false;
   video.volume = receiveVolume;
   video.muted = multiState()
     ? !watching ||
@@ -570,9 +586,9 @@ function createPeers(): void {
         };
       render();
     },
-    (peerId, state) => {
+    (peerId, state, details) => {
       if (epoch !== sessionEpoch) return;
-      if (state === 'failed') recordLog('rtc.failed');
+      if (state === 'failed') recordLog('rtc.failed', details);
       const viewer = viewers.get(peerId);
       if (viewer) {
         viewer.connected = state === 'connected';

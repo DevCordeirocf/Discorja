@@ -117,7 +117,7 @@ export function isServerMessage(v: unknown): v is ServerMessage {
         if (
           !Number.isInteger(v.maxPublishers) ||
           Number(v.maxPublishers) < 1 ||
-          Number(v.maxPublishers) > 4 ||
+          Number(v.maxPublishers) > 10 ||
           Number(v.maxPublishers) > Number(v.maxParticipants) ||
           !Array.isArray(v.publications) ||
           v.publications.length > Number(v.maxPublishers) ||
