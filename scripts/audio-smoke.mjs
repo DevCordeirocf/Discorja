@@ -423,15 +423,8 @@ try {
   await host.locator('[data-action=stop]').click();
   await start(host);
   await video(viewer);
-  await host.locator('nav [data-action=rooms]').click();
-  await host.locator('#new-room-name').fill('Outra sala de áudio');
-  await host
-    .getByRole('button', { name: 'Criar outra sala', exact: true })
-    .click();
-  await host.locator('[data-action=confirm-switch]').click();
-  await expect(
-    host.getByRole('heading', { name: 'Outra sala de áudio', exact: true }),
-  ).toBeVisible();
+  await host.locator('[data-action=leave]').click();
+  await expect(host.locator('[data-action=create]')).toBeVisible();
   assert.equal(
     await host.evaluate(() =>
       window.__audioTestTracks.every((track) => track.readyState === 'ended'),
@@ -439,7 +432,7 @@ try {
     true,
   );
   checks.push(
-    'Switching rooms ends all audio and video tracks without starting a new capture',
+    'Leaving ends all audio and video tracks before returning to the main menu',
   );
   await expect(viewer.locator('.room-code')).toHaveCount(0);
   checks.push(

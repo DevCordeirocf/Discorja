@@ -1,34 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { knownRooms, rememberRoom } from '../src/renderer/rooms';
 import { isServerMessage } from '../src/shared/validation';
 
-describe('Salas conhecidas e snapshots', () => {
-  it('limita convites, separa servidores e não conserva credenciais de sessão', () => {
-    const room = {
-      code: 'ABCDEFGH',
-      name: 'Turma',
-      server: 'wss://server.example',
-    };
-    const values = knownRooms([
-      { ...room, resumeToken: 'secret' },
-      room,
-      null,
-      { ...room, code: '../oops' },
-    ]);
-    expect(values).toEqual([room]);
-    expect(
-      rememberRoom(values, { ...room, server: 'wss://other.example' }),
-    ).toHaveLength(2);
-    expect(rememberRoom(values, { ...room, name: 'Renomeada' })[0].name).toBe(
-      'Renomeada',
-    );
-    const codes = Array.from({ length: 20 }, (_, index) => ({
-      ...room,
-      code: `AAAAAAA${'ABCDEFGHJKMNPQRSTUVW'[index]}`,
-    }));
-    expect(knownRooms(codes)).toHaveLength(12);
-    expect(knownRooms({})).toEqual([]);
-  });
+describe('snapshots de sala', () => {
   it('valida papéis, limites, identidade e unicidade do snapshot antes de usar na interface', () => {
     const snapshot = {
       type: 'room-state',

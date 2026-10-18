@@ -1,0 +1,143 @@
+.room-main:has(.multi-room-grid) {
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-block: clamp(16px, 3vh, 32px);
+}
+#room-view:has(.multi-room-grid) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.page-heading {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 40px;
+}
+.page-heading h1 {
+  font-size: 26px;
+  line-height: 34px;
+  font-weight: 500;
+  margin: 0;
+  letter-spacing: 0;
+}
+.connection-badge {
+  flex-shrink: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.connection-badge.connected {
+  color: var(--mint);
+  background: #1d302b;
+}
+.is-collapsed .sidebar {
+  width: 80px;
+  padding: 16px;
+  align-items: center;
+  box-shadow: 4px 0 24px rgb(0 0 0 / 12%);
+}
+.is-collapsed .brand {
+  width: 48px;
+  height: 48px;
+  gap: 0;
+}
+.is-collapsed .brand-logo img {
+  width: 48px;
+  height: 48px;
+}
+.is-collapsed .brand-logo:hover {
+  transform: scale(1.04);
+}
+.is-collapsed .brand-name {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+}
+.is-collapsed .sidebar-toggle {
+  width: 0;
+  flex-basis: 0;
+  padding-inline: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateX(-6px);
+  visibility: hidden;
+}
+.is-collapsed .sidebar nav {
+  margin-top: 16px;
+  gap: 12px;
+}
+.is-collapsed .nav-item {
+  width: 48px;
+  min-height: 48px;
+  height: 48px;
+  gap: 0;
+  padding: 0;
+  justify-content: center;
+}
+.is-collapsed .nav-label {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+}
+.is-collapsed .nav-item.active > .nav-label {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-8px);
+}
+.is-collapsed .sidebar-bottom {
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: visible;
+}
+.is-collapsed .version-label {
+  max-height: 0;
+  opacity: 0;
+  margin: 0;
+}
+.is-collapsed .profile-button {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  overflow: visible;
+}
+.is-collapsed .profile-button > .avatar {
+  display: grid;
+  flex: 0 0 36px;
+  place-items: center;
+}
+.is-collapsed .profile-copy {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+  pointer-events: none;
+}
+.is-collapsed .main-shell {
+  margin-left: 80px;
+  width: calc(100% - 80px);
+}
+.is-collapsed .app-main {
+  padding: 24px;
+}
+.is-collapsed .home-page,
+.is-collapsed .page-heading,
+.is-collapsed .settings-page {
+  max-width: 1104px;
+  margin-left: auto;
+  margin-right: auto;
+}

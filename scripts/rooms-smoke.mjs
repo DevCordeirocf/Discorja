@@ -97,14 +97,16 @@ async function activePeers(page) {
       ).length,
   );
 }
-async function rooms(page) {
-  await page.locator('nav [data-action=rooms]').click();
+async function leave(page) {
+  await page.locator('[data-action=leave]').click();
+  await expect(page.locator('[data-action=create]')).toBeVisible();
+  await expect(page.locator('.room-code')).toHaveCount(0);
 }
-async function switchByCode(page, code) {
-  await rooms(page);
-  await page.locator('#switch-room-code').fill(code);
+async function requestSwitchFromHome(page, code) {
+  await page.locator('nav [data-action=home]').click();
+  await page.locator('#room-code').fill(code);
   await page
-    .getByRole('button', { name: 'Entrar nesta sala', exact: true })
+    .getByRole('button', { name: 'Entrar na sala', exact: true })
     .click();
   await expect(
     page.getByRole('heading', { name: 'Trocar de sala?' }),
@@ -146,16 +148,8 @@ try {
       document.querySelector('#stream-video').srcObject;
     window.__previousRoomPeers = [...window.__qualityProbe.peers];
   });
-  await switchByCode(friend, second);
-  await friend.locator('[data-action=cancel-switch]').click();
-  await friend.locator('[data-action=close-modal]').click();
-  assert.equal(await activePeers(friend), 1);
-  await video(friend);
-  checks.push('Cancelling a switch preserves the current session and media');
-  await switchByCode(friend, second);
-  await friend.locator('[data-action=confirm-switch]').click();
-  await expect(friend.locator('.room-code')).toContainText(second.slice(0, 4));
-  await video(friend);
+  await leave(friend);
+  await join(friend, second);
   assert.equal(
     await friend.evaluate(() =>
       window.__previousRoomPeers.every(
@@ -172,18 +166,25 @@ try {
     ),
     true,
   );
+  assert.equal(await activePeers(friend), 0);
+  await video(friend);
+  checks.push('Leaving returns to the main menu before joining another room');
+  await requestSwitchFromHome(friend, first);
+  await friend.locator('[data-action=cancel-switch]').click();
+  await expect(friend.locator('.room-code')).toContainText(second.slice(0, 4));
+  await video(friend);
   assert.equal(await activePeers(friend), 1);
+  checks.push('Cancelling a switch keeps the active room and its media');
+  await requestSwitchFromHome(friend, first);
+  await friend.locator('[data-action=confirm-switch]').click();
+  await expect(friend.locator('.room-code')).toContainText(first.slice(0, 4));
+  await video(friend);
+  assert.equal(await activePeers(friend), 1);
+  checks.push('Confirmed replacement still closes the prior room session');
   await expect.poll(() => activePeers(owner)).toBe(1);
   await video(nextPublisher);
   checks.push(
     'Switch closes previous receivers and tracks; old publisher releases that connection while its other viewer continues',
-  );
-  await rooms(friend);
-  await expect(friend.locator('.known-room')).toHaveCount(2);
-  await friend.locator('[data-action=close-modal]').click();
-  assert.equal(await activePeers(friend), 1);
-  checks.push(
-    'Saved rooms retain invitations only, without background connections or media',
   );
   await expect(
     nextPublisher.locator('[data-action=choose-source]'),
@@ -206,17 +207,6 @@ try {
   await video(friend);
   checks.push(
     'A participant explicitly starts its screen; the room owner watches and the other room remains active',
-  );
-  await rooms(friend);
-  await friend
-    .locator(`[data-action=open-known-room][data-code="${first}"]`)
-    .click();
-  await friend.locator('[data-action=confirm-switch]').click();
-  await video(friend);
-  await expect.poll(() => activePeers(otherOwner)).toBe(0);
-  await expect(otherOwner.locator('[data-action=stop]')).toBeVisible();
-  checks.push(
-    'Returning through a saved invitation creates a fresh membership and removes the inactive room connection',
   );
   await owner.locator('summary[aria-label="Ações de Amigo"]').click();
   await owner
@@ -242,16 +232,9 @@ try {
   checks.push(
     'Moderator controls appear and disappear following server authorization',
   );
-  await rooms(owner);
-  await owner.locator('#new-room-name').fill('Nova sala');
-  await owner
-    .getByRole('button', { name: 'Criar outra sala', exact: true })
-    .click();
-  await expect(owner.getByRole('dialog')).toContainText('encerrada para todos');
-  await owner.locator('[data-action=confirm-switch]').click();
-  await expect(
-    owner.getByRole('heading', { name: 'Nova sala', exact: true }),
-  ).toBeVisible();
+  await leave(owner);
+  const third = await create(owner);
+  await expect(owner.locator('.room-code')).toContainText(third.slice(0, 4));
   await expect(friend.locator('.room-code')).toHaveCount(0);
   await expect(nextPublisher.locator('.room-code')).toHaveCount(0);
   assert.equal(
@@ -262,12 +245,15 @@ try {
   );
   await expect(otherOwner.locator('[data-action=stop]')).toBeVisible();
   checks.push(
-    'Creating another room as owner closes the previous room for all and preserves unrelated rooms',
+    'The owner can leave from the room controls; other rooms stay active',
   );
   await join(friend, second);
   await video(friend);
-  await switchByCode(friend, 'ABCDEFGH');
-  await friend.locator('[data-action=confirm-switch]').click();
+  await leave(friend);
+  await friend.locator('#room-code').fill('ABCDEFGH');
+  await friend
+    .getByRole('button', { name: 'Entrar na sala', exact: true })
+    .click();
   await expect(
     friend
       .locator('.notice')
@@ -277,7 +263,7 @@ try {
   assert.equal(await activePeers(friend), 0);
   await expect.poll(() => activePeers(otherOwner)).toBe(0);
   checks.push(
-    'Failed destination leaves no residual media or background connection to the previous room',
+    'Failed destination from the main menu leaves no media or room connection',
   );
   await owner.screenshot({ path: 'test-results/rooms-owner.png' });
   assert.deepEqual(errors, []);

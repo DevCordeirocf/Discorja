@@ -16,51 +16,18 @@ import {
   parseClientMessage,
   ROOM_CODE_ALPHABET,
 } from './message-validation.js';
+import {
+  MAX_PAYLOAD,
+  resolveSignalingConfig,
+  type RateLimit,
+  type SignalingOptions,
+} from './config.js';
+export type { RateLimit, SignalingOptions } from './config.js';
 import type {
   ClientMessage,
   ServerMessage,
   LegacyRoomState,
 } from '../shared/protocol.js';
-
-const DEFAULT_ORIGINS = [
-  'app://discorja',
-  'http://127.0.0.1:5173',
-  'http://localhost:5173',
-];
-const MAX_PAYLOAD = 64 * 1024;
-export interface RateLimit {
-  max: number;
-  windowMs: number;
-}
-
-/** Limits count attempts, including failed requests. IPs use the TCP address, never forwarded headers. */
-export interface SignalingOptions {
-  onLog?: (entry: LogEvent) => void;
-  statsToken?: string;
-  resumeGraceMs?: number;
-  /** Exact WebSocket Origin allowlist; defaults to the desktop app and local Vite development. */
-  allowedOrigins?: readonly string[];
-  maxViewers?: number;
-  maxPublishers?: number;
-  roomTtlMs?: number;
-  maxRooms?: number;
-  maxClients?: number;
-  maxTrackedIps?: number;
-  heartbeatIntervalMs?: number;
-  cleanupIntervalMs?: number;
-  rateLimits?: Partial<
-    Record<
-      | 'socketMessages'
-      | 'ipMessages'
-      | 'socketJoins'
-      | 'ipJoins'
-      | 'ipConnections',
-      RateLimit
-    >
-  >;
-  /** Injectable clock for deterministic expiry tests. */
-  now?: () => number;
-}
 
 interface Counter {
   start: number;
@@ -109,17 +76,6 @@ interface Room {
   sharing: boolean;
 }
 
-const positiveInteger = (
-  value: number | undefined,
-  fallback: number,
-  name: string,
-): number => {
-  const resolved = value ?? fallback;
-  if (!Number.isSafeInteger(resolved) || resolved < 1)
-    throw new Error(`${name} precisa ser um inteiro positivo.`);
-  return resolved;
-};
-
 /** Create an unbound HTTP/WebSocket service. The caller owns server.listen(port, host). */
 export function createSignalingServer(options: SignalingOptions = {}): {
   server: Server;
@@ -146,68 +102,21 @@ export function createSignalingServer(options: SignalingOptions = {}): {
       }
     }
   };
-  const origins = new Set(options.allowedOrigins ?? DEFAULT_ORIGINS);
-  const maxViewers = positiveInteger(options.maxViewers, 9, 'maxViewers');
-  const maxPublishers = positiveInteger(
-    options.maxPublishers,
-    2,
-    'maxPublishers',
-  );
-  if (maxPublishers > 4 || maxPublishers > maxViewers + 1)
-    throw new Error(
-      'maxPublishers deve ser no máximo 4 e não exceder os participantes.',
-    );
-  if (maxViewers > 9) throw new Error('maxViewers deve ser no máximo 9.');
-  const grace = options.resumeGraceMs ?? 20_000;
-  if (!Number.isSafeInteger(grace) || grace < 0 || grace > 60_000)
-    throw new Error('resumeGraceMs inválido.');
-  const statsToken = options.statsToken;
-  if (
-    statsToken &&
-    (statsToken.length < 32 || statsToken.length > 256 || /\s/.test(statsToken))
-  )
-    throw new Error(
-      'STATS_TOKEN precisa ter entre 32 e 256 caracteres sem espaços.',
-    );
-  const statsHash = statsToken
-    ? createHash('sha256').update(statsToken).digest()
-    : undefined;
-  const ttl = positiveInteger(
-    options.roomTtlMs,
-    4 * 60 * 60 * 1000,
-    'roomTtlMs',
-  );
-  const maxRooms = positiveInteger(options.maxRooms, 5, 'maxRooms');
-  const maxClients = positiveInteger(options.maxClients, 20, 'maxClients');
-  const maxTrackedIps = positiveInteger(
-    options.maxTrackedIps,
-    10_000,
-    'maxTrackedIps',
-  );
-  const heartbeatMs = positiveInteger(
-    options.heartbeatIntervalMs,
-    30_000,
-    'heartbeatIntervalMs',
-  );
-  const cleanupMs = positiveInteger(
-    options.cleanupIntervalMs,
-    10_000,
-    'cleanupIntervalMs',
-  );
-  const defaults = {
-    socketMessages: { max: 200, windowMs: 10_000 },
-    ipMessages: { max: 1000, windowMs: 10_000 },
-    socketJoins: { max: 12, windowMs: 60_000 },
-    ipJoins: { max: 40, windowMs: 60_000 },
-    ipConnections: { max: 60, windowMs: 60_000 },
-  };
-  const limits = { ...defaults, ...options.rateLimits };
-  for (const [name, limit] of Object.entries(limits)) {
-    positiveInteger(limit.max, 1, `${name}.max`);
-    positiveInteger(limit.windowMs, 1, `${name}.windowMs`);
-  }
-  const ipRetentionMs =
-    Math.max(...Object.values(limits).map((limit) => limit.windowMs)) * 2;
+  const {
+    origins,
+    maxViewers,
+    maxPublishers,
+    grace,
+    statsHash,
+    ttl,
+    maxRooms,
+    maxClients,
+    maxTrackedIps,
+    heartbeatMs,
+    cleanupMs,
+    limits,
+    ipRetentionMs,
+  } = resolveSignalingConfig(options);
   const ips = new Map<string, IpState>();
   const clients = new Map<WebSocket, Client>();
   const rooms = new Map<string, Room>();

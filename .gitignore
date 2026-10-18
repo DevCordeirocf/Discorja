@@ -15,24 +15,38 @@ coverage/
 !/build/icon.png
 !/build/icon.ico
 
-# Configuracao local e material de autenticacao/assinatura.
+# Configuração local e material de autenticação/assinatura.
 .env
 .env.*
 !.env.example
+.envrc
 *.local
 .npmrc
-secrets/
-credentials/
-certs/
-certificates/
+.netrc
+.pypirc
+**/secrets/
+**/credentials/
+**/certs/
+**/certificates/
+*.secret
+*.secrets
+*.credentials
+credentials.json
+*_credentials.json
 *.pfx
 *.p12
 *.pem
 *.key
 *.keystore
 *.jks
+*.mobileprovision
 id_rsa
 id_ed25519
+
+# Credenciais locais de provedores e ferramentas.
+.aws/credentials
+.config/gcloud/application_default_credentials.json
+.docker/config.json
 
 # Instaladores e executaveis nao pertencem ao codigo-fonte.
 *.exe
@@ -41,6 +55,8 @@ id_ed25519
 *.msix
 *.appx
 *.blockmap
+*.msi.sha256
+*.exe.sha256
 
 # Resultados de testes, perfis locais e diagnosticos.
 test-results/
@@ -52,6 +68,11 @@ discorja-diagnostico*.json
 logs/
 *.dmp
 *.hprof
+*.prof
+*.cpuprofile
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
 
 # Temporarios, backups e configuracoes pessoais de editores.
 tmp/

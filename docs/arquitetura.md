@@ -24,7 +24,7 @@ O protocolo 2 confirma compatibilidade por `hello` e mantém dono e moderadores 
 
 O dono sair encerra a sala, mesmo quando outro membro está transmitindo. A saída do transmissor devolve a permissão ao dono sem iniciar mídia. Os nomes `host` e `viewer` ainda usados pelo transporte representam emissor e receptor; não definem autoridade administrativa no protocolo 2. O contrato anterior permanece disponível em salas separadas para a transição dos clientes 0.3/0.4.
 
-O painel de salas guarda somente convites recentes e mantém uma sala ativa por aplicativo. Confirmar uma troca encerra tracks, peers e socket anteriores antes da próxima conexão. Não existe assinatura de mídia em salas inativas. Política, permissões e migração em [salas.md](salas.md).
+O serviço mantém várias salas independentes ativas ao mesmo tempo, permitindo que grupos diferentes se reúnam separadamente. Cada cliente participa de uma sala por vez. O início concentra a criação e a entrada por código; o controle de saída encerra tracks, peers e socket da sala atual e retorna ao início. Convites recentes não são persistidos. Se o cliente tentar iniciar outra conexão antes de sair, o aplicativo pede confirmação antes de encerrar sua sessão atual. Política, permissões e migração em [salas.md](salas.md).
 
 O Discorja separa três funções:
 
@@ -43,21 +43,23 @@ O processo principal usa isolamento de contexto e uma ponte de preload com opera
 | `src/electron/main.ts`                        | Cria a janela, autoriza captura, lê/salva endpoint, protege IPC e integra o atualizador. |
 | `src/electron/preload.ts`                     | Expõe apenas as operações tipadas de `DiscorjaAPI` à interface.                          |
 | `src/electron/config.ts`                      | Valida endpoint e lista de servidores ICE do cliente.                                    |
-| `src/renderer/app.ts`                         | Coordena estado da janela, eventos e fluxos da sala/captura.                             |
-| `src/renderer/views/`                         | Templates de telas, navegação, configurações e sala; sem acesso a IPC ou WebRTC.         |
+| `src/renderer/app.ts`                         | Coordena estado da janela, eventos e serviços de sala/captura.                           |
+| `src/renderer/views/`                         | Templates puros de início, qualidade, diagnóstico, navegação, configurações e sala.      |
 | `src/renderer/html.ts` / `icons.ts`           | Escape comum para conteúdo HTML e SVGs reutilizáveis da interface.                       |
+| `src/renderer/preference-store.ts`            | Leitura, normalização e persistência local de preferências, nome e qualidade.            |
 | `src/renderer/signal.ts`                      | Conexão WebSocket, heartbeat de sala e validação das respostas.                          |
 | `src/renderer/rtc.ts`                         | Conexões de mídia, parâmetros de envio e recuperação ICE.                                |
 | `src/renderer/adaptation.ts` / `telemetry.ts` | Decisões de qualidade e interpretação das estatísticas disponíveis.                      |
 | `src/renderer/audio-capture.ts`               | Ponte do áudio filtrado do Discord para uma faixa local.                                 |
 | `src/server/index.ts`                         | Entrada do serviço: variáveis de ambiente, porta e encerramento.                         |
-| `src/server/server.ts`                        | Estado das salas, limites, permissões e encaminhamento.                                  |
+| `src/server/config.ts`                        | Valores padrão e validação das opções de execução e limites.                             |
+| `src/server/server.ts`                        | Ciclo HTTP/WebSocket, estado das salas, permissões e encaminhamento.                     |
 | `src/server/message-validation.ts`            | Valida e normaliza mensagens WebSocket recebidas antes do processamento.                 |
 | `src/shared/`                                 | Contratos, validação de snapshots, qualidade, logs e diagnósticos comuns.                |
 
 O fluxo de dependências é unidirecional: `shared` não depende das camadas do app; renderer e server podem usar `shared`; somente `main` chama operações privilegiadas do sistema e as expõe pelo preload. O servidor não importa a interface nem o Electron. Seu build pode rodar como processo Node.js ou container Linux. O pacote desktop inclui o processo principal e a interface, sem iniciar um servidor de sinalização embutido.
 
-Para uma mudança nova, coloque markup puro em `renderer/views/`, regras reutilizáveis em um módulo renderer específico e valide mensagens externas em `shared/validation.ts` ou `server/message-validation.ts`. Deixe `app.ts` ligar ações da interface ao estado e aos serviços; não coloque captura, protocolo ou política de autorização dentro dos templates. O CSS base está em `style.css`; `app.css` contém o layout aprovado e ajustes de produto, e é carregado depois para que suas regras tenham precedência.
+Para uma mudança nova, coloque markup puro em `renderer/views/`, persistência em `preference-store.ts`, regras reutilizáveis em um módulo renderer específico e valide mensagens externas em `shared/validation.ts` ou `server/message-validation.ts`. Deixe `app.ts` coordenar eventos, estado da sessão e serviços; captura e conexões de mídia pertencem a `audio-capture.ts`, `rtc.ts` e `signal.ts`, e os templates não devem implementar essas políticas. O CSS base está em `style.css`; `app.css` é o ponto de entrada dos estilos de produto e importa arquivos por área em ordem de cascata. Preserve a sequência declarada nesse agregador quando mover regras entre arquivos.
 
 ## Ciclo de uma transmissão
 

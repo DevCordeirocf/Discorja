@@ -16,11 +16,15 @@ import {
   createFilteredAudioPipeline,
   type FilteredAudioPipeline,
 } from './audio-capture';
-import { knownRooms, rememberRoom, type KnownRoom } from './rooms';
+import { createPreferenceStore } from './preference-store';
 import { renderStage } from './views/stage';
 import { syncLocalPreview } from './preview';
 import { renderSidebar, type AppPage } from './views/design';
 import { renderSettingsView } from './views/settings-view';
+import { renderHome as renderHomeView } from './views/home';
+import { renderQualityPanel as renderQualityPanelView } from './views/quality';
+import { renderDiagnostics as renderDiagnosticsView } from './views/diagnostics';
+import { renderSingleRoom } from './views/single-room';
 import { escapeHtml as escape } from './html';
 import { icon } from './icons';
 import {
@@ -31,7 +35,6 @@ import {
 } from './accessibility';
 import {
   QUALITY_PRESETS,
-  DEFAULT_STREAM_PREFERENCES,
   normalizePreferences,
   captureConstraints,
   type StreamPreferences,
@@ -54,6 +57,13 @@ announcements.setAttribute('aria-atomic', 'true');
 document.body.append(announcements);
 let sessionEpoch = 0;
 const api = window.discorja;
+let persistentStorage: Storage | undefined;
+try {
+  persistentStorage = localStorage;
+} catch {
+  /* The interface still works without browser storage. */
+}
+const preferenceStore = createPreferenceStore(persistentStorage);
 function recordLog(
   event: LogEventName,
   details: Record<string, unknown> = {},
@@ -81,59 +91,24 @@ let config: AppConfig = {
   systemAudioSupported: false,
 };
 let loaded = !api;
-let displayName = '';
-try {
-  displayName = localStorage.getItem('discorja.name') ?? '';
-} catch {
-  /* Storage can be disabled. */
-}
+let displayName = preferenceStore.displayName();
 let joinCode = '';
 let settingUrl = config.signalingUrl;
 let activePage: AppPage = 'home';
 let previousPage: AppPage = 'home';
-let sidebarCollapsed = false;
+let sidebarCollapsed = preferenceStore.sidebarCollapsed();
 let editingName = false;
 let testingConnection = false;
 let connectionCheck = '';
 let filteredAudioPipeline: FilteredAudioPipeline | null = null;
 let removeFilteredAudioErrorListener: (() => void) | null = null;
-try {
-  sidebarCollapsed =
-    localStorage.getItem('discorja.sidebar-collapsed') === 'true';
-  localStorage.removeItem('discorja.preview-economy');
-} catch {
-  /* The interface also works without local storage. */
-}
-let modal:
-  | 'settings'
-  | 'sources'
-  | 'update'
-  | 'rooms'
-  | 'switch'
-  | 'diagnostics'
-  | null = null;
-let roomName = '';
-let savedRooms: KnownRoom[] = [];
-try {
-  savedRooms = knownRooms(
-    JSON.parse(localStorage.getItem('discorja.rooms') ?? '[]'),
-  );
-} catch {
-  /* Optional local history. */
-}
+preferenceStore.clearObsoletePreferences();
+let modal: 'settings' | 'sources' | 'update' | 'switch' | 'diagnostics' | null =
+  null;
 let switchTarget: {
   kind: 'create' | 'join';
   code?: string;
-  name?: string;
 } | null = null;
-
-function saveKnownRooms(): void {
-  try {
-    localStorage.setItem('discorja.rooms', JSON.stringify(savedRooms));
-  } catch {
-    /* Session still works. */
-  }
-}
 
 function requestRoomSwitch(target: NonNullable<typeof switchTarget>): void {
   if (busy || applyingPreferences || signalRecovering) return;
@@ -144,6 +119,7 @@ function requestRoomSwitch(target: NonNullable<typeof switchTarget>): void {
   }
   if (target.kind === 'join' && target.code === room?.code) {
     modal = null;
+    activePage = 'room';
     render();
     return;
   }
@@ -160,7 +136,6 @@ async function confirmRoomSwitch(): Promise<void> {
   switchTarget = null;
   // Release tracks, sockets and peers synchronously before any new connection.
   leaveRoom();
-  roomName = target.name ?? '';
   if (target.code) joinCode = target.code;
   await connectRoom(target.kind);
 }
@@ -195,14 +170,7 @@ const viewers = new Map<
   string,
   { name: string; connected: boolean; failed: boolean; reconnecting: boolean }
 >();
-let preferences: StreamPreferences = { ...DEFAULT_STREAM_PREFERENCES };
-try {
-  const savedPreferences = localStorage.getItem('discorja.stream-preferences');
-  if (savedPreferences)
-    preferences = normalizePreferences(JSON.parse(savedPreferences));
-} catch {
-  /* Invalid or unavailable storage falls back to validated defaults. */
-}
+let preferences: StreamPreferences = preferenceStore.streamPreferences();
 let pendingPreferences: StreamPreferences | null = null;
 let applyingPreferences = false;
 let qualityEpoch = 0;
@@ -669,12 +637,6 @@ function applyMultiRoomState(message: MultiRoomState): void {
     hostName: owner.name,
     maxViewers: message.maxParticipants - 1,
   };
-  savedRooms = rememberRoom(savedRooms, {
-    code: message.code,
-    name: message.name,
-    server: config.signalingUrl,
-  });
-  saveKnownRooms();
   const own = message.publications.find(
     (entry) => entry.publisherId === message.selfId,
   );
@@ -784,12 +746,6 @@ function applyRoomState(message: RoomState): void {
   }
   resumeToken = message.resumeToken;
   roomState = message;
-  savedRooms = rememberRoom(savedRooms, {
-    code: message.code,
-    name: message.name,
-    server: config.signalingUrl,
-  });
-  saveKnownRooms();
   const publisher = message.participants.find(
     (member) => member.peerId === message.publisherId,
   )!;
@@ -1129,11 +1085,7 @@ async function connectRoom(kind: 'create' | 'join'): Promise<void> {
     document.querySelector<HTMLInputElement>('#room-code')?.focus();
     return;
   }
-  try {
-    localStorage.setItem('discorja.name', name);
-  } catch {
-    /* Saving the name is optional. */
-  }
+  preferenceStore.saveDisplayName(name);
   notice = null;
   activePage = 'room';
   busy = 'room';
@@ -1173,13 +1125,7 @@ async function connectRoom(kind: 'create' | 'join'): Promise<void> {
     };
     connection.send(
       kind === 'create'
-        ? {
-            type: 'create-room',
-            name,
-            ...(roomName.trim()
-              ? { roomName: roomName.trim().slice(0, 40) }
-              : {}),
-          }
+        ? { type: 'create-room', name }
         : { type: 'join-room', name, code: joinCode },
     );
   } catch (error) {
@@ -1511,14 +1457,7 @@ async function saveSettings(): Promise<void> {
 }
 
 function persistPreferences(): void {
-  try {
-    localStorage.setItem(
-      'discorja.stream-preferences',
-      JSON.stringify(preferences),
-    );
-  } catch {
-    /* The current session can still use the selected quality. */
-  }
+  preferenceStore.saveStreamPreferences(preferences);
 }
 
 async function applyPreferences(next: StreamPreferences): Promise<void> {
@@ -1639,46 +1578,24 @@ function readQualityControls(
 }
 
 function renderQualityPanel(): string {
-  const selected = pendingPreferences ?? preferences;
-  const disabled = !!busy || applyingPreferences;
-  return `<section class="quality-panel" aria-labelledby="quality-heading"><div class="quality-heading"><div><h2 id="quality-heading">Qualidade da transmissão</h2><p>Escolha o perfil desejado. A entrega real aparece nas medições.</p></div><span class="quality-state">${applyingPreferences ? '<span class="spinner"></span> Aplicando' : sharing ? 'Ajuste sem parar' : 'Antes de começar'}</span></div>
-  <div class="quality-controls"><div class="quality-field"><label for="quality-preset">Perfil desejado</label><select id="quality-preset" ${disabled ? 'disabled' : ''}>${Object.entries(
-    QUALITY_PRESETS,
-  )
-    .map(
-      ([id, profile]) =>
-        `<option value="${id}" ${id === selected.preset ? 'selected' : ''}>${escape(profile.label)}</option>`,
-    )
-    .join(
-      '',
-    )}</select></div><div class="quality-field"><label for="content-mode">O que vai aparecer?</label><select id="content-mode" ${disabled ? 'disabled' : ''}><option value="detail" ${selected.content === 'detail' ? 'selected' : ''}>Textos e detalhes</option><option value="motion" ${selected.content === 'motion' ? 'selected' : ''}>Vídeos e jogos</option></select></div><div class="quality-field"><label for="preferred-codec">Formato na próxima transmissão</label><select id="preferred-codec" ${disabled ? 'disabled' : ''}>${['auto', 'H264', 'VP8', 'VP9', 'AV1'].map((codec) => `<option value="${codec}" ${(selected.preferredCodec ?? 'auto') === codec ? 'selected' : ''}>${codec === 'auto' ? 'Automático' : codec}</option>`).join('')}</select></div><label class="adaptive-control" for="adaptive-quality"><input id="adaptive-quality" type="checkbox" ${selected.adaptive ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>Ajustar à conexão</strong><small>Reduz quando necessário e recupera aos poucos.</small></span></label><div class="quality-field budget-field"><label for="upload-budget">Limite total de envio · até 500 Mbps</label><div class="budget-input"><input id="upload-budget" type="number" min="4" max="500" step="1" inputmode="numeric" value="${selected.maxUploadMbps}" aria-describedby="upload-budget-help" ${disabled ? 'disabled' : ''}><span>Mbps</span></div></div><div class="quality-field bitrate-field"><label for="video-bitrate">Teto por espectador · até 100 Mbps</label><div class="budget-input"><input id="video-bitrate" type="number" min="1" max="100" step="1" value="${selected.videoBitrateMbps ?? QUALITY_PRESETS[selected.preset].bitrate / 1_000_000}" aria-describedby="video-bitrate-help" ${disabled ? 'disabled' : ''}><span>Mbps</span></div><small id="video-bitrate-help">${selected.videoBitrateMbps ? 'Personalizado' : 'Padrão do perfil'} · ${((selected.videoBitrateMbps ?? QUALITY_PRESETS[selected.preset].bitrate / 1_000_000) / 8).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} MB/s por espectador, no máximo.</small></div></div>
-  <p id="upload-budget-help" class="quality-help">O limite total é dividido entre espectadores. O FPS real depende da tela, do computador e da rede.</p><p class="quality-status" role="status">${escape(qualityStatus)}</p></section>`;
-}
-
-function metricPeer(
-  peerId: string,
-  name: string,
-  direction?: 'inbound' | 'outbound',
-): string {
-  return `<article class="metric-peer" data-peer-metrics="${escape(peerId)}" ${direction ? `data-direction="${direction}"` : ''}><header><strong>${escape(name)}</strong><span data-value="status">Aguardando medição</span></header><dl class="metric-values"><div><dt>Resolução</dt><dd data-value="resolution">—</dd></div><div><dt>Quadros/s</dt><dd data-value="fps">—</dd></div><div><dt>Vídeo</dt><dd data-value="bitrate">— Mbps</dd></div><div><dt>Resposta</dt><dd data-value="rtt">— ms</dd></div><div><dt>Perda</dt><dd data-value="loss">—</dd></div><div><dt>Conexão</dt><dd data-value="route">—</dd></div></dl><p class="metric-detail" data-value="detail">Os dados aparecem quando a conexão de vídeo é estabelecida.</p></article>`;
+  return renderQualityPanelView({
+    preferences,
+    pendingPreferences,
+    disabled: !!busy,
+    applying: applyingPreferences,
+    sharing,
+    status: qualityStatus,
+  });
 }
 
 function renderDiagnostics(): string {
   if (!room) return '';
-  const multi = multiState();
-  if (multi) {
-    const rows = [...viewers]
-      .map(([id, person]) =>
-        metricPeer(id, `Enviando para ${person.name}`, 'outbound'),
-      )
-      .join('');
-    const selected = multi.participants.find(
-      (person) => person.peerId === watching?.publisherId,
-    );
-    return `<section class="stream-diagnostics" aria-label="Diagnóstico de envio e recepção"><div class="diagnostics-heading"><h2>Conexões desta sala</h2><button class="button subtle" data-action="export-diagnostics">Salvar diagnóstico</button></div>${rows}${watching ? metricPeer(watching.publisherId, `Recebendo de ${selected?.name ?? 'participante'}`, 'inbound') : ''}${!rows && !watching ? '<p>Escolha uma transmissão ou aguarde alguém assistir à sua tela.</p>' : ''}<p class="metrics-footnote">Somente as conexões ativas aparecem aqui. O perfil de vídeo é um objetivo, sujeito à fonte, ao computador e à rede.</p></section>`;
-  }
-  const host = room.role === 'host';
-  return `<section class="stream-diagnostics" aria-labelledby="diagnostics-heading"><div class="diagnostics-heading"><h2 id="diagnostics-heading">${host ? 'Vídeo enviado em tempo real' : 'Vídeo recebido'}</h2><button class="button subtle" data-action="export-diagnostics">Salvar diagnóstico</button><span>Atualizado a cada 2 s</span></div>${host ? `<div class="capture-summary"><div><span>Captura no computador</span><strong data-stat="capture">—</strong><small>Formato informado pelo sistema.</small></div><div><span>Envio de vídeo total</span><strong data-stat="upload-total">— Mbps</strong><small data-stat="upload-detail">Aguardando conexões.</small></div></div>` : ''}<div class="metric-peer-list">${host ? (viewers.size ? [...viewers].map(([id, viewer]) => metricPeer(id, viewer.name)).join('') : '<p class="metrics-empty">As medições de cada amigo aparecem quando ele entrar e a transmissão começar.</p>') : metricPeer(room.hostId!, room.hostName)}</div><p class="metrics-footnote">Medições podem variar ou ficar indisponíveis. O perfil selecionado é um objetivo, e os FPS ${host ? 'enviados' : 'recebidos'} dependem também do conteúdo exibido.</p></section>`;
+  return renderDiagnosticsView({
+    room: { role: room.role, hostId: room.hostId, hostName: room.hostName },
+    multi: multiState(),
+    viewers: [...viewers].map(([id, person]) => ({ id, name: person.name })),
+    watchingPublisherId: watching?.publisherId,
+  });
 }
 
 function finiteMetric(value: number | undefined): value is number {
@@ -1868,8 +1785,14 @@ function patchMetrics(): void {
 }
 
 function renderHome(): string {
-  const disabled = !api || !loaded || !!busy;
-  return `<section class="home-content" aria-label="Início"><div class="home-copy"><h1>Censura? Aqui não</h1><h2>A tecnologia é apenas uma ferramenta.</h2><p>o problema não é a criação, mas o uso que se faz dela.</p><p class="home-invitation">Crie uma sala e convide alguem</p></div>${!displayName.trim() || editingName ? `<form id="profile-form" class="identity-field"><label for="display-name">Seu nome</label><input id="display-name" class="text-input" autocomplete="nickname" maxlength="32" required placeholder="Seu nome" value="${escape(displayName)}" ${busy ? 'disabled' : ''}>${editingName ? '<button class="button secondary" type="submit">Salvar nome</button>' : ''}</form>` : ''}<div class="start-grid"><article class="start-card create-card"><h2>Criar sala</h2><p>Escolha uma janela ou tela para compartilhar.</p><button class="button primary wide" data-action="create" ${disabled ? 'disabled' : ''}>${busy === 'room' ? '<span class="spinner"></span> Conectando…' : '+  Criar sala'}</button></article><article class="start-card join-card"><h2>Entrar com código</h2><form id="join-form"><label class="sr-only" for="room-code">Código da sala com 8 caracteres</label><div class="join-input join-form"><input class="text-input" id="room-code" aria-label="Código da sala com 8 caracteres" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="9" placeholder="Código da sala" value="${escape(joinCode)}" ${busy ? 'disabled' : ''}><button type="submit" class="join-button button secondary" aria-label="Entrar na sala" ${disabled ? 'disabled' : ''}>→</button></div></form><span class="field-help">8 caracteres</span></article></div><footer class="home-credit"><span>Criado por Pretágoras</span><span>Sem Janja, apenas transmissão.</span></footer></section>`;
+  return renderHomeView({
+    enabled: !!api && loaded,
+    busy: !!busy,
+    connecting: busy === 'room',
+    displayName,
+    editingName,
+    joinCode,
+  });
 }
 
 function renderSettingsPage(): string {
@@ -1901,14 +1824,7 @@ function renderSettingsPage(): string {
 
 function toggleSidebar(): void {
   sidebarCollapsed = !sidebarCollapsed;
-  try {
-    localStorage.setItem(
-      'discorja.sidebar-collapsed',
-      String(sidebarCollapsed),
-    );
-  } catch {
-    /* Session preference only. */
-  }
+  preferenceStore.saveSidebarCollapsed(sidebarCollapsed);
   // Resize the shell without rebuilding or detaching either media player.
   root
     .querySelector('.app-shell')
@@ -1978,32 +1894,6 @@ async function testConnection(): Promise<void> {
   }
 }
 
-function renderRoomV2(): string {
-  if (!room || !roomState) return '';
-  const publisher = room.role === 'host';
-  const owner = roomState.ownerId === room.selfId;
-  const self = roomState.participants.find(
-    (member) => member.peerId === room!.selfId,
-  )!;
-  const moderate = owner || self.role === 'moderator';
-  const stream = publisher ? localStream : remoteStream;
-  const isLive = publisher ? sharing : remoteSharing;
-  const people = roomState.participants
-    .map((member) => {
-      const canRemove =
-        moderate &&
-        member.peerId !== room!.selfId &&
-        member.role !== 'owner' &&
-        (owner || member.role !== 'moderator');
-      return `<div class="person"><span class="avatar">${escape(member.name.charAt(0).toUpperCase())}</span><div><strong>${escape(member.name)}${member.peerId === room!.selfId ? ' <span>(você)</span>' : ''}</strong><small>${member.role === 'owner' ? 'Dono da sala' : member.role === 'moderator' ? 'Moderador' : 'Participante'}${member.peerId === roomState!.publisherId ? ' · Pode transmitir' : ''}${!member.connected ? ' · Reconectando' : ''}</small></div><div class="participant-actions">${moderate && member.connected && member.peerId !== roomState!.publisherId ? `<button class="button subtle" data-action="set-publisher" data-peer="${escape(member.peerId)}" aria-label="Permitir transmissão de ${escape(member.name)}">Permitir tela</button>` : ''}${owner && member.role !== 'owner' ? `<button class="button subtle" data-action="set-moderator" data-peer="${escape(member.peerId)}" data-enabled="${member.role !== 'moderator'}" aria-label="${member.role === 'moderator' ? 'Retirar moderação de' : 'Tornar moderador'} ${escape(member.name)}">${member.role === 'moderator' ? 'Retirar moderação' : 'Moderar'}</button>` : ''}${canRemove ? `<button class="icon-button remove-button" data-action="kick" data-peer="${escape(member.peerId)}" aria-label="Remover ${escape(member.name)} da sala">${icon('close')}</button>` : ''}</div></div>`;
-    })
-    .join('');
-  return `<section class="room-header"><div><span class="eyebrow">${owner ? 'SUA SALA' : 'SALA POR CONVITE'}</span><h1>${escape(roomState.name)}</h1><p>${publisher ? 'Você pode escolher uma tela para compartilhar.' : `${escape(room.hostName)} pode iniciar a transmissão.`}</p></div><div class="audio-actions"><button class="button subtle" data-action="rooms">${icon('users')} Salas</button><button class="button subtle danger-text" data-action="leave">${icon('exit')}${owner ? 'Encerrar sala' : 'Sair da sala'}</button></div></section>
-  <div class="room-grid"><section class="broadcast-panel" aria-label="${publisher ? 'Compartilhamento de tela' : 'Transmissão'}"><div class="broadcast-heading"><div class="host-label"><span class="avatar">${escape(room.hostName.charAt(0).toUpperCase())}</span><div><strong>${publisher ? 'Sua transmissão' : escape(room.hostName)}</strong><small>${publisher ? 'Permissão para transmitir' : 'Transmissor da sala'}</small></div></div><span class="status-pill ${isLive ? 'live' : ''}"><i></i>${isLive ? 'AO VIVO' : 'EM ESPERA'}</span></div><div class="video-stage ${stream ? 'has-video' : ''}">${stream ? '<video id="stream-video" autoplay playsinline muted aria-label="Vídeo da tela compartilhada"></video>' : `<div class="empty-stream"><div class="empty-screen-icon">${icon('screen')}</div><h2>${publisher ? 'Tudo pronto para compartilhar.' : 'Aguardando a transmissão.'}</h2><p>${publisher ? 'A captura só começa quando você escolhe e inicia.' : 'Uma pessoa transmite por vez nesta versão.'}</p>${publisher ? `<button class="button primary" data-action="choose-source" ${busy ? 'disabled' : ''}>${icon('screen')} Escolher o que compartilhar</button>` : ''}</div>`}</div><div class="broadcast-controls"><span>${icon('screen')}<span>${escape(publisher && sharing ? sharedSourceName : 'Tela compartilhada')}</span></span>${publisher && sharing ? `<button class="button stop-button" data-action="stop">${icon('stop')} Parar de compartilhar</button>` : !publisher && stream ? `<button class="button subtle" data-action="fullscreen">${icon('expand')} Tela cheia</button>` : ''}</div></section>
-  <aside class="room-sidebar"><section class="invite-card"><div class="mini-heading">${icon('lock')} SALA POR CONVITE</div><h2>Chame sua turma.</h2><div class="room-code" aria-label="Código da sala">${escape(room.code.slice(0, 4))}<span></span>${escape(room.code.slice(4))}</div><button class="button secondary wide" data-action="copy">${icon('copy')} Copiar código</button><small>Todos devem usar o mesmo servidor e uma versão compatível.</small></section><section class="people-card"><div class="section-heading"><h2>Na sala</h2><span>${roomState.participants.length}/${roomState.maxParticipants}</span></div>${people}</section><div class="room-note">${icon('shield')}<p>O dono administra a sala. Autorizar uma tela não inicia a captura. Ao sair, o dono encerra esta sala.</p></div></aside></div>
-  ${connectionIssue ? `<div class="connection-alert" role="alert"><p>${escape(connectionIssue)}</p><button class="button subtle" data-action="rejoin">Entrar novamente</button></div>` : ''}${publisher && sharing ? '<div class="sharing-reminder">Sua tela está sendo transmitida.</div>' : ''}`;
-}
-
 function renderRoom(): string {
   if (!room) return '';
   const multi = multiState();
@@ -2020,35 +1910,25 @@ function renderRoom(): string {
       audioControl: renderAudioToggleButton(),
       playerAudioControl: renderReceiveAudioControls(),
     });
-  if (roomState) return renderRoomV2();
-  const host = room.role === 'host';
-  const hasVideo = host ? !!localStream : !!remoteStream;
-  const isLive = host ? sharing : remoteSharing;
-  const initial = room.hostName.charAt(0).toLocaleUpperCase('pt-BR') || '?';
-  return `<section class="room-header"><div><span class="eyebrow">${host ? 'SUA SALA, SEU MOMENTO' : 'BOM TER VOCÊ POR AQUI'}</span><h1>${host ? 'A turma tem um lugar.' : `Sala de ${escape(room.hostName)}`}</h1><p>${host ? 'Convide seus amigos. O resto acontece junto.' : 'Sente, acompanhe e aproveite a companhia.'}</p></div><button class="button subtle danger-text" data-action="leave">${icon('exit')}${host ? 'Encerrar sala' : 'Sair da sala'}</button></section>
-  <div class="room-grid"><section class="broadcast-panel" aria-label="${host ? 'Compartilhamento de tela' : 'Transmissão'}"><div class="broadcast-heading"><div class="host-label"><span class="avatar">${escape(initial)}</span><div><strong>${host ? 'Sua transmissão' : escape(room.hostName)}</strong><small>${host ? 'Você é o anfitrião' : 'Anfitrião da sala'}</small></div></div><span class="status-pill ${isLive ? 'live' : ''}"><i></i>${isLive ? (host ? 'TRANSMITINDO' : hasVideo ? 'AO VIVO' : 'CONECTANDO') : 'EM ESPERA'}</span></div>
-  <div class="video-stage ${hasVideo ? 'has-video' : ''}">${hasVideo ? '<video id="stream-video" autoplay playsinline muted aria-label="Vídeo da tela compartilhada"></video>' : `<div class="empty-stream"><div class="empty-screen-icon">${icon(connectionIssue ? 'network' : 'screen')}<span>${icon(host ? 'plus' : 'users')}</span></div><h2>${host ? 'Tudo pronto para compartilhar.' : connectionIssue ? 'Vamos tentar de novo?' : remoteSharing ? 'Preparando a conexão…' : 'O encontro já começou.'}</h2><p>${host ? 'Escolha uma janela ou uma tela.<br>Seus amigos verão apenas o que você selecionar.' : connectionIssue ? 'A conexão entre os computadores precisa de atenção.' : remoteSharing ? 'Conectando você à tela do anfitrião.' : `${escape(room.hostName)} ainda não está transmitindo.<br>Assim que começar, a tela aparece aqui.`}</p>${host ? `<button class="button primary" data-action="choose-source" ${busy ? 'disabled' : ''}>${icon('screen')} Escolher o que compartilhar</button>` : `<span class="waiting-label">${connectionIssue ? icon('alert') : '<span class="pulse-dot"></span>'}${connectionIssue ? 'Conexão interrompida' : remoteSharing ? 'Estabelecendo conexão direta' : 'Aguardando o anfitrião'}</span>`}</div>`}</div>
-  <div class="broadcast-controls"><span>${icon('screen')}<span>${hasVideo ? escape(host ? sharedSourceName : 'Tela compartilhada') : 'Vídeo compartilhado · sem áudio'}</span></span>${host && sharing ? `<button class="button stop-button" data-action="stop">${icon('stop')} Parar de compartilhar</button>` : !host && hasVideo ? `<button class="button subtle" data-action="fullscreen">${icon('expand')} Tela cheia</button>` : `<span class="quiet-label">${host ? 'A captura só começa com você.' : 'A sala continua aberta.'}</span>`}</div></section>
-  <aside class="room-sidebar"><section class="invite-card"><div class="mini-heading">${icon('lock')} SALA PRIVADA</div><h2>${host ? 'Chame quem importa.' : 'Você está na sala.'}</h2><p>${host ? 'Envie o código para seus amigos.' : 'Este é o código do seu encontro.'}</p><div class="room-code" aria-label="Código da sala">${escape(room.code.slice(0, 4))}<span></span>${escape(room.code.slice(4))}</div><button class="button secondary wide" data-action="copy">${icon('copy')} Copiar código</button><small>Todos devem usar o mesmo servidor.</small></section>
-  <section class="people-card"><div class="section-heading"><h2>Na sala</h2><span>${host ? `${viewers.size + 1}/${room.maxViewers + 1}` : 'Você + anfitrião'}</span></div><div class="person"><span class="avatar">${escape(initial)}</span><div><strong>${escape(room.hostName)}${host ? ' <span>(você)</span>' : ''}</strong><small><span class="online-dot"></span>Anfitrião</small></div><span class="host-crown" aria-label="Anfitrião">✦</span></div>${host ? [...viewers].map(([id, viewer]) => `<div class="person"><span class="avatar viewer-avatar">${escape(viewer.name.charAt(0).toLocaleUpperCase('pt-BR'))}</span><div><strong>${escape(viewer.name)}</strong><small class="${viewer.failed ? 'failed-text' : ''}">${viewer.failed ? 'Falha de vídeo · reinicie a transmissão' : !sharing ? 'Na sala' : viewer.connected ? 'Assistindo agora' : 'Conectando ao vídeo…'}</small></div><button class="icon-button remove-button" data-action="kick" data-peer="${escape(id)}" title="Remover ${escape(viewer.name)}" aria-label="Remover ${escape(viewer.name)} da sala">${icon('close')}</button></div>`).join('') : `<div class="person"><span class="avatar viewer-avatar">${escape(displayName.charAt(0).toLocaleUpperCase('pt-BR'))}</span><div><strong>${escape(displayName)} <span>(você)</span></strong><small>Espectador</small></div></div>`}${host && !viewers.size ? `<div class="empty-people">${icon('users')}<p>Tem espaço para a sua turma.<br>Compartilhe o código para começar.</p></div>` : ''}</section><div class="room-note">${icon('shield')}<p>${host ? `Até ${room.maxViewers} amigos podem assistir. Cada conexão usa a internet do seu computador.` : 'O anfitrião controla a transmissão e pode encerrá-la a qualquer momento.'}</p></div></aside></div>
-  ${connectionIssue ? `<div class="connection-alert" role="alert">${icon('alert')}<p>${escape(connectionIssue)}</p><button class="button subtle" data-action="rejoin">${icon('refresh')} Entrar novamente</button></div>` : ''}
-  ${host && sharing ? `<div class="sharing-reminder">${icon('screen')} Sua tela está sendo transmitida. Tudo que aparecer na área escolhida poderá ser visto.</div>` : ''}`;
+  return renderSingleRoom({
+    room,
+    roomState: roomState?.protocol === 2 ? roomState : null,
+    sharedSourceName,
+    sharing,
+    remoteSharing,
+    hasLocalVideo: !!localStream,
+    hasRemoteVideo: !!remoteStream,
+    connectionIssue,
+    busy: !!busy,
+    displayName,
+    viewers: [...viewers].map(([id, viewer]) => ({ id, ...viewer })),
+  });
 }
 
 function renderModal(): string {
   if (!modal) return '';
   if (modal === 'switch')
     return `<div class="modal-overlay"><section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h2 id="modal-title">Trocar de sala?</h2><p class="modal-description">A transmissão e a reprodução atuais serão encerradas antes de conectar à próxima sala.${roomState?.ownerId === room?.selfId ? ' Como você é o dono, a sala atual será encerrada para todos.' : ''} A próxima conexão pode falhar; nenhuma captura será reiniciada automaticamente.</p><div class="modal-footer"><button class="button subtle" data-action="cancel-switch">Continuar nesta sala</button><button class="button primary" data-action="confirm-switch">Trocar de sala</button></div></section></div>`;
-  if (modal === 'rooms')
-    return `<div class="modal-overlay"><section class="modal settings-modal rooms-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-heading"><h2 id="modal-title">Suas salas</h2><button class="icon-button" data-action="close-modal" aria-label="Fechar salas">${icon('close')}</button></div><p class="modal-description">Uma sala ativa por vez. Os convites salvos não recebem vídeo, áudio ou atualizações em segundo plano.</p><form id="new-room-form"><label class="field-label" for="new-room-name">Nome da nova sala</label><input class="text-input" id="new-room-name" maxlength="40" value="${escape(roomName)}" placeholder="Sala da turma"><button class="button primary" type="submit">Criar outra sala</button></form><form id="switch-room-form"><label class="field-label" for="switch-room-code">Entrar por código</label><input class="text-input" id="switch-room-code" maxlength="9" value="${escape(joinCode)}" autocomplete="off"><button class="button secondary" type="submit">Entrar nesta sala</button></form><h3>Convites recentes neste servidor</h3><div class="known-rooms">${
-      savedRooms
-        .filter((entry) => entry.server === config.signalingUrl)
-        .map(
-          (entry) =>
-            `<div class="known-room"><div><strong>${escape(entry.name)}</strong><small>${escape(entry.code)}${room?.code === entry.code ? ' · Ativa' : ' · Disponibilidade não verificada'}</small></div><button class="button subtle" data-action="open-known-room" data-code="${entry.code}">${room?.code === entry.code ? 'Voltar à sala' : 'Entrar'}</button><button class="icon-button" data-action="forget-room" data-code="${entry.code}" aria-label="Esquecer ${escape(entry.name)}">${icon('close')}</button></div>`,
-        )
-        .join('') || '<p>Nenhum convite salvo neste servidor.</p>'
-    }</div></section></div>`;
   if (modal === 'update')
     return `<div class="modal-overlay"><section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-heading"><h2 id="modal-title">${update.status === 'downloaded' ? 'Atualização pronta' : 'Atualização disponível'}</h2></div><p class="modal-description">Versão instalada: ${escape(config.version)}. Nova versão: ${escape(update.version ?? 'disponível')}.</p><p role="status">${update.status === 'downloading' ? `Baixando… ${Math.round(update.percent ?? 0)}%` : update.status === 'error' ? escape(update.message ?? 'Falha ao atualizar. Tente novamente nas configurações.') : update.status === 'downloaded' ? 'O aplicativo será reiniciado para instalar.' : 'Uma nova versão do Discorja está disponível.'}</p>${room ? '<p class="settings-warning">Reiniciar encerrará sua participação e qualquer transmissão ativa.</p>' : ''}<div class="modal-footer"><button class="button subtle" data-action="defer-update">Depois</button>${update.status === 'downloaded' ? '<button class="button primary" data-action="confirm-install-update">Reiniciar e atualizar</button>' : update.status === 'available' ? '<button class="button primary" data-action="download-update">Atualizar agora</button>' : ''}</div></section></div>`;
   if (modal === 'diagnostics')
@@ -2120,7 +2000,7 @@ function render(): void {
       ? 'Reconectando'
       : 'Conectado'
     : 'Pronto para conectar';
-  root.innerHTML = `<div class="app-shell ${sidebarCollapsed ? 'is-collapsed' : ''}"><a class="skip-link" href="#main-content">Ir para o conteúdo</a>${renderSidebar(currentPage, sidebarCollapsed, displayName, config.version)}<div class="main-shell"><main id="main-content" class="app-main ${currentPage}-main" tabindex="-1">${currentPage !== 'room' ? `<header class="page-heading"><h1>${title}</h1><span class="connection-badge ${room && !signalRecovering ? 'connected' : ''}">${connection}</span></header>` : ''}${!api ? '<div class="preview-notice">Prévia da interface. Abra o aplicativo desktop para compartilhar sua tela.</div>' : ''}${notice ? `<div class="notice ${notice.kind}" role="${notice.kind === 'error' ? 'alert' : 'status'}" aria-live="${notice.kind === 'error' ? 'assertive' : 'polite'}">${icon(notice.kind === 'error' ? 'alert' : notice.kind === 'success' ? 'check' : 'network')}<span>${escape(notice.text)}</span><button class="icon-button" data-action="dismiss" aria-label="Dispensar aviso">${icon('close')}</button></div>` : ''}<section class="home-page" ${currentPage !== 'home' ? 'hidden' : ''}>${renderHome()}</section>${currentPage === 'settings' ? renderSettingsPage() : ''}<section id="room-view" ${currentPage !== 'room' ? 'hidden' : ''}>${room ? renderRoom() : ''}</section></main></div></div>${renderModal()}`;
+  root.innerHTML = `<div class="app-shell ${sidebarCollapsed ? 'is-collapsed' : ''}"><a class="skip-link" href="#main-content">Ir para o conteúdo</a>${renderSidebar(currentPage, !!room, sidebarCollapsed, displayName, config.version)}<div class="main-shell"><main id="main-content" class="app-main ${currentPage}-main" tabindex="-1">${currentPage !== 'room' ? `<header class="page-heading"><h1>${title}</h1><span class="connection-badge ${room && !signalRecovering ? 'connected' : ''}">${connection}</span></header>` : ''}${!api ? '<div class="preview-notice">Prévia da interface. Abra o aplicativo desktop para compartilhar sua tela.</div>' : ''}${notice ? `<div class="notice ${notice.kind}" role="${notice.kind === 'error' ? 'alert' : 'status'}" aria-live="${notice.kind === 'error' ? 'assertive' : 'polite'}">${icon(notice.kind === 'error' ? 'alert' : notice.kind === 'success' ? 'check' : 'network')}<span>${escape(notice.text)}</span><button class="icon-button" data-action="dismiss" aria-label="Dispensar aviso">${icon('close')}</button></div>` : ''}<section class="home-page" ${currentPage !== 'home' ? 'hidden' : ''}>${renderHome()}</section>${currentPage === 'settings' ? renderSettingsPage() : ''}<section id="room-view" ${currentPage !== 'room' ? 'hidden' : ''}>${room ? renderRoom() : ''}</section></main></div></div>${renderModal()}`;
   const panel = root.querySelector<HTMLElement>('.broadcast-panel');
   if (panel && room) {
     if (!multiState()) {
@@ -2239,7 +2119,6 @@ root.addEventListener('input', (event) => {
     settingUrl = target.value;
     connectionCheck = '';
   }
-  if (target.id === 'new-room-name') roomName = target.value;
   if (target.id === 'receive-volume') {
     receiveVolume = Number(target.value) / 100;
     receiveMuted = receiveVolume === 0;
@@ -2266,13 +2145,6 @@ root.addEventListener('input', (event) => {
       muteButton.innerHTML = icon(muted ? 'volume-muted' : 'volume');
     }
   }
-  if (target.id === 'switch-room-code') {
-    joinCode = target.value
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '')
-      .slice(0, 8);
-    target.value = joinCode;
-  }
 });
 
 root.addEventListener('submit', (event) => {
@@ -2284,11 +2156,7 @@ root.addEventListener('submit', (event) => {
       root.querySelector<HTMLInputElement>('#display-name')?.focus();
       return;
     }
-    try {
-      localStorage.setItem('discorja.name', name);
-    } catch {
-      /* Session still uses this name. */
-    }
+    preferenceStore.saveDisplayName(name);
     editingName = false;
     render();
     notify('Nome atualizado.', 'success', true);
@@ -2299,15 +2167,6 @@ root.addEventListener('submit', (event) => {
     else void connectRoom('join');
   }
   if ((event.target as HTMLElement).id === 'settings-form') void saveSettings();
-  if ((event.target as HTMLElement).id === 'new-room-form')
-    requestRoomSwitch({ kind: 'create', name: roomName });
-  if ((event.target as HTMLElement).id === 'switch-room-form') {
-    if (!/^[A-Z0-9]{8}$/.test(joinCode)) {
-      notify('Digite os oito caracteres do convite.', 'error');
-      return;
-    }
-    requestRoomSwitch({ kind: 'join', code: joinCode });
-  }
 });
 
 root.addEventListener('change', (event) => {
@@ -2375,19 +2234,11 @@ root.addEventListener('click', (event) => {
       if (button.dataset.peer)
         send({ type: 'stop-publication', peerId: button.dataset.peer });
       break;
-    case 'rooms':
-      if (room && activePage !== 'room') {
-        activePage = 'room';
-        modal = null;
-        render();
-        break;
-      }
-    case 'manage-rooms':
-      returnFocusAction = 'rooms';
-      if (!busy && !signalRecovering) {
-        modal = 'rooms';
-        render();
-      }
+    case 'room':
+      if (room) activePage = 'room';
+      else activePage = 'home';
+      modal = null;
+      render();
       break;
     case 'show-diagnostics':
       returnFocusAction = 'show-diagnostics';
@@ -2396,23 +2247,12 @@ root.addEventListener('click', (event) => {
       break;
     case 'cancel-switch':
       switchTarget = null;
-      modal = 'rooms';
+      modal = null;
+      activePage = room ? 'room' : 'home';
       render();
       break;
     case 'confirm-switch':
       void confirmRoomSwitch();
-      break;
-    case 'open-known-room':
-      requestRoomSwitch({ kind: 'join', code: button.dataset.code });
-      break;
-    case 'forget-room':
-      savedRooms = savedRooms.filter(
-        (entry) =>
-          entry.server !== config.signalingUrl ||
-          entry.code !== button.dataset.code,
-      );
-      saveKnownRooms();
-      render();
       break;
     case 'set-publisher':
       if (button.dataset.peer)
@@ -2520,7 +2360,7 @@ root.addEventListener('click', (event) => {
         );
       break;
     case 'create':
-      if (room) requestRoomSwitch({ kind: 'create', name: roomName });
+      if (room) requestRoomSwitch({ kind: 'create' });
       else void connectRoom('create');
       break;
     case 'toggle-sidebar':

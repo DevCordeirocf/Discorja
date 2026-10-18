@@ -5,7 +5,7 @@ Aplicativo de compartilhamento de tela para **Windows 10/11 x64**, feito para pe
 ## Recursos
 
 - Salas por convite com código de oito caracteres.
-- Salas nomeadas, convites recentes e troca com encerramento da mídia anterior.
+- Cada cliente participa de uma sala por vez; usuários diferentes podem manter salas distintas ativas ao mesmo tempo.
 - Duas pessoas podem transmitir ao mesmo tempo no piloto P2P; cada participante assiste a uma tela por vez.
 - Cartões para escolher quem assistir e controles independentes para compartilhar sua própria tela.
 - Prévia local pausada em segundo plano, preservando a captura enviada aos amigos.

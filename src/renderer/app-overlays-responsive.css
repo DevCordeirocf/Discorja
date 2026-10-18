@@ -1,0 +1,259 @@
+.modal {
+  background: var(--surface);
+  border-color: var(--line);
+}
+.modal h2 {
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.notice {
+  position: fixed;
+  z-index: 1001;
+  top: 20px;
+  left: 50%;
+  width: min(560px, calc(100vw - 32px));
+  min-height: 56px;
+  margin: 0;
+  padding: 14px 48px 14px 16px;
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 42%);
+  backdrop-filter: blur(18px);
+  transform: translateX(-50%);
+  animation: notice-enter 180ms ease-out both;
+}
+.notice > .icon {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+}
+.notice > span {
+  line-height: 1.5;
+}
+.notice .icon-button {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+.notice.info {
+  background: rgb(35 32 43 / 96%);
+  color: #d3c5e8;
+}
+.connection-alert {
+  position: fixed;
+  z-index: 1000;
+  bottom: 20px;
+  left: 50%;
+  width: min(620px, calc(100vw - 32px));
+  margin: 0;
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 42%);
+  transform: translateX(-50%);
+  animation: notice-enter 180ms ease-out both;
+}
+.connection-alert > p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.connection-alert .button {
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+.start-card,
+.settings-card {
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+.start-card:hover {
+  transform: translateY(-2px);
+}
+.nav-item:hover:not(.active) {
+  transform: translateX(2px);
+}
+
+@keyframes diagnostics-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes notice-enter {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (max-width: 1180px), (max-height: 820px) {
+  .app-main {
+    padding: 24px;
+  }
+  .page-heading {
+    margin-bottom: 24px;
+  }
+  .home-main .page-heading,
+  .is-collapsed .home-main .page-heading {
+    margin-bottom: 32px;
+  }
+  .home-content,
+  .is-collapsed .home-content {
+    gap: 32px;
+  }
+  .home-copy h1 {
+    font-size: 40px;
+    line-height: 48px;
+  }
+  .home-copy h2 {
+    font-size: 28px;
+    line-height: 36px;
+  }
+  .room-grid.multi-room-grid {
+    grid-template-columns: minmax(0, 1fr) 220px;
+    gap: 16px;
+  }
+  .multi-room-grid .people-card {
+    min-height: 0;
+  }
+  .settings-page {
+    gap: 16px;
+  }
+  .settings-column {
+    gap: 16px;
+  }
+  .settings-card {
+    padding: 20px;
+  }
+}
+
+@media (hover: none) {
+  .diagnostics-trigger {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+}
+
+@media (max-width: 1000px) {
+  .home-copy h1,
+  .home-main:has(#display-name) .home-copy h1 {
+    font-size: 32px;
+    line-height: 40px;
+  }
+  .home-copy h2,
+  .home-main:has(#display-name) .home-copy h2 {
+    font-size: 24px;
+    line-height: 32px;
+  }
+  .home-main .page-heading,
+  .is-collapsed .home-main .page-heading {
+    margin-bottom: 24px;
+  }
+  .home-content,
+  .is-collapsed .home-content {
+    gap: 24px;
+  }
+  .start-grid {
+    gap: 16px;
+  }
+  .start-card {
+    padding: 20px;
+  }
+  .room-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .room-header-actions .button {
+    min-height: 40px;
+    padding: 8px 12px;
+  }
+  .settings-page-actions {
+    justify-content: flex-end;
+  }
+  .update-card,
+  .logs-card {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 860px) {
+  .settings-main {
+    height: auto;
+    min-height: 100dvh;
+    overflow: auto;
+  }
+  .settings-page {
+    grid-template-columns: minmax(0, 1fr);
+    flex: 0 0 auto;
+  }
+  .settings-column,
+  .settings-column:last-child {
+    grid-template-rows: auto;
+    align-content: start;
+  }
+  .settings-page-actions {
+    margin-top: 4px;
+  }
+}
+
+@media (max-height: 780px) {
+  .settings-main .page-heading {
+    margin-bottom: 12px;
+  }
+  .settings-page {
+    gap: 12px;
+  }
+  .settings-column {
+    gap: 10px;
+  }
+  .settings-card {
+    padding: 13px;
+  }
+  .settings-card h2 {
+    margin-bottom: 9px;
+  }
+  .settings-card p {
+    margin-bottom: 10px;
+    font-size: 12px;
+    line-height: 17px;
+  }
+  .transmission-settings > .quality-panel .quality-heading {
+    margin-bottom: 10px;
+  }
+  .transmission-settings .quality-controls {
+    gap: 10px 12px;
+  }
+  .transmission-settings .quality-field > label {
+    margin-bottom: 5px;
+  }
+  .transmission-settings .quality-field select,
+  .transmission-settings .budget-input {
+    height: 34px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

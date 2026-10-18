@@ -2357,36 +2357,6 @@ main {
   padding: 14px 0;
   margin-top: 14px;
 }
-.rooms-modal {
-  max-height: 88vh;
-  overflow-y: auto;
-}
-.rooms-modal form {
-  display: grid;
-  gap: 10px;
-  margin: 22px 0;
-}
-.known-room {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 0;
-  border-bottom: 1px solid #34313f;
-}
-.known-room > div {
-  flex: 1;
-  min-width: 0;
-}
-.known-room strong,
-.known-room small {
-  display: block;
-  overflow-wrap: anywhere;
-}
-.known-room small {
-  color: #aaa4b9;
-  margin-top: 6px;
-  font-size: 11px;
-}
 .person {
   flex-wrap: wrap;
 }

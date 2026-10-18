@@ -31,14 +31,13 @@ As regras abaixo descrevem o modelo anterior, mantido apenas para clientes antig
 ## Como usar
 
 1. Configure o mesmo servidor nos aplicativos e informe seu nome na página inicial.
-2. Crie uma sala normalmente ou abra **Salas**, informe um nome e escolha **Criar outra sala**.
-3. Compartilhe o código com o grupo. Cada pessoa entra pelo código no início ou no painel **Salas**.
-4. Em **Salas**, os convites recentes do servidor atual ficam disponíveis para uma nova entrada. A disponibilidade só é verificada ao entrar.
-5. Para alternar enquanto está conectado, selecione um convite ou crie outra sala e confirme **Trocar de sala**. Cancelar mantém a sessão atual.
+2. Crie uma sala ou informe o código de convite na página **Início**.
+3. Para entrar em outra sala, use **Sair da sala** ou **Encerrar sala**. O aplicativo encerra a sessão atual e volta ao início.
+4. No início, crie uma sala ou informe o novo código. O aplicativo não mantém convites recentes.
 
-Há **uma sala de mídia ativa por aplicativo**. Ao confirmar uma troca, o Discorja encerra as tracks de áudio/vídeo, fecha as conexões WebRTC e a sinalização anteriores e só então tenta conectar à próxima sala. As outras salas salvas não abrem sockets nem recebem mídia em segundo plano. O resultado é eliminar as conexões de mídia anteriores, em vez de manter vídeos ocultos consumindo banda.
+O servidor pode manter **várias salas ativas ao mesmo tempo**, para grupos diferentes. Cada cliente participa de uma sala por vez. A saída encerra as tracks de áudio/vídeo, fecha as conexões WebRTC e a sinalização antes de retornar ao início. Se alguém tentar criar ou entrar em outra sala sem sair primeiro, o Discorja pede confirmação e encerra a sessão anterior antes de tentar conectar.
 
-Se a nova sala não existir, estiver cheia ou a rede falhar, a sessão anterior já terá sido encerrada. Não há retorno automático nem reinício de captura; escolha uma sala novamente. Essa consequência aparece antes da confirmação.
+Se a nova sala não existir, estiver cheia ou a rede falhar, a sessão anterior já terá sido encerrada. Não há retorno automático nem reinício de captura; escolha uma sala novamente.
 
 ## Quem pode fazer o quê
 
@@ -70,7 +69,7 @@ Se o transmissor sair ou for removido, a permissão volta ao dono com a publica�
 - A retomada reutiliza somente captura ainda autorizada; mudança de transmissor durante a desconexão revoga a captura anterior. Sair ou ser removido invalida a retomada.
 - As salas continuam em memória. Reinício do servidor e expiração encerram os convites; o histórico local não recria uma sala.
 
-O aplicativo guarda até doze convites recentes, com nome, código e servidor. Não guarda tokens de retomada no histórico. Os convites são filtrados pelo endpoint atual e podem ser esquecidos pelo botão ao lado de cada entrada. Não há consulta pública de todas as salas nem conta de usuário.
+O aplicativo não guarda convites recentes nem tokens de retomada em histórico local. Não há consulta pública de todas as salas nem conta de usuário.
 
 ## Atualizar aplicativo e servidor
 
@@ -95,6 +94,6 @@ npm run test:audio
 npm run test:rooms
 ```
 
-O ensaio de salas abre quatro instâncias locais e captura somente uma janela de teste própria. Confere fechamento das conexões anteriores, encerramento das tracks, permanência dos outros espectadores, mudança de transmissor, moderação, convites recentes e falha na sala de destino. Relatórios em `test-results/`, fora do Git.
+O ensaio de salas abre quatro instâncias locais e captura somente uma janela de teste própria. Confere saída pelo controle da sala, entrada pelo início, encerramento das tracks, permanência dos outros espectadores, mudança de transmissor, moderação e falha na sala de destino. Relatórios em `test-results/`, fora do Git.
 
 Não é uma medição de banda na interface física da rede nem uma certificação de carga em computadores diferentes. O ensaio usa estados e conexões WebRTC reais para verificar a liberação de recursos. Resultados e pendências em [validacao-0.5.0.md](validacao-0.5.0.md).
