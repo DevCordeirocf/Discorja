@@ -37,6 +37,16 @@ A sinalização coordena salas e conexões, mas não recebe o vídeo. O áudio e
 
 O Discorja não captura microfone nem câmera e não grava transmissões.
 
+## Telas
+
+<p align="center">
+  <a href="docs/screenshots/inicio.png"><img src="docs/screenshots/inicio.png" alt="Tela inicial do Discorja" width="32%" /></a>
+  <a href="docs/screenshots/sala.png"><img src="docs/screenshots/sala.png" alt="Sala de demonstração do Discorja" width="32%" /></a>
+  <a href="docs/screenshots/configuracoes.png"><img src="docs/screenshots/configuracoes.png" alt="Configurações do Discorja" width="32%" /></a>
+</p>
+
+<p align="center"><sub>Início · Sala em espera · Configurações</sub></p>
+
 ## Começar
 
 ### Requisitos para desenvolvimento
