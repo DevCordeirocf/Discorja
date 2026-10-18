@@ -32,9 +32,16 @@ export function rendererFile(root: string, value: string): string | undefined {
     );
     if (!target.startsWith(path.resolve(root) + path.sep)) return;
     if (
-      !['.html', '.js', '.css', '.svg', '.png', '.ico', '.woff2'].includes(
-        path.extname(target),
-      )
+      ![
+        '.html',
+        '.js',
+        '.css',
+        '.svg',
+        '.png',
+        '.ico',
+        '.woff2',
+        '.wav',
+      ].includes(path.extname(target))
     )
       return;
     return target;

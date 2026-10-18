@@ -37,6 +37,7 @@ const EVENTS = [
   'connection.error',
   'connection.heartbeat-timeout',
   'request.received',
+  'renderer.audio-startup',
 ] as const;
 
 export type LogEventName = (typeof EVENTS)[number];
@@ -136,6 +137,22 @@ export function sanitizeLogEvent(input: unknown): LogEvent | null {
       fields.channel === 'websocket-message'
     )
       details.channel = fields.channel;
+    if (
+      [
+        'initializing',
+        'playing',
+        'running',
+        'ended',
+        'suspended',
+        'interrupted',
+        'closed',
+        'failed',
+        'started',
+        'unsupported',
+        'missing-element',
+      ].includes(String(fields.audioState))
+    )
+      details.audioState = fields.audioState;
     if (
       typeof fields.operation === 'string' &&
       [
@@ -289,7 +306,7 @@ export function errorFields(error: unknown): Record<string, unknown> {
 export function rendererLogEvent(input: unknown): LogEvent | null {
   const safe = sanitizeLogEvent(input);
   return safe &&
-    /^(renderer\.(error|rejection)|signal\.|room\.(created|joined|closed|left|rejected)|capture\.(failed)|rtc\.)/.test(
+    /^(renderer\.(error|rejection|audio-startup)|signal\.|room\.(created|joined|closed|left|rejected)|capture\.(failed)|rtc\.)/.test(
       safe.event,
     )
     ? safe

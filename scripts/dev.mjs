@@ -38,7 +38,6 @@ delete env.ELECTRON_RUN_AS_NODE;
 const child = spawn(electron, ['.', ...process.argv.slice(2)], {
   stdio: 'inherit',
   env,
-  windowsHide: true,
 });
 let stopping = false;
 async function stop(code = 0) {

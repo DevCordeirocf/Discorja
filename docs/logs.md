@@ -32,6 +32,7 @@ Cada registro contém `schemaVersion`, `timestamp` UTC, `runId`, `event` e campo
 | `renderer.unresponsive` / `renderer.responsive`              | O Electron detectou que a interface parou de responder ou voltou.                                                                                                                                 |
 | `power.suspend` / `power.resume`                             | O sistema notificou suspensão ou retomada; permite comparar o horário com a desconexão.                                                                                                           |
 | `updater.error`                                              | Falha na verificação, download ou validação da atualização.                                                                                                                                       |
+| `renderer.audio-startup`                                     | Diagnóstico do efeito sonoro inicial (`initializing`, `playing`, `started`, `ended` ou `failed`); `ended` indica que o elemento terminou a reprodução, não confirma saída física de áudio.        |
 
 Não são gravados nomes dos participantes, códigos de convite, endereços do servidor, IPs, tokens, senhas, conteúdo de áudio/vídeo, SDP/ICE, mensagens livres de erro ou stacks completos. Somente eventos e valores previstos pelo código são aceitos. O renderer passa por validação de origem, saneamento e limite de 40 solicitações de log a cada dez segundos; não pode registrar eventos reservados ao processo principal ou ao servidor.
 

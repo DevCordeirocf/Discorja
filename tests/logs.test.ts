@@ -125,6 +125,23 @@ describe('Logs de suporte sem dados livres', () => {
     expect(JSON.stringify(event)).not.toMatch(/PRIVATE/);
     expect(rendererLogEvent({ event: 'request.received' })).toBeNull();
   });
+  it('permite registrar o estado do áudio de inicialização sem texto livre', () => {
+    expect(
+      rendererLogEvent({
+        event: 'renderer.audio-startup',
+        details: { audioState: 'ended', error: 'private' },
+      }),
+    ).toEqual({
+      event: 'renderer.audio-startup',
+      details: { audioState: 'ended' },
+    });
+    expect(
+      rendererLogEvent({
+        event: 'renderer.audio-startup',
+        details: { audioState: 'autoplay denied' },
+      })?.details,
+    ).toEqual({});
+  });
   it('serializa gravações, limita a três arquivos e preserva os eventos mais recentes após reabrir', async () => {
     const root = await directory();
     const logger = new DesktopLogs(root, 1024);

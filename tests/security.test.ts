@@ -74,6 +74,9 @@ describe('Isolamento do aplicativo', () => {
     expect(rendererFile(root, 'app://discorja/index.html')).toBe(
       path.join(root, 'index.html'),
     );
+    expect(rendererFile(root, 'app://discorja/assets/startup-sigh.wav')).toBe(
+      path.join(root, 'assets', 'startup-sigh.wav'),
+    );
     for (const url of [
       'file:///C:/Windows/win.ini',
       'app://other/index.html',
@@ -83,6 +86,7 @@ describe('Isolamento do aplicativo', () => {
       'app://discorja/%00.js',
       'app://discorja/assets/%2e%2e%2f%2e%2e%2fsecret.json',
       'app://discorja/%zz',
+      'app://discorja/assets/startup-sigh.mp3',
     ])
       expect(rendererFile(root, url)).toBeUndefined();
   });
