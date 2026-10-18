@@ -9,6 +9,8 @@ import type {
   Publication,
 } from '../shared/protocol';
 import { SignalConnection } from './signal';
+import { initializeBackgroundEffect } from './background-effect';
+import { dismissStartupSplash } from './startup-splash';
 import { errorFields, type LogEventName } from '../shared/logs';
 import { RoomPeers } from './rtc';
 import { SYSTEM_AUDIO_CONSTRAINTS } from '../shared/audio';
@@ -48,6 +50,7 @@ declare global {
 }
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
+initializeBackgroundEffect();
 const announcements = document.createElement('div');
 announcements.id = 'session-announcement';
 announcements.className = 'sr-only';
@@ -2102,6 +2105,7 @@ function render(): void {
             : 'Pronto para entrar ou criar uma sala.'));
   if (announcements.textContent !== message)
     announcements.textContent = message;
+  dismissStartupSplash();
 }
 
 root.addEventListener('input', (event) => {

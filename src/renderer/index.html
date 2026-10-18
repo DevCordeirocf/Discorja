@@ -15,7 +15,14 @@
     <title>Discorja</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="startup-splash" aria-hidden="true">
+      <div class="startup-logo">
+        <img src="./assets/logo.png" alt="" width="1024" height="1024" />
+        <span class="startup-eye-glow startup-eye-glow-left"></span>
+        <span class="startup-eye-glow startup-eye-glow-right"></span>
+      </div>
+    </div>
+    <div id="app" inert></div>
     <script type="module" src="/app.ts"></script>
   </body>
 </html>

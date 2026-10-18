@@ -1,4 +1,14 @@
 /* Approved Essencial layout. Existing component styles retain capture and diagnostics. */
+@property --cursor-glow-x {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+@property --cursor-glow-y {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
 @font-face {
   font-family: Roboto;
   src: url('./assets/fonts/Roboto.ttf') format('truetype');
@@ -8,7 +18,8 @@
 }
 
 :root {
-  font-family: Roboto, 'Segoe UI', sans-serif;
+  font-family: Bahnschrift, Roboto, 'Segoe UI', sans-serif;
+  --font-display: Bahnschrift, Roboto, 'Segoe UI', sans-serif;
   --bg: #101115;
   --surface: #191a20;
   --raised: #22232d;
@@ -18,8 +29,18 @@
   --faint: #858496;
   --purple: #b8a0ff;
   --mint: #a6dfc8;
+  --cursor-glow-x: 76vw;
+  --cursor-glow-y: 18vh;
   background: var(--bg);
   color: var(--text);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.035em;
 }
 
 [hidden] {
@@ -46,6 +67,158 @@ button:disabled {
 }
 .app-shell {
   min-height: 100dvh;
+  position: relative;
+  isolation: isolate;
+  background: transparent;
+  transition:
+    --cursor-glow-x 320ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    --cursor-glow-y 320ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+#app {
+  position: relative;
+  z-index: 1;
+}
+.ambient-particle-layer {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+.ambient-orb {
+  position: absolute;
+  top: var(--top);
+  left: var(--left);
+  width: var(--size);
+  aspect-ratio: 1;
+  animation: ambient-orb-drift var(--duration) ease-in-out var(--delay) infinite;
+  will-change: transform;
+}
+.ambient-orb-glow {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgb(184 160 255 / 76%);
+  transform: translate3d(var(--repel-x, 0), var(--repel-y, 0), 0);
+  transition: transform 900ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+@keyframes ambient-orb-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(var(--drift-x1), var(--drift-y1), 0);
+  }
+  50% {
+    transform: translate3d(var(--drift-x2), var(--drift-y2), 0);
+  }
+  75% {
+    transform: translate3d(var(--drift-x3), var(--drift-y3), 0);
+  }
+}
+.app-shell::before {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 600px 440px at var(--cursor-glow-x) var(--cursor-glow-y),
+      rgb(184 160 255 / 1.2%),
+      transparent 76%
+    ),
+    radial-gradient(
+      ellipse 640px 480px at 60% 100%,
+      rgb(139 102 213 / 2.2%),
+      transparent 74%
+    );
+}
+#startup-splash {
+  position: fixed;
+  z-index: 2000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: radial-gradient(
+    ellipse 520px 400px at 50% 47%,
+    #111019 0%,
+    #09090e 58%,
+    #040406 100%
+  );
+  opacity: 1;
+  transition: opacity 520ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+#startup-splash.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+.startup-logo {
+  position: relative;
+  width: min(360px, 68vw, 54vh);
+  aspect-ratio: 1;
+  animation: startup-logo-enter 500ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+.startup-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.startup-eye-glow {
+  position: absolute;
+  top: 53%;
+  width: 22%;
+  height: 15%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgb(237 226 255 / 96%) 0%,
+    rgb(199 166 255 / 82%) 18%,
+    rgb(165 119 245 / 52%) 44%,
+    rgb(142 99 223 / 18%) 66%,
+    transparent 80%
+  );
+  filter: blur(5px);
+  mix-blend-mode: screen;
+  opacity: 0;
+  transform: scale(0.2);
+  animation: startup-eye-glow 1.65s cubic-bezier(0.2, 0.65, 0.25, 1) 120ms both;
+}
+.startup-eye-glow-left {
+  left: 27%;
+}
+.startup-eye-glow-right {
+  left: 52%;
+}
+@keyframes startup-logo-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes startup-eye-glow {
+  0%,
+  12% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  56% {
+    opacity: 0.9;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 0.9;
+    transform: scale(1.12);
+  }
 }
 .sidebar {
   position: fixed;
