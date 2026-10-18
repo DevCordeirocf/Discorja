@@ -1,43 +1,53 @@
 # Discorja
 
-Aplicativo de compartilhamento de tela para **Windows 10/11 x64**, feito para pequenos grupos. Crie uma sala, escolha uma janela ou monitor e compartilhe o código para seus amigos assistirem.
+<p align="center">
+  <img src="src/renderer/assets/logo.png" alt="Logo do Discorja" width="120" />
+</p>
+
+<p align="center">
+  Compartilhe a tela com seu grupo em salas privadas, com vídeo enviado diretamente entre os participantes.
+</p>
+
+<p align="center">
+  <strong>Windows 10/11 · x64</strong> &nbsp;|&nbsp; Electron · TypeScript · WebRTC
+</p>
+
+<p align="center">
+  <a href="#recursos">Recursos</a> ·
+  <a href="#começar">Começar</a> ·
+  <a href="#usar-com-amigos">Usar com amigos</a> ·
+  <a href="#documentação">Documentação</a>
+</p>
+
+## Sobre
+
+O Discorja é um aplicativo desktop para compartilhar uma janela ou monitor com amigos. Crie uma sala, envie o código de convite e escolha uma transmissão para assistir.
+
+A sinalização coordena salas e conexões, mas não recebe o vídeo. O áudio e o vídeo são enviados por WebRTC entre os participantes; redes que bloqueiam uma conexão direta podem exigir um servidor TURN.
 
 ## Recursos
 
-- Salas por convite com código de oito caracteres.
-- Cada cliente participa de uma sala por vez; usuários diferentes podem manter salas distintas ativas ao mesmo tempo.
-- Duas pessoas podem transmitir ao mesmo tempo no piloto P2P; cada participante assiste a uma tela por vez.
-- Cartões para escolher quem assistir e controles independentes para compartilhar sua própria tela.
-- Prévia local pausada em segundo plano, preservando a captura enviada aos amigos.
-- Captura de janela ou monitor com prévia e controles para iniciar e parar.
-- Som do computador opcional no Windows; em sistemas compatíveis, pode excluir o áudio do aplicativo Discord sem silenciá-lo localmente.
-- Até dez participantes por sala na configuração padrão, com dono e moderadores.
-- Perfis de **720p/30 FPS**, **1080p/30 FPS**, **1080p/60 FPS** e **1080p/120 FPS**.
-- Prioridade para detalhes ou movimento, adaptação por espectador e limite de envio.
-- Teto de vídeo ajustável até 100 Mbps por espectador, com indicação em MB/s e orçamento total compartilhado de até 500 Mbps.
-- Navegação por teclado com foco preservado durante atualizações da sala.
-- Indicadores de qualidade da transmissão e controle de participantes.
-- Diagnóstico exportável, preferência de formato de vídeo e recuperação de quedas breves.
-- Aviso de atualização ao abrir, com opção de atualizar ou adiar.
-- Instalador Windows e atualizações por GitHub Releases, com assinatura de código opcional.
+- Salas por convite, com até **10 participantes** por sala por padrão.
+- Compartilhamento de janela ou tela inteira, com prévia e controles para iniciar e parar.
+- Até **duas telas transmitidas ao mesmo tempo** por sala na configuração padrão; cada pessoa assiste a uma transmissão por vez.
+- Perfis de **720p/30 FPS**, **1080p/30 FPS**, **1080p/60 FPS** e **1080p/120 FPS**. A qualidade real depende da captura, do computador e da rede.
+- Áudio opcional do computador e controle de volume da transmissão. A exclusão do áudio do Discord depende do Windows e da compatibilidade do aplicativo instalado.
+- Ajustes de qualidade, adaptação à conexão, diagnóstico exportável e registros locais de erro.
+- Notificação de atualização quando a distribuição do aplicativo está configurada para GitHub Releases.
 
-Microfone, câmera e gravação não fazem parte do aplicativo. O som geral pode incluir outros programas; a opção de exclusão filtra o processo do Discord instalado em versões compatíveis do Windows. A qualidade recebida depende da fonte, do computador e da conexão.
+O Discorja não captura microfone nem câmera e não grava transmissões.
 
-## Tecnologias
+## Começar
 
-**Electron** e **TypeScript** no aplicativo, **WebRTC** para vídeo e áudio e **Node.js/WebSocket** para a sinalização das salas. Cada transmissor envia mídia somente para quem escolheu assistir à sua tela, diretamente ou por TURN quando configurado.
-
-## Requisitos
-
-Para executar o projeto em desenvolvimento:
+### Requisitos para desenvolvimento
 
 - Windows 10/11 x64.
 - Node.js **22.12 ou superior** e npm.
-- Visual Studio Build Tools com **Desenvolvimento para desktop com C++** para compilar ou empacotar o filtro de áudio nativo.
+- Visual Studio Build Tools com **Desenvolvimento para desktop com C++** somente para compilar o filtro nativo de áudio ou criar o instalador para Windows.
 
-Quem utiliza o aplicativo instalado não precisa instalar Node.js ou npm.
+O instalador pronto não exige Node.js, npm ou Visual Studio Build Tools.
 
-## Início rápido
+### Executar localmente
 
 Na pasta do projeto, instale as dependências:
 
@@ -45,60 +55,58 @@ Na pasta do projeto, instale as dependências:
 npm ci
 ```
 
-Inicie a sinalização em um terminal:
+Copie o exemplo de configuração local:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Abra dois terminais na pasta do projeto. No primeiro, inicie o servidor de sinalização local:
 
 ```powershell
 npm run server:dev
 ```
 
-Para testar em desenvolvimento a opção de excluir o Discord do áudio, compile o helper nativo uma vez:
-
-```powershell
-npm run audio:build
-```
-
-Os comandos `npm run dist:win` e `npm run pack:win` compilam e incluem o helper automaticamente. Quem instala o aplicativo não precisa do Visual Studio Build Tools.
-
-Em outro terminal, abra o aplicativo:
+No segundo, inicie o aplicativo:
 
 ```powershell
 npm run dev
 ```
 
-O endereço local padrão é `ws://127.0.0.1:8787`. Para testar com outro computador, todos precisam usar o mesmo servidor acessível por WSS; consulte o [guia de implantação](docs/implantacao.md).
+O endereço local padrão é `ws://127.0.0.1:8787`. Para testar a exclusão do áudio do Discord durante o desenvolvimento, compile o componente nativo uma vez:
 
-## Como usar
+```powershell
+npm run audio:build
+```
 
-1. Abra o Discorja e configure o servidor de sinalização.
-2. Informe seu nome e crie uma sala.
-3. Escolha a qualidade e a janela ou monitor que deseja transmitir.
-4. Se quiser transmitir som durante uma call, marque **Excluir o áudio do Discord da transmissão**. Se o Windows não suportar o filtro, o vídeo seguirá sem áudio.
-5. Inicie a transmissão e compartilhe o código com os amigos. Eles entram na sala e escolhem **Assistir** no cartão desejado.
-6. Outra pessoa pode usar **Compartilhar minha tela** enquanto houver espaço. Você pode transmitir e assistir a outra pessoa simultaneamente; trocar de cartão encerra a recepção anterior.
-7. Quem recebe pode usar **Ouvir transmissão** e ajustar o volume. O som recebido fica bloqueado enquanto captura o som do próprio computador, para evitar retorno.
-8. Use **Parar de compartilhar** e **Parar de assistir** de forma independente. Abra **Salas** para alternar de sala; o menu de cada participante oferece os controles de moderação autorizados.
+### Usar com amigos
 
-Na versão 0.8.0, atualize primeiro o servidor e use clientes com protocolo 3 na mesma sala. `MAX_PUBLISHERS=2` é o limite padrão de telas simultâneas. A troca de sala encerra a sessão anterior; se o dono trocar ou sair, sua sala é encerrada para todos. Veja o [guia de salas](docs/salas.md).
+Para computadores diferentes, hospede o servidor de sinalização em um endereço público com TLS e WebSocket, acessível por **WSS**. Depois, cada participante deve informar o mesmo endereço em **Configurações → Servidor de sinalização**. O servidor local em `127.0.0.1` serve apenas para desenvolvimento no próprio computador.
+
+O GitHub Releases distribui o instalador, mas não mantém o servidor de sinalização online. Veja [Implantação](docs/implantacao.md) para publicar e configurar o servidor e [Instaladores e atualizações](docs/releases.md) para configurar a distribuição do app.
+
+## Comandos úteis
+
+| Comando              | Ação                                                             |
+| -------------------- | ---------------------------------------------------------------- |
+| `npm run dev`        | Inicia o aplicativo em desenvolvimento.                          |
+| `npm run server:dev` | Inicia a sinalização local.                                      |
+| `npm run build`      | Gera o build do aplicativo e do servidor.                        |
+| `npm run typecheck`  | Verifica os tipos TypeScript.                                    |
+| `npm test`           | Executa os testes automatizados.                                 |
+| `npm run dist:win`   | Gera o instalador Windows; requer o ambiente C++ descrito acima. |
 
 ## Documentação
 
-- [Plano de evolução](docs/plano-de-atualizacoes.md) — próximas versões de desempenho, áudio, salas e compartilhamento simultâneo.
-- [Segurança](docs/seguranca.md) — revisão, melhorias propostas e operação sem serviços pagos.
-- [Áudio e Discord](docs/audio.md) — uso, controles e configurações suportadas.
-- [Salas e permissões](docs/salas.md) — navegação, troca, moderação e migração de versões.
-- [Validação da versão 0.7.0](docs/validacao-0.7.0.md) — várias telas, prévia e verificações locais.
-- [Validação da versão 0.8.0](docs/validacao-0.8.0.md) — consolidação, acessibilidade, bitrate e distribuição.
-- [Operação e validação com o grupo](docs/operacao.md) — diagnóstico do servidor e próximos ensaios.
-- [Logs de erros](docs/logs.md) — registros locais, exportação e investigação de quedas.
-- [Validação da versão 0.5.0](docs/validacao-0.5.0.md) — testes e pendências desta etapa.
-- [Validação da versão 0.4.0](docs/validacao-0.4.0.md) — testes de áudio e verificações pendentes.
-- [Validação da versão 0.3.0](docs/validacao-0.3.0.md) — entregas, testes e verificações de implantação pendentes.
-- [Guia de desenvolvimento](docs/desenvolvimento.md) — ambiente, configurações, testes, manutenção e diagnóstico.
-- [Arquitetura e privacidade](docs/arquitetura.md) — componentes, conexões e tratamento dos dados.
-- [Implantação](docs/implantacao.md) — sinalização pública, TLS e STUN/TURN.
-- [Instaladores e releases](docs/releases.md) — assinatura, publicação e atualizações.
-- [Qualidade e estabilidade](docs/qualidade.md) — perfis, adaptação e desempenho.
-- [Validação da versão 0.2.0](docs/validacao-0.2.0.md) — resultados dos testes e limites observados.
+- [Salas e permissões](docs/salas.md) — convites, participantes, transmissões simultâneas e moderação.
+- [Qualidade e estabilidade](docs/qualidade.md) — perfis, bitrate, adaptação e limites de desempenho.
+- [Áudio](docs/audio.md) — áudio do sistema, exclusão do Discord e requisitos.
+- [Implantação](docs/implantacao.md) — servidor público, WSS, variáveis de ambiente e STUN/TURN.
+- [Instaladores e atualizações](docs/releases.md) — GitHub Releases, atualização automática e assinatura opcional.
+- [Segurança](docs/seguranca.md) — proteção do aplicativo, servidor e dados.
+- [Arquitetura e privacidade](docs/arquitetura.md) — componentes e fluxo de mídia.
+- [Logs de erros](docs/logs.md) — exportação e conteúdo dos registros locais.
+- [Plano de atualizações](docs/plano-de-atualizacoes.md) — etapas planejadas para o produto.
 
 ## Licença
 
