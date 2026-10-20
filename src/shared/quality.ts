@@ -1,9 +1,11 @@
 export type QualityPresetId = '720p30' | '1080p30' | '1080p60' | '1080p120';
+export type FrameRate = 30 | 45 | 60 | 70 | 90 | 120;
 export type ContentMode = 'motion' | 'detail';
 
 export interface StreamPreferences {
   preferredCodec?: 'H264' | 'VP8' | 'VP9' | 'AV1';
   preset: QualityPresetId;
+  fps?: FrameRate;
   content: ContentMode;
   adaptive: boolean;
   /** Total media budget shared by viewers, including audio and transport headroom. */
@@ -43,6 +45,10 @@ export const QUALITY_PRESETS = {
   },
 } as const;
 
+export const FRAME_RATE_OPTIONS: readonly FrameRate[] = [
+  30, 45, 60, 70, 90, 120,
+];
+
 export const DEFAULT_STREAM_PREFERENCES: StreamPreferences = {
   preset: '720p30',
   content: 'detail',
@@ -56,6 +62,10 @@ export function normalizePreferences(input: unknown): StreamPreferences {
       ? (input as Partial<StreamPreferences>)
       : {};
   return {
+    ...(typeof value.fps === 'number' &&
+    FRAME_RATE_OPTIONS.includes(value.fps as FrameRate)
+      ? { fps: value.fps as FrameRate }
+      : {}),
     ...(typeof value.videoBitrateMbps === 'number' &&
     Number.isFinite(value.videoBitrateMbps) &&
     value.videoBitrateMbps > 0
@@ -81,12 +91,13 @@ export function normalizePreferences(input: unknown): StreamPreferences {
 
 export function captureConstraints(
   preset: QualityPresetId,
+  fps: number = QUALITY_PRESETS[preset].fps,
 ): MediaTrackConstraints {
   const profile = QUALITY_PRESETS[preset];
   return {
     width: { ideal: profile.width, max: profile.width },
     height: { ideal: profile.height, max: profile.height },
-    frameRate: { ideal: profile.fps, max: profile.fps },
+    frameRate: { ideal: fps, max: fps },
   };
 }
 

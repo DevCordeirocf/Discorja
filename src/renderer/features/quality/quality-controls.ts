@@ -14,6 +14,7 @@ export function readQualityControls(
   const preset = document.querySelector<HTMLSelectElement>(
     `#${prefix}quality-preset`,
   )?.value;
+  const fps = document.querySelector<HTMLSelectElement>(`#${prefix}fps`)?.value;
   const requestedBitrate = bitrateChanged
     ? Number(
         root.querySelector<HTMLInputElement>(`#${prefix}video-bitrate`)?.value,
@@ -32,6 +33,7 @@ export function readQualityControls(
       `#${prefix}preferred-codec`,
     )?.value,
     preset,
+    fps: fps ? Number(fps) : current.fps,
     content: document.querySelector<HTMLSelectElement>(`#${prefix}content-mode`)
       ?.value,
     adaptive: document.querySelector<HTMLInputElement>(

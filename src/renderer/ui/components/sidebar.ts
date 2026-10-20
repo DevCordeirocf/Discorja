@@ -11,6 +11,16 @@ export function toggleSidebar(options: {
     .querySelector('.app-shell')
     ?.classList.toggle('is-collapsed', collapsed);
   const brand = options.root.querySelector<HTMLButtonElement>('.brand-logo');
+  const toggle =
+    options.root.querySelector<HTMLButtonElement>('.sidebar-toggle');
+  if (toggle) {
+    toggle.setAttribute(
+      'aria-label',
+      collapsed ? 'Expandir menu' : 'Recolher menu',
+    );
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.title = collapsed ? 'Expandir menu' : 'Recolher menu';
+  }
   if (brand) {
     brand.dataset.action = collapsed ? 'toggle-sidebar' : 'home';
     brand.setAttribute(
@@ -26,9 +36,5 @@ export function toggleSidebar(options: {
       brand.removeAttribute('aria-controls');
     }
   }
-  options.root
-    .querySelector<HTMLButtonElement>(
-      collapsed ? '.brand-logo' : '.sidebar-toggle',
-    )
-    ?.focus();
+  toggle?.focus();
 }

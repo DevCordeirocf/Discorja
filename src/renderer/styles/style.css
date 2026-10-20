@@ -2083,14 +2083,18 @@ main {
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-areas:
-    'preset content'
-    'format upload'
-    'bitrate adaptive';
+    'preset fps'
+    'content format'
+    'upload bitrate'
+    'adaptive adaptive';
   gap: 17px 18px;
   align-items: start;
 }
 .quality-controls > .quality-field:has(#quality-preset) {
   grid-area: preset;
+}
+.quality-controls > .quality-field:has(#fps) {
+  grid-area: fps;
 }
 .quality-controls > .quality-field:has(#content-mode) {
   grid-area: content;

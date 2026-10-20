@@ -5,7 +5,11 @@ import type {
   RoomState,
   UpdateState,
 } from '../../../shared/protocol';
-import type { PeerMetrics, StreamPreferences } from '../../../shared/quality';
+import {
+  QUALITY_PRESETS,
+  type PeerMetrics,
+  type StreamPreferences,
+} from '../../../shared/quality';
 import type { AppModal } from '../../views/modals';
 import type { AppPage } from '../../views/design';
 import type { AppViewState } from './app-views';
@@ -163,6 +167,8 @@ function toApplicationRenderState(
     connectionIssue: state.connectionIssue,
     sharing: state.sharing,
     qualityPreset: state.preferences.preset,
+    qualityFps:
+      state.preferences.fps ?? QUALITY_PRESETS[state.preferences.preset].fps,
   };
 }
 

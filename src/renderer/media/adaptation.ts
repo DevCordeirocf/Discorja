@@ -31,6 +31,7 @@ export class AdaptiveQuality {
     const next = normalizePreferences(preferences);
     if (
       next.preset !== this.preferences.preset ||
+      next.fps !== this.preferences.fps ||
       next.content !== this.preferences.content ||
       next.adaptive !== this.preferences.adaptive ||
       next.videoBitrateMbps !== this.preferences.videoBitrateMbps
@@ -78,7 +79,8 @@ export class AdaptiveQuality {
   target(fairBitrate: number): EncodingTarget {
     const profile = QUALITY_PRESETS[this.preferences.preset];
     const motion = this.preferences.content === 'motion';
-    const highFramerate = profile.fps >= 90;
+    const targetFps = this.preferences.fps ?? profile.fps;
+    const highFramerate = targetFps >= 90;
     const prioritizeFramerate = motion || highFramerate;
     const level = this.preferences.adaptive ? this.level : 0;
     const spatial = (
@@ -93,7 +95,7 @@ export class AdaptiveQuality {
     )[level];
     const width = Math.floor((profile.width * spatial) / 2) * 2;
     const height = Math.floor((profile.height * spatial) / 2) * 2;
-    const fps = Math.max(5, Math.round(profile.fps * temporal));
+    const fps = Math.max(5, Math.round(targetFps * temporal));
     const bitrate = Math.max(
       1,
       Math.floor(

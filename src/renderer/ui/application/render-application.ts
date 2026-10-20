@@ -38,6 +38,7 @@ export interface ApplicationRenderState {
   connectionIssue: string;
   sharing: boolean;
   qualityPreset: keyof typeof QUALITY_PRESETS;
+  qualityFps: number;
 }
 
 export function renderApplication(options: {
@@ -153,7 +154,7 @@ export function renderApplication(options: {
       if (sourceLabel)
         sourceLabel.textContent =
           state.roomRole === 'host'
-            ? `Perfil ${QUALITY_PRESETS[state.qualityPreset].label} · sem áudio`
+            ? `Perfil ${QUALITY_PRESETS[state.qualityPreset].width} × ${QUALITY_PRESETS[state.qualityPreset].height} · ${state.qualityFps} QPS · sem áudio`
             : 'Vídeo compartilhado · sem áudio';
     }
   }

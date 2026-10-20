@@ -240,23 +240,26 @@ button:disabled {
   border: 0;
   z-index: 10;
   transition:
-    width 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    padding 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    box-shadow 220ms ease;
+    width 320ms cubic-bezier(0.4, 0, 0.2, 1),
+    padding 320ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 280ms ease;
 }
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
   padding: 0;
   height: 44px;
   flex-shrink: 0;
   transition:
-    width 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    gap 220ms ease;
+    width 320ms cubic-bezier(0.4, 0, 0.2, 1),
+    gap 320ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .brand-logo {
   display: grid;
+  width: 36px;
+  height: 36px;
   place-items: center;
   padding: 0;
   border: 0;
@@ -264,8 +267,8 @@ button:disabled {
   flex-shrink: 0;
   border-radius: 10px;
   transition:
-    width 220ms ease,
-    height 220ms ease,
+    width 320ms cubic-bezier(0.4, 0, 0.2, 1),
+    height 320ms cubic-bezier(0.4, 0, 0.2, 1),
     background-color 160ms ease,
     transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
@@ -276,8 +279,8 @@ button:disabled {
   object-fit: contain;
   border-radius: 8px;
   transition:
-    width 220ms ease,
-    height 220ms ease,
+    width 320ms cubic-bezier(0.4, 0, 0.2, 1),
+    height 320ms cubic-bezier(0.4, 0, 0.2, 1),
     transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .brand-name {
@@ -290,11 +293,15 @@ button:disabled {
   opacity: 1;
   transform: translateX(0);
   transition:
-    max-width 240ms ease,
-    opacity 160ms ease,
-    transform 240ms ease;
+    max-width 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 200ms ease,
+    transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .sidebar-toggle {
+  position: absolute;
+  top: 30px;
+  left: calc(100% - 56px);
+  z-index: 11;
   width: 32px;
   height: 32px;
   display: grid;
@@ -305,11 +312,13 @@ button:disabled {
   padding: 5px;
   flex: 0 0 32px;
   transition:
-    width 220ms ease,
-    flex-basis 220ms ease,
-    padding 220ms ease,
-    opacity 140ms ease,
-    transform 220ms ease,
+    left 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    top 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    width 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    flex-basis 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    padding 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 200ms ease,
+    transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
     visibility 0s linear 280ms;
 }
 .sidebar nav {
@@ -318,7 +327,7 @@ button:disabled {
   gap: 16px;
   margin-top: 52px;
   transition:
-    gap 220ms ease,
+    gap 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
     margin-top 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .nav-item {
@@ -338,12 +347,12 @@ button:disabled {
   overflow: hidden;
   transition:
     width 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    min-height 220ms ease,
-    gap 220ms ease,
-    padding 220ms ease,
+    min-height 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    gap 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    padding 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
     background-color 160ms ease,
     color 160ms ease,
-    transform 220ms ease;
+    transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .nav-item.active {
   background: #2c263d;
@@ -366,9 +375,9 @@ button:disabled {
   white-space: nowrap;
   transform: translateX(0);
   transition:
-    max-width 220ms ease,
-    opacity 140ms ease,
-    transform 220ms ease;
+    max-width 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 200ms ease,
+    transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .nav-item:hover,
 .brand-logo:hover {
@@ -383,8 +392,8 @@ button:disabled {
   border: 0;
   width: 100%;
   transition:
-    width 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    padding 220ms ease;
+    width 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    padding 280ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .version-label {
   margin-bottom: 16px;
@@ -460,8 +469,8 @@ button:disabled {
   min-height: 0;
   overflow: hidden;
   transition:
-    margin-left 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    width 280ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    margin-left 320ms cubic-bezier(0.4, 0, 0.2, 1),
+    width 320ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .app-main {
   width: 100%;
@@ -471,4 +480,5 @@ button:disabled {
   overflow: hidden;
   padding: 48px;
   margin: 0;
+  transition: padding 320ms cubic-bezier(0.4, 0, 0.2, 1);
 }

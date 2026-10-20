@@ -74,7 +74,7 @@ export async function prepareShareCapture(options: {
     stream = await acquireDisplayStream({
       api,
       sourceId: source.id,
-      video: captureConstraints(preferences.preset),
+      video: captureConstraints(preferences.preset, preferences.fps),
       audio:
         captureSystemAudio && !useFilteredAudio
           ? SYSTEM_AUDIO_CONSTRAINTS

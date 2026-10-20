@@ -163,7 +163,7 @@ export function createAppViews(deps: {
         sharing: s.sharing,
         status: s.qualityStatus,
       }).replace(
-        /(id|for|aria-labelledby|aria-describedby)="(quality-heading|quality-preset|content-mode|preferred-codec|adaptive-quality|upload-budget(?:-help)?|video-bitrate(?:-help)?)/g,
+        /(id|for|aria-labelledby|aria-describedby)="(quality-heading|quality-preset|fps|content-mode|preferred-codec|adaptive-quality|upload-budget(?:-help)?|video-bitrate(?:-help)?)/g,
         (_, attribute: string, id: string) => `${attribute}="settings-${id}`,
       );
       return renderSettingsView({

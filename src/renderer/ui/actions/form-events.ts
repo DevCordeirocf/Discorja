@@ -84,6 +84,7 @@ export function bindFormEvents(
     if (
       [
         'quality-preset',
+        'fps',
         'content-mode',
         'preferred-codec',
         'adaptive-quality',

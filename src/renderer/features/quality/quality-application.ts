@@ -19,8 +19,13 @@ export async function applyQualityToMedia(options: {
   const { candidate, previous, track, peers, isCurrent } = options;
   try {
     if (track) {
-      if (candidate.preset !== previous.preset)
-        await track.applyConstraints(captureConstraints(candidate.preset));
+      if (
+        candidate.preset !== previous.preset ||
+        candidate.fps !== previous.fps
+      )
+        await track.applyConstraints(
+          captureConstraints(candidate.preset, candidate.fps),
+        );
       if (!isCurrent()) return null;
       track.contentHint = candidate.content;
     }
@@ -32,7 +37,9 @@ export async function applyQualityToMedia(options: {
     let rolledBack = true;
     try {
       if (track) {
-        await track.applyConstraints(captureConstraints(previous.preset));
+        await track.applyConstraints(
+          captureConstraints(previous.preset, previous.fps),
+        );
         if (!isCurrent()) return null;
         track.contentHint = previous.content;
       }

@@ -12,12 +12,17 @@
   min-height: 0;
   overflow: hidden;
   margin-inline: auto;
+  transition: max-width 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.is-collapsed .home-main > .home-page {
+  max-width: 1104px;
 }
 .home-main .home-content {
   height: 100%;
   min-height: 0;
   justify-content: center;
   gap: clamp(20px, 5vh, 56px);
+  transition: gap 320ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .home-main .start-grid {
   flex: 0 1 auto;
