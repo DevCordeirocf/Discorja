@@ -1547,7 +1547,6 @@ main {
   font-family: 'Consolas', 'Courier New', monospace;
   font-size: 15px;
   letter-spacing: 1px;
-  text-transform: uppercase;
 }
 .create-room-code-row .button {
   flex: 0 0 auto;

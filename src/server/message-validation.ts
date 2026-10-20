@@ -1,5 +1,6 @@
 import {
   ROOM_CODE_ALPHABET,
+  roomCode as validRoomCode,
   token as validToken,
 } from '../shared/validation.js';
 import type {
@@ -166,18 +167,8 @@ export function parseClientMessage(value: unknown): ClientMessage | undefined {
         (value.code === undefined ||
           (typeof value.code === 'string' && value.code.length <= 40))
       ) {
-        const code =
-          typeof value.code === 'string'
-            ? value.code.replace(/[- ]/gu, '').toUpperCase()
-            : '';
-        if (
-          code &&
-          (code.length !== 8 ||
-            [...code].some(
-              (character) => !ROOM_CODE_ALPHABET.includes(character),
-            ))
-        )
-          break;
+        const code = typeof value.code === 'string' ? value.code : '';
+        if (code && !validRoomCode(code)) break;
         return {
           type: value.type,
           name: value.name.trim(),
@@ -197,11 +188,8 @@ export function parseClientMessage(value: unknown): ClientMessage | undefined {
         (value.avatar !== undefined && !validAvatar(value.avatar))
       )
         return;
-      const code = value.code.replace(/[- ]/gu, '').toUpperCase();
-      if (
-        code.length === 8 &&
-        [...code].every((character) => ROOM_CODE_ALPHABET.includes(character))
-      )
+      const code = value.code;
+      if (validRoomCode(code))
         return {
           type: value.type,
           name: value.name.trim(),

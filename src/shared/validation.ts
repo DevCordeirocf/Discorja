@@ -18,7 +18,7 @@ export const text = (v: unknown, max: number, min = 1): v is string =>
 export const peerId = (v: unknown): v is string =>
   text(v, 64) && /^[a-zA-Z0-9-]+$/.test(v);
 export const roomCode = (v: unknown): v is string =>
-  text(v, 8, 8) && /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/.test(v);
+  text(v, 8, 8) && v.trim().length > 0 && !/[\u0000-\u001f\u007f]/u.test(v);
 export const token = (v: unknown): v is string =>
   text(v, 64, 64) && /^[a-f0-9]{64}$/.test(v);
 const name = (v: unknown) =>

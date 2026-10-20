@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { parseClientMessage } from '../src/server/message-validation';
 
 describe('validação das mensagens recebidas pelo servidor', () => {
-  it('normaliza código e nome antes de entregar a mensagem ao servidor', () => {
+  it('preserva o código livre e normaliza o nome antes de entregar a mensagem', () => {
     expect(
       parseClientMessage({
         type: 'join-room',
-        code: 'abcd- efgh',
+        code: 'a!c 1?Zx',
         name: '  Ana  ',
       }),
-    ).toEqual({ type: 'join-room', code: 'ABCDEFGH', name: 'Ana' });
+    ).toEqual({ type: 'join-room', code: 'a!c 1?Zx', name: 'Ana' });
   });
 
   it('recusa campos extras e valores que não cabem no contrato', () => {
@@ -17,7 +17,14 @@ describe('validação das mensagens recebidas pelo servidor', () => {
       parseClientMessage({ type: 'leave-room', admin: true }),
     ).toBeUndefined();
     expect(
-      parseClientMessage({ type: 'join-room', code: 'ABCDEFGI', name: 'Ana' }),
+      parseClientMessage({ type: 'join-room', code: 'ABC1234', name: 'Ana' }),
+    ).toBeUndefined();
+    expect(
+      parseClientMessage({
+        type: 'join-room',
+        code: 'ABC\u00001234',
+        name: 'Ana',
+      }),
     ).toBeUndefined();
     expect(
       parseClientMessage({

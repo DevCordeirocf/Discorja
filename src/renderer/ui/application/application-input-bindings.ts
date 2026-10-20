@@ -57,10 +57,7 @@ export function bindApplicationInputEvents(options: {
   bindFormEvents(options.root, {
     setDisplayName: (value) => options.updateState({ displayName: value }),
     setJoinCode: (value) => {
-      const joinCode = value
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, '')
-        .slice(0, 8);
+      const joinCode = value.slice(0, 8);
       options.updateState({ joinCode });
       return joinCode;
     },

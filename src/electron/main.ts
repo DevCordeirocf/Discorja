@@ -27,6 +27,7 @@ import {
   parseIceServers,
   validateSignalingUrl,
 } from './config';
+import { roomCode } from '../shared/validation';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -58,6 +59,7 @@ let sourceRequests = 0;
 let sharing = false;
 let filteredAudioProcess: ChildProcessWithoutNullStreams | null = null;
 let stoppingFilteredAudio = false;
+let filteredAudioStopPromise: Promise<void> | null = null;
 let powerBlock: number | undefined;
 let signalingUrl = DEFAULT_SIGNALING_URL;
 let iceServers: RTCIceServer[] = [];
@@ -130,7 +132,7 @@ function startFilteredAudioCapture(): Promise<number> {
     return Promise.reject(
       new Error('A exclusão de áudio está disponível no Windows.'),
     );
-  if (filteredAudioProcess)
+  if (filteredAudioProcess || filteredAudioStopPromise)
     return Promise.reject(new Error('A captura filtrada já está ativa.'));
   const executable = filteredAudioExecutable();
   if (!existsSync(executable))
@@ -232,19 +234,30 @@ function startFilteredAudioCapture(): Promise<number> {
 }
 
 async function stopFilteredAudioCapture(): Promise<void> {
+  if (filteredAudioStopPromise) return filteredAudioStopPromise;
   const child = filteredAudioProcess;
   if (!child) return;
   stoppingFilteredAudio = true;
-  const exited = new Promise<void>((resolve) =>
-    child.once('exit', () => resolve()),
-  );
-  child.stdin.end('x');
-  const timeout = setTimeout(() => {
-    if (child.exitCode === null) child.kill();
-  }, 1_000);
-  timeout.unref();
-  await exited;
-  clearTimeout(timeout);
+  filteredAudioStopPromise = (async () => {
+    const exited = new Promise<void>((resolve) =>
+      child.once('exit', () => resolve()),
+    );
+    // setSharing(false) and the renderer's explicit stop can arrive together.
+    // Do not end stdin twice: Node throws ERR_STREAM_WRITE_AFTER_END.
+    if (!child.stdin.destroyed && !child.stdin.writableEnded)
+      child.stdin.end('x');
+    const timeout = setTimeout(() => {
+      if (child.exitCode === null) child.kill();
+    }, 1_000);
+    timeout.unref();
+    try {
+      await exited;
+    } finally {
+      clearTimeout(timeout);
+      filteredAudioStopPromise = null;
+    }
+  })();
+  return filteredAudioStopPromise;
 }
 
 function publishUpdate(state: UpdateState) {
@@ -442,8 +455,7 @@ function registerIpc() {
     setSharing(value);
   });
   handle('room:copy', (code: unknown) => {
-    if (typeof code !== 'string' || !/^[A-Z2-9]{4}[- ]?[A-Z2-9]{4}$/.test(code))
-      throw new Error('Código inválido.');
+    if (!roomCode(code)) throw new Error('Código inválido.');
     clipboard.writeText(code);
   });
   handle('updates:check', checkUpdates);

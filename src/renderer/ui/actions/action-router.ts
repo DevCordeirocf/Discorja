@@ -275,14 +275,9 @@ export function bindActionRouter(
         }
         break;
       }
-      case 'use-last-room-code': {
+      case 'use-last-created-room-code': {
         const field = root.querySelector<HTMLInputElement>('#create-room-code');
-        let code = '';
-        try {
-          code = localStorage.getItem('discorja:last-created-room-code') ?? '';
-        } catch {
-          // Treat unavailable storage as if no previous code was saved.
-        }
+        const code = getLastRoomCode();
         if (field && code) {
           field.value = code;
           field.focus();

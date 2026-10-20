@@ -769,7 +769,7 @@ describe('sinalização Discorja', () => {
     for (let i = 0; i < 3; i++) peer.socket.send('{}');
     expect(await closed).toBe(1008);
   });
-  it('conecta anfitrião e dois espectadores, normaliza código e encaminha SDP/ICE', async () => {
+  it('conecta anfitrião e dois espectadores e encaminha SDP/ICE', async () => {
     const { url, httpUrl } = await start();
     const [host, one, two] = await Promise.all([
       connect(url),
@@ -779,11 +779,7 @@ describe('sinalização Discorja', () => {
     const room = await createRoom(host);
     expect(room.code).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/u);
     expect(room.maxViewers).toBe(9);
-    const first = await join(
-      one,
-      `${room.code.slice(0, 4)}- ${room.code.slice(4)}`.toLowerCase(),
-      'Ana',
-    );
+    const first = await join(one, room.code, 'Ana');
     expect(first).toMatchObject({
       hostId: room.selfId,
       hostName: 'Anfitrião',

@@ -4,7 +4,7 @@ import { SignalConnection } from '../../../transport/signal';
 import { connectRoomSignal } from './room-connection';
 import { recoverSignal } from '../lifecycle/signal-recovery';
 import { compactProfileAvatar } from '../../profile/profile-avatar';
-import { ROOM_CODE_ALPHABET } from '../../../../shared/validation';
+import { roomCode } from '../../../../shared/validation';
 
 interface ConnectionState {
   api: DiscorjaAPI | undefined;
@@ -95,21 +95,17 @@ export function createConnectionController(effects: ConnectionEffects) {
       effects.focusDisplayName();
       return;
     }
-    if (kind === 'join' && !/^[A-Z0-9]{8}$/.test(state.joinCode)) {
+    if (kind === 'join' && !roomCode(state.joinCode)) {
       effects.notify('Digite os 8 caracteres do código da sala.', 'error');
       effects.focusJoinCode();
       return;
     }
-    const createCode = requestedCode.replace(/[- ]/gu, '').toUpperCase();
-    if (
-      kind === 'create' &&
-      createCode &&
-      (createCode.length !== 8 ||
-        [...createCode].some(
-          (character) => !ROOM_CODE_ALPHABET.includes(character),
-        ))
-    ) {
-      effects.notify('Use 8 letras ou números válidos para o código.', 'error');
+    const createCode = requestedCode;
+    if (kind === 'create' && createCode && !roomCode(createCode)) {
+      effects.notify(
+        'O código precisa ter exatamente 8 caracteres e não pode ser composto apenas por espaços.',
+        'error',
+      );
       effects.focusCreateCode();
       return;
     }
