@@ -13,10 +13,10 @@ Este arquivo orienta agentes e colaboradores ao alterar o Discorja. Preserve mud
 
 - `src/electron/main.ts` é a fronteira privilegiada: janela, captura, atualizações e operações do sistema.
 - `src/electron/preload.ts` deve expor somente métodos tipados e específicos. Não adicione acesso genérico a Node.js, shell ou arquivos.
-- `src/renderer/app.ts` coordena estado e eventos. Coloque markup de páginas em `src/renderer/views/`, persistência em módulos próprios e mídia/sinalização em seus serviços dedicados.
+- `src/renderer/app.ts` e `index.html` são os pontos de entrada do renderer. Organize interface em `views/`, `ui/` e `styles/`; mídia/WebRTC em `media/`; conexão WebSocket em `transport/`; persistência em `state/`; e regras de produto em `features/<domínio>/`. Features recebem dependências por parâmetros e não importam o estado global do app.
 - O renderer não deve importar módulos privilegiados do Electron nem receber segredos.
 - `src/server/` valida e processa conexões externas. Mantenha validação, configuração e ciclo de vida separados; o servidor não deve depender do renderer ou do Electron.
-- `src/renderer/app.css` agrega os estilos por área. Preserve a ordem de importação e os tokens visuais existentes ao dividir ou mover CSS.
+- `src/renderer/styles/app.css` agrega os estilos por área. Preserve a ordem de importação e os tokens visuais existentes ao dividir ou mover CSS.
 
 ## Segurança e privacidade
 

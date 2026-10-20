@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PeerTelemetry } from '../src/renderer/telemetry';
+import { PeerTelemetry } from '../src/renderer/media/telemetry';
 
 type Stat = {
   id: string;

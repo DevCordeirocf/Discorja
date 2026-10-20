@@ -1,6 +1,6 @@
 import type { LegacyRoomState } from '../../shared/protocol';
-import { escapeHtml as escape } from '../html';
-import { icon } from '../icons';
+import { escapeHtml as escape } from '../ui/components/html';
+import { icon } from '../ui/components/icons';
 
 export interface SingleRoomView {
   room: {

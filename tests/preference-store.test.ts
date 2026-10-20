@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createPreferenceStore,
   type StorageLike,
-} from '../src/renderer/preference-store';
+} from '../src/renderer/state/preference-store';
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));

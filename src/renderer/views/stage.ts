@@ -1,5 +1,5 @@
 import type { MultiRoomState } from '../../shared/protocol';
-import { escapeHtml as escape } from '../html';
+import { escapeHtml as escape } from '../ui/components/html';
 import { designIcon } from './design';
 
 export interface StageView {

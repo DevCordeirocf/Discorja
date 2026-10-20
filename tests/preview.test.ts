@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { syncLocalPreview } from '../src/renderer/preview';
+import { syncLocalPreview } from '../src/renderer/ui/media/preview';
 
 describe('Prévia local em segundo plano', () => {
   it('solta o player em segundo plano sem modificar ou encerrar a captura', () => {

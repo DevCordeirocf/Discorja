@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RoomPeers } from '../src/renderer/rtc';
+import { RoomPeers } from '../src/renderer/media/rtc';
 import {
   DEFAULT_STREAM_PREFERENCES,
   type PeerMetrics,

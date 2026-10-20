@@ -46,7 +46,7 @@ describe('áudio de inicialização', () => {
       return vi.fn();
     });
 
-    await import('../src/renderer/startup-splash');
+    await import('../src/renderer/ui/components/startup-splash');
     expect(play).not.toHaveBeenCalled();
 
     elapsed = 4000;

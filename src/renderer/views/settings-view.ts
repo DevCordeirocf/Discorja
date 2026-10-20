@@ -1,5 +1,5 @@
 import type { AppConfig, UpdateState } from '../../shared/protocol';
-import { escapeHtml as escape } from '../html';
+import { escapeHtml as escape } from '../ui/components/html';
 
 export interface SettingsView {
   config: AppConfig;

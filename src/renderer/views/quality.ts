@@ -1,5 +1,5 @@
 import { QUALITY_PRESETS, type StreamPreferences } from '../../shared/quality';
-import { escapeHtml as escape } from '../html';
+import { escapeHtml as escape } from '../ui/components/html';
 
 export interface QualityPanelView {
   preferences: StreamPreferences;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { escapeHtml } from '../src/renderer/html';
-import { icon } from '../src/renderer/icons';
+import { escapeHtml } from '../src/renderer/ui/components/html';
+import { icon } from '../src/renderer/ui/components/icons';
 
 describe('utilitários de templates do renderer', () => {
   it('escapa caracteres HTML de texto não confiável', () => {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { AdaptiveQuality, resolutionScale } from '../src/renderer/adaptation';
+import {
+  AdaptiveQuality,
+  resolutionScale,
+} from '../src/renderer/media/adaptation';
 import {
   captureConstraints,
   DEFAULT_STREAM_PREFERENCES,

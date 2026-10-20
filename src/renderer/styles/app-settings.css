@@ -1,0 +1,108 @@
+.settings-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(270px, 1fr);
+  gap: clamp(12px, 1.5vw, 20px);
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+.settings-main {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.settings-main .page-heading {
+  flex: 0 0 auto;
+  margin-bottom: clamp(12px, 2vh, 24px);
+}
+.settings-column {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: clamp(10px, 1.5vh, 16px);
+  min-width: 0;
+  min-height: 0;
+}
+.settings-column:first-child > .transmission-settings {
+  align-self: start;
+}
+.settings-column:last-child {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-content: stretch;
+}
+.settings-card {
+  padding: clamp(14px, 1.6vw, 22px);
+  background: var(--surface);
+  border: 0;
+  border-radius: 16px;
+  min-width: 0;
+  min-height: 0;
+}
+.settings-card h2 {
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 500;
+  margin: 0 0 12px;
+}
+.settings-card p {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 19px;
+}
+.settings-card .settings-caption {
+  font-size: 11px;
+  line-height: 16px;
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+.transmission-settings > .quality-panel {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.transmission-settings > .quality-panel .quality-heading h2 {
+  font-size: 16px;
+  line-height: 22px;
+}
+.server-settings input {
+  width: 100%;
+}
+.server-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.server-actions .button {
+  padding: 8px 12px;
+  min-height: 36px;
+}
+.settings-card .settings-warning {
+  font-size: 12px;
+  margin: 12px 0 0;
+}
+.update-card {
+  min-height: 0;
+}
+.update-card .settings-caption {
+  margin: 0 0 14px;
+}
+.logs-card {
+  min-height: 0;
+}
+.settings-page-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-self: end;
+  width: 100%;
+}
+.settings-page-actions .button {
+  padding-inline: 16px;
+}

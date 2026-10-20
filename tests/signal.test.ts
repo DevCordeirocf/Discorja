@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SignalConnection } from '../src/renderer/signal';
+import { SignalConnection } from '../src/renderer/transport/signal';
 
 class Socket {
   static OPEN = 1;

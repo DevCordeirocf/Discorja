@@ -84,7 +84,7 @@ Esse comportamento de convite não é, por si só, acesso ao computador. Manter 
 
 ### P0 — Limites e validação nos dois lados
 
-**Observado:** servidor valida tamanho e campos de mensagens. `src/renderer/signal.ts` verifica principalmente tipos; não impõe limites equivalentes para strings, SDP e candidatos, nem tamanho antes de `JSON.parse`.
+**Observado:** servidor valida tamanho e campos de mensagens. `src/renderer/transport/signal.ts` verifica principalmente tipos; não impõe limites equivalentes para strings, SDP e candidatos, nem tamanho antes de `JSON.parse`.
 
 **Proposta:** limitar frame recebido antes do parse; rejeitar estruturas e campos inesperados; limitar nomes, IDs, SDP e ICE; validar números e estados; limitar candidatos e negociações por peer. Encerrar conexões que insistam em mensagens inválidas, sem derrubar o app.
 

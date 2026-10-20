@@ -1,5 +1,5 @@
 // Static assets exported from the approved Figma screens; bundled by Vite.
-import { escapeHtml } from '../html';
+import { escapeHtml } from '../ui/components/html';
 export const logoUrl = new URL('../assets/logo.png', import.meta.url).href;
 const assets = {
   home: new URL('../assets/icons/9a4bf.svg', import.meta.url).href,
