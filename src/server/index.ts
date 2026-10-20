@@ -65,7 +65,7 @@ service.server.on('error', (error: Error) => {
 service.server.listen(port, host, () => {
   log({
     event: 'server.started',
-    details: { roomTtlMs, resumeGraceMs, protocol: 3 },
+    details: { roomTtlMs, resumeGraceMs, protocol: 4 },
   });
   const address = service.server.address();
   console.info(

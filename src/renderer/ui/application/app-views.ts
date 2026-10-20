@@ -62,6 +62,7 @@ export interface AppViewState {
   enabled: boolean;
   connecting: boolean;
   displayName: string;
+  profilePhoto: string;
   editingName: boolean;
   joinCode: string;
   modal: AppModal;
@@ -212,6 +213,8 @@ export function createAppViews(deps: {
       const s = state();
       return renderModal({
         modal: s.modal,
+        displayName: s.displayName,
+        profilePhoto: s.profilePhoto,
         isRoomOwner: s.isRoomOwner,
         update: s.update,
         version: s.config.version,

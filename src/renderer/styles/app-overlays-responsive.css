@@ -77,6 +77,140 @@
   transform: translateX(2px);
 }
 
+.profile-modal {
+  width: 440px;
+  padding: 24px 28px 0;
+  border-radius: 18px;
+  transition:
+    width 650ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 450ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.profile-modal:has(.profile-photo-preview.camera-active) {
+  width: min(520px, calc(100vw - 48px));
+}
+.profile-modal .modal-heading {
+  align-items: flex-start;
+  margin-bottom: 22px;
+}
+.profile-modal .modal-heading h2 {
+  margin: 2px 0 0;
+  font-size: 21px;
+}
+.profile-modal-intro {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.profile-editor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  transition: gap 450ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.profile-photo-preview {
+  position: relative;
+  width: 152px;
+  height: 152px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #665477;
+  border-radius: 50%;
+  background: #111015;
+  box-shadow: 0 0 0 6px rgb(160 122 190 / 8%);
+  transition:
+    width 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 550ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 550ms ease;
+}
+.profile-photo-preview.camera-active {
+  width: min(100%, 320px);
+  height: min(100vw, 320px);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px rgb(160 122 190 / 18%),
+    0 18px 48px rgb(0 0 0 / 30%);
+}
+.profile-photo-preview > img,
+.profile-photo-preview > canvas,
+.profile-photo-preview > .avatar {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+}
+.profile-photo-preview > img {
+  object-fit: cover;
+}
+.profile-photo-preview > canvas {
+  display: block;
+  object-fit: cover;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  transition: opacity 220ms ease;
+}
+.profile-photo-preview > .avatar {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  font-size: 56px;
+}
+.profile-photo-actions {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.profile-photo-actions .button {
+  min-width: 130px;
+  padding: 10px 14px;
+  font-size: 12px;
+}
+.profile-camera-status {
+  min-height: 18px;
+  margin: 14px 0 18px !important;
+  color: var(--muted);
+  text-align: center;
+  font-size: 11px !important;
+  transition: margin 350ms ease;
+}
+.profile-photo-preview.camera-active + .profile-photo-actions {
+  animation: profile-controls-enter 420ms 120ms both;
+}
+.profile-modal:has(.profile-photo-preview.camera-active)
+  .profile-camera-status {
+  margin: 10px 0 14px !important;
+}
+.profile-name-section {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.profile-name-field {
+  display: block;
+  margin-bottom: 8px;
+  color: #c8bbd6;
+  font-size: 12px;
+}
+.profile-modal #profile-name {
+  width: 100%;
+}
+.profile-modal .modal-footer {
+  margin-top: 20px;
+}
+@keyframes profile-controls-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes diagnostics-enter {
   from {
     opacity: 0;
@@ -123,12 +257,32 @@
     line-height: 36px;
   }
   .room-grid.multi-room-grid {
-    grid-template-columns: minmax(0, 1fr) 220px;
+    grid-template-columns: minmax(0, 1fr) clamp(252px, 27vw, 280px);
     gap: 16px;
   }
   .multi-room-grid .people-card {
     min-height: 0;
   }
+  @media (max-width: 600px) {
+    .profile-photo-preview {
+      width: min(152px, 45vw);
+      height: min(152px, 45vw);
+    }
+    .profile-photo-preview.camera-active {
+      width: min(70vw, 320px);
+      height: min(70vw, 320px);
+    }
+    .profile-modal {
+      padding: 20px 20px 0;
+    }
+    .profile-modal:has(.profile-photo-preview.camera-active) {
+      width: calc(100vw - 24px);
+    }
+    .profile-photo-actions .button {
+      flex: 1 1 130px;
+    }
+  }
+
   .settings-page {
     gap: 16px;
   }
@@ -137,6 +291,18 @@
   }
   .settings-card {
     padding: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-modal,
+  .profile-editor,
+  .profile-photo-preview,
+  .profile-camera-status {
+    transition-duration: 0.01ms !important;
+  }
+  .profile-photo-preview.camera-active + .profile-photo-actions {
+    animation: none;
   }
 }
 

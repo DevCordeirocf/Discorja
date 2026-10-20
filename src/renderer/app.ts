@@ -42,7 +42,9 @@ import {
 import { createInterfaceActions } from './ui/actions/interface-actions';
 import { bindAppActionRouter } from './ui/application/app-action-bindings';
 import { bindApplicationInputEvents } from './ui/application/application-input-bindings';
+import { bindParticipantPhotoPreview } from './ui/application/participant-photo-preview';
 import { createRoomSwitchActions } from './ui/actions/room-switch';
+import { compactProfileAvatar } from './features/profile/profile-avatar';
 import { type StreamPreferences, type PeerMetrics } from '../shared/quality';
 
 declare global {
@@ -52,6 +54,7 @@ declare global {
 }
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
+bindParticipantPhotoPreview(root);
 initializeBackgroundEffect();
 const announcements = document.createElement('div');
 announcements.id = 'session-announcement';
@@ -81,6 +84,7 @@ let config: AppConfig = {
 };
 let loaded = !api;
 let displayName = preferenceStore.displayName();
+let profilePhoto = preferenceStore.profilePhoto();
 let joinCode = '';
 let settingUrl = config.signalingUrl;
 let activePage: AppPage = 'home';
@@ -150,7 +154,7 @@ let localPublicationId = '';
 let publicationConfirmed = false;
 const isLocalSharing = () => sharing || !!localStream || !!localPublicationId;
 const multiState = (): MultiRoomState | null =>
-  roomState?.protocol === 3 ? roomState : null;
+  roomState?.protocol === 3 || roomState?.protocol === 4 ? roomState : null;
 const { publicationWatcher, createPeers, clearWatchMedia, createWatchPeers } =
   createApplicationPeerRuntime({
     getIceServers: () => config.iceServers,
@@ -565,6 +569,7 @@ const { connectRoom } = createConnectionController({
     busy: !!busy,
     hasRoom: !!room,
     displayName,
+    profilePhoto,
     joinCode,
     signalingUrl: config.signalingUrl,
     sessionEpoch,
@@ -619,7 +624,10 @@ const { connectRoom } = createConnectionController({
     resumeDeadline = timer;
   },
   focusDisplayName: () =>
-    document.querySelector<HTMLInputElement>('#display-name')?.focus(),
+    (
+      document.querySelector<HTMLInputElement>('#profile-name') ??
+      document.querySelector<HTMLInputElement>('#display-name')
+    )?.focus(),
   focusJoinCode: () =>
     document.querySelector<HTMLInputElement>('#room-code')?.focus(),
 });
@@ -779,6 +787,7 @@ const appViewController = createApplicationViewBindings({
     testingConnection,
     connectionCheck,
     displayName,
+    profilePhoto,
     editingName,
     joinCode,
     modal,
@@ -906,6 +915,7 @@ bindApplicationInputEvents({
   root,
   getState: () => ({
     displayName,
+    profilePhoto,
     joinCode,
     room,
     systemAudioSupported: config.systemAudioSupported,
@@ -917,6 +927,7 @@ bindApplicationInputEvents({
   }),
   updateState: (patch) => {
     if ('displayName' in patch) displayName = patch.displayName!;
+    if ('profilePhoto' in patch) profilePhoto = patch.profilePhoto!;
     if ('joinCode' in patch) joinCode = patch.joinCode!;
     if ('settingUrl' in patch) {
       settingUrl = patch.settingUrl!;
@@ -935,6 +946,15 @@ bindApplicationInputEvents({
   },
   updatePlayback,
   saveDisplayName: (name) => preferenceStore.saveDisplayName(name),
+  saveProfilePhoto: (photo) => preferenceStore.saveProfilePhoto(photo),
+  updateRoomProfile: (name, photo) => {
+    if (!room) return;
+    const epoch = sessionEpoch;
+    void compactProfileAvatar(photo).then((avatar) => {
+      if (room && sessionEpoch === epoch)
+        send({ type: 'update-profile', name, avatar });
+    });
+  },
   render,
   notify,
   requestRoomSwitch,

@@ -30,6 +30,22 @@ export function createPreferenceStore(storage?: StorageLike) {
   return {
     displayName: () => read('discorja.name') ?? '',
     saveDisplayName: (name: string) => write('discorja.name', name),
+    profilePhoto: () => {
+      const photo = read('discorja.profile-photo');
+      return photo &&
+        photo.length <= 250_000 &&
+        /^data:image\/(?:jpeg|png|webp);base64,/.test(photo)
+        ? photo
+        : '';
+    },
+    saveProfilePhoto: (photo: string) => {
+      try {
+        if (photo) storage?.setItem('discorja.profile-photo', photo);
+        else storage?.removeItem('discorja.profile-photo');
+      } catch {
+        /* Profile pictures are optional; the current session continues. */
+      }
+    },
     sidebarCollapsed: () => read('discorja.sidebar-collapsed') === 'true',
     saveSidebarCollapsed: (collapsed: boolean) =>
       write('discorja.sidebar-collapsed', String(collapsed)),

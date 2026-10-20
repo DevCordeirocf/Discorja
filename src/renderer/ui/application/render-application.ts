@@ -12,6 +12,7 @@ export interface ApplicationRenderState {
   page: 'home' | 'settings' | 'room';
   sidebarCollapsed: boolean;
   displayName: string;
+  profilePhoto: string;
   version: string;
   hasRoom: boolean;
   recovering: boolean;
@@ -103,6 +104,7 @@ export function renderApplication(options: {
     page,
     sidebarCollapsed: state.sidebarCollapsed,
     displayName: state.displayName,
+    profilePhoto: state.profilePhoto,
     version: state.version,
     hasRoom: state.hasRoom,
     recovering: state.recovering,

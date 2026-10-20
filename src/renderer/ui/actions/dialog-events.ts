@@ -2,7 +2,13 @@ import { trapDialogTab } from '../components/accessibility';
 import type { AppPage } from '../../views/design';
 
 type AppModal =
-  'settings' | 'sources' | 'update' | 'switch' | 'diagnostics' | null;
+  | 'settings'
+  | 'sources'
+  | 'update'
+  | 'switch'
+  | 'diagnostics'
+  | 'profile'
+  | null;
 
 interface DialogEventState {
   modal: AppModal;

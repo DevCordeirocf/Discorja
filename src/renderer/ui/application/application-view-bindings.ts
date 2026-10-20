@@ -51,6 +51,7 @@ export interface ApplicationViewReadContext {
   testingConnection: boolean;
   connectionCheck: string;
   displayName: string;
+  profilePhoto: string;
   editingName: boolean;
   joinCode: string;
   modal: AppModal;
@@ -115,6 +116,7 @@ function toAppViewState(state: ApplicationViewReadContext): AppViewState {
     enabled: state.apiAvailable && state.loaded,
     connecting: state.busy === 'room',
     displayName: state.displayName,
+    profilePhoto: state.profilePhoto,
     editingName: state.editingName,
     joinCode: state.joinCode,
     modal: state.modal,
@@ -139,6 +141,7 @@ function toApplicationRenderState(
     page: state.page,
     sidebarCollapsed: state.sidebarCollapsed,
     displayName: state.displayName,
+    profilePhoto: state.profilePhoto,
     version: state.config.version,
     hasRoom: !!state.room,
     recovering: state.signalRecovering,

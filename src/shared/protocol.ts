@@ -9,10 +9,11 @@ export type SignalPayload =
   | { type: 'offer' | 'answer'; sdp: string }
   | { type: 'ice'; candidate: IceCandidate };
 
-export const ROOM_PROTOCOL_VERSION = 3;
+export const ROOM_PROTOCOL_VERSION = 4;
 export interface RoomParticipant {
   peerId: string;
   name: string;
+  avatar?: string;
   role: 'owner' | 'moderator' | 'participant';
   connected: boolean;
 }
@@ -37,14 +38,20 @@ export interface Publication {
   connected: boolean;
   watchers: number;
 }
-export interface MultiRoomState extends Omit<LegacyRoomState, 'protocol'> {
-  protocol: 3;
+interface MultiRoomStateFields extends Omit<LegacyRoomState, 'protocol'> {
   publications: Publication[];
   maxPublishers: number;
   watching: string | null;
   watchRequestId: string | null;
   subscribers: string[];
 }
+export interface MultiRoomStateV3 extends MultiRoomStateFields {
+  protocol: 3;
+}
+export interface MultiRoomStateV4 extends MultiRoomStateFields {
+  protocol: 4;
+}
+export type MultiRoomState = MultiRoomStateV3 | MultiRoomStateV4;
 export type RoomState = LegacyRoomState | MultiRoomState;
 
 export type ClientMessage =
@@ -70,8 +77,9 @@ export type ClientMessage =
       signal: SignalPayload;
     }
   | { type: 'resume-room'; token: string }
-  | { type: 'create-room'; name: string; roomName?: string }
-  | { type: 'join-room'; code: string; name: string }
+  | { type: 'create-room'; name: string; roomName?: string; avatar?: string }
+  | { type: 'join-room'; code: string; name: string; avatar?: string }
+  | { type: 'update-profile'; name: string; avatar: string }
   | { type: 'signal'; peerId: string; signal: SignalPayload }
   | { type: 'kick'; peerId: string }
   | { type: 'host-state'; sharing: boolean }
@@ -79,7 +87,7 @@ export type ClientMessage =
   | { type: 'leave-room' };
 
 export type ServerMessage =
-  | { type: 'hello'; protocol: 2 | 3 }
+  | { type: 'hello'; protocol: 2 | 3 | 4 }
   | {
       type: 'stream-signal';
       publicationId: string;

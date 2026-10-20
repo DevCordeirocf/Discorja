@@ -3,7 +3,13 @@ import { escapeHtml } from '../ui/components/html';
 import { icon } from '../ui/components/icons';
 
 export type AppModal =
-  'settings' | 'sources' | 'update' | 'switch' | 'diagnostics' | null;
+  | 'settings'
+  | 'sources'
+  | 'update'
+  | 'switch'
+  | 'diagnostics'
+  | 'profile'
+  | null;
 interface ModalView {
   modal: AppModal;
   isRoomOwner: boolean;
@@ -15,6 +21,8 @@ interface ModalView {
   selectedSource: string;
   busy: 'room' | 'sources' | 'capture' | 'settings' | null;
   sourcePage: 'screen' | 'window';
+  displayName: string;
+  profilePhoto: string;
 }
 
 export function renderModal(options: ModalView): string {
@@ -29,8 +37,12 @@ export function renderModal(options: ModalView): string {
     selectedSource,
     busy,
     sourcePage,
+    displayName,
+    profilePhoto,
   } = options;
   if (!modal) return '';
+  if (modal === 'profile')
+    return `<div class="modal-overlay profile-overlay"><section class="modal profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title"><div class="modal-heading"><div><h2 id="profile-modal-title">Seu perfil</h2><p class="profile-modal-intro">Como as pessoas vão reconhecer você.</p></div><button class="icon-button" data-action="close-modal" aria-label="Fechar perfil">${icon('close')}</button></div><form id="profile-form"><div class="profile-editor"><div class="profile-photo-preview" id="profile-photo-preview"><img id="profile-photo-image" src="${escapeHtml(profilePhoto)}" alt="Sua foto de perfil" ${profilePhoto ? '' : 'hidden'}><span id="profile-photo-fallback" class="avatar" ${profilePhoto ? 'hidden' : ''}>${escapeHtml(displayName.trim().charAt(0).toLocaleUpperCase('pt-BR') || '?')}</span><video id="profile-camera-video" autoplay muted playsinline hidden></video><canvas id="profile-camera-canvas" hidden aria-label="Prévia pixelada da câmera"></canvas></div><div class="profile-photo-actions"><input id="profile-photo-file" type="file" accept="image/*" hidden><button type="button" class="button secondary" data-action="profile-choose-photo">Escolher foto</button><button type="button" class="button subtle" data-action="profile-start-camera">Abrir câmera</button><button type="button" class="button primary" data-action="profile-capture" disabled>Tirar foto</button><button type="button" class="button subtle" data-action="profile-stop-camera" hidden>Cancelar câmera</button>${profilePhoto ? '<button type="button" class="button subtle" data-action="profile-remove-photo">Remover foto</button>' : ''}</div></div><p id="profile-camera-status" class="profile-camera-status" role="status">A câmera só será ativada quando você escolher abrir.</p><div class="profile-name-section"><label class="profile-name-field" for="profile-name">Nome de exibição</label><input id="profile-name" class="text-input" autocomplete="nickname" maxlength="32" required placeholder="Seu nome" value="${escapeHtml(displayName)}"></div><div class="modal-footer"><button type="button" class="button subtle" data-action="close-modal">Cancelar</button><button class="button primary" type="submit">Salvar perfil</button></div></form></section></div>`;
   if (modal === 'switch')
     return `<div class="modal-overlay"><section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h2 id="modal-title">Trocar de sala?</h2><p class="modal-description">A transmissão e a reprodução atuais serão encerradas antes de conectar à próxima sala.${isRoomOwner ? ' Como você é o dono, a sala atual será encerrada para todos.' : ''} A próxima conexão pode falhar; nenhuma captura será reiniciada automaticamente.</p><div class="modal-footer"><button class="button subtle" data-action="cancel-switch">Continuar nesta sala</button><button class="button primary" data-action="confirm-switch">Trocar de sala</button></div></section></div>`;
   if (modal === 'update')

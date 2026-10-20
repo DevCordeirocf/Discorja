@@ -44,7 +44,7 @@ export interface ResolvedSignalingConfig {
   ipRetentionMs: number;
 }
 
-export const MAX_PAYLOAD = 64 * 1024;
+export const MAX_PAYLOAD = 128 * 1024;
 
 const DEFAULT_ORIGINS = [
   'app://discorja',

@@ -3,6 +3,7 @@ import type { LogEventName } from '../../../../shared/logs';
 import { SignalConnection } from '../../../transport/signal';
 import { connectRoomSignal } from './room-connection';
 import { recoverSignal } from '../lifecycle/signal-recovery';
+import { compactProfileAvatar } from '../../profile/profile-avatar';
 
 interface ConnectionState {
   api: DiscorjaAPI | undefined;
@@ -10,6 +11,7 @@ interface ConnectionState {
   busy: boolean;
   hasRoom: boolean;
   displayName: string;
+  profilePhoto: string;
   joinCode: string;
   signalingUrl: string;
   sessionEpoch: number;
@@ -99,9 +101,12 @@ export function createConnectionController(effects: ConnectionEffects) {
     effects.setBusy('room');
     const epoch = effects.beginSession();
     effects.recordLog('signal.connecting');
+    const avatar = await compactProfileAvatar(state.profilePhoto);
+    if (!effects.isCurrentSession(epoch)) return;
     await connectRoomSignal({
       kind,
       name,
+      avatar,
       code: state.joinCode,
       signalingUrl: state.signalingUrl,
       epoch,

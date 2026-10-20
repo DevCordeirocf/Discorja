@@ -60,7 +60,7 @@ export function createAppSnapshotController(options: {
   }
 
   function applyRoomState(message: RoomState): void {
-    if (message.protocol === 3) {
+    if (message.protocol === 3 || message.protocol === 4) {
       applyMultiRoomState(message);
       return;
     }

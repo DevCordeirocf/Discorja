@@ -1,7 +1,13 @@
 import type { AppPage } from '../../views/design';
 
 type Modal =
-  'settings' | 'sources' | 'update' | 'switch' | 'diagnostics' | null;
+  | 'settings'
+  | 'sources'
+  | 'update'
+  | 'switch'
+  | 'diagnostics'
+  | 'profile'
+  | null;
 
 export function handleNavigationAction(options: {
   action?: string;
@@ -61,9 +67,8 @@ export function handleNavigationAction(options: {
       render();
       return true;
     case 'edit-name':
-      setActivePage('home');
-      options.setEditingName(true);
-      setModal(null);
+      options.setReturnFocusAction('edit-name');
+      setModal('profile');
       render();
       options.focusDisplayName();
       return true;

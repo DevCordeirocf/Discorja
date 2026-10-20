@@ -5,6 +5,7 @@ import { SignalConnection } from '../../../transport/signal';
 export async function connectRoomSignal(options: {
   kind: 'create' | 'join';
   name: string;
+  avatar: string;
   code: string;
   signalingUrl: string;
   epoch: number;
@@ -24,6 +25,7 @@ export async function connectRoomSignal(options: {
   const {
     kind,
     name,
+    avatar,
     code,
     signalingUrl,
     epoch,
@@ -65,8 +67,8 @@ export async function connectRoomSignal(options: {
     );
     const message: ClientMessage =
       kind === 'create'
-        ? { type: 'create-room', name }
-        : { type: 'join-room', name, code };
+        ? { type: 'create-room', name, avatar }
+        : { type: 'join-room', name, code, avatar };
     connection.send(message);
   } catch (error) {
     log('signal.connect-failed', errorFields(error));

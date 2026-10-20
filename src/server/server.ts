@@ -40,7 +40,7 @@ interface IpState {
   joins: Counter;
 }
 interface Client {
-  protocol: 1 | 2 | 3;
+  protocol: 1 | 2 | 3 | 4;
   watching: string | null;
   watchRequestId: string | null;
   id: string;
@@ -52,6 +52,7 @@ interface Client {
   messages: Counter;
   joins: Counter;
   name: string;
+  avatar: string;
   resumeToken: string;
   disconnectedAt?: number;
   invalidMessages: number;
@@ -60,7 +61,7 @@ interface Client {
 interface Room {
   logId: string;
   createdAt: number;
-  protocol: 1 | 2 | 3;
+  protocol: 1 | 2 | 3 | 4;
   publications: Map<
     string,
     { publicationId: string; publisherId: string; audio: boolean }
@@ -183,6 +184,9 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         participants: members(room).map((client) => ({
           peerId: client.id,
           name: client.name,
+          ...(room.protocol >= 4 && client.avatar
+            ? { avatar: client.avatar }
+            : {}),
           role:
             client === room.owner
               ? 'owner'
@@ -197,7 +201,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         const ownPublication = room.publications.get(member.id);
         send(member, {
           ...snapshot,
-          protocol: 3,
+          protocol: room.protocol as 3 | 4,
           maxPublishers,
           watching: member.watching,
           watchRequestId: member.watchRequestId,
@@ -273,7 +277,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     }
     client.room = undefined;
     room.moderators.delete(client.id);
-    if (room.protocol === 3) {
+    if (room.protocol >= 3) {
       removePublication(room, client.id);
       client.watching = null;
       client.signals.clear();
@@ -376,7 +380,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           roomMemberships: connected.filter((c) => c.room).length,
           activeRooms: rooms.size,
           reportedScreenPublishers: connected.filter((c) =>
-            c.room?.protocol === 3
+            c.room && c.room.protocol >= 3
               ? c.room.publications.has(c.id)
               : c.room?.host === c && c.room.sharing,
           ).length,
@@ -457,6 +461,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         ipState: acceptedIpState,
         alive: true,
         name: '',
+        avatar: '',
         resumeToken: randomBytes(32).toString('hex'),
         invalidMessages: 0,
         signals: new Map(),
@@ -547,7 +552,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         roomId: client.room?.logId,
       });
       if (message.type === 'hello') {
-        if (client.room || (message.protocol !== 2 && message.protocol !== 3)) {
+        if (client.room || ![2, 3, 4].includes(message.protocol)) {
           error(
             client,
             'PROTOCOL_MISMATCH',
@@ -555,8 +560,11 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           );
           return;
         }
-        client.protocol = message.protocol;
-        send(client, { type: 'hello', protocol: message.protocol });
+        client.protocol = message.protocol as 2 | 3 | 4;
+        send(client, {
+          type: 'hello',
+          protocol: message.protocol as 2 | 3 | 4,
+        });
         return;
       }
       if (message.type === 'resume-room') {
@@ -588,6 +596,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         sessions.delete(previous.resumeToken);
         client.id = previous.id;
         client.name = previous.name;
+        client.avatar = previous.avatar;
         client.watching = previous.watching;
         client.watchRequestId = previous.watchRequestId;
         client.room = room;
@@ -692,6 +701,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           });
           client.room = room;
           client.name = message.name;
+          client.avatar = message.avatar ?? '';
           sessions.set(client.resumeToken, client);
           if (room.protocol !== 1) {
             roomState(room, client, 'created');
@@ -730,6 +740,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         room.viewers.set(client.id, client);
         client.room = room;
         client.name = message.name;
+        client.avatar = message.avatar ?? '';
         sessions.set(client.resumeToken, client);
         if (room.protocol !== 1) {
           roomState(room, client, 'joined');
@@ -762,8 +773,23 @@ export function createSignalingServer(options: SignalingOptions = {}): {
       const isOwner = room.owner === client;
       const canModerate = isOwner || room.moderators.has(client.id);
       switch (message.type) {
+        case 'update-profile': {
+          if (room.protocol !== 4) {
+            error(
+              client,
+              'PROTOCOL_MISMATCH',
+              'Esta sala não permite atualizar o perfil. Crie uma nova sala após atualizar o servidor.',
+            );
+            return;
+          }
+          client.name = message.name;
+          client.avatar = message.avatar;
+          if (room.host === client) room.hostName = message.name;
+          roomState(room);
+          break;
+        }
         case 'publish-state': {
-          if (room.protocol !== 3) {
+          if (room.protocol < 3) {
             error(
               client,
               'PROTOCOL_MISMATCH',
@@ -813,7 +839,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           break;
         }
         case 'watch-publication': {
-          if (room.protocol !== 3) {
+          if (room.protocol < 3) {
             error(
               client,
               'PROTOCOL_MISMATCH',
@@ -854,7 +880,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           break;
         }
         case 'stop-publication': {
-          if (room.protocol !== 3 || !canModerate) {
+          if (room.protocol < 3 || !canModerate) {
             error(
               client,
               'FORBIDDEN',
@@ -883,7 +909,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           );
           const publishing = publication?.publisherId === client.id;
           if (
-            room.protocol !== 3 ||
+            room.protocol < 3 ||
             !publication ||
             !peer ||
             peer === client ||
@@ -975,7 +1001,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           closeRoom(room, 'host-closed');
           break;
         case 'host-state':
-          if (room.protocol === 3) {
+          if (room.protocol >= 3) {
             error(
               client,
               'PROTOCOL_MISMATCH',
@@ -1039,7 +1065,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           break;
         }
         case 'signal': {
-          if (room.protocol === 3) {
+          if (room.protocol >= 3) {
             error(
               client,
               'PROTOCOL_MISMATCH',

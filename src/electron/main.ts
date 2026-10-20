@@ -531,9 +531,9 @@ async function main() {
     (permission === 'loopback-network' &&
       ['localhost', '127.0.0.1'].includes(new URL(signalingUrl).hostname));
   ses.setPermissionRequestHandler((contents, permission, callback, details) => {
-    // Chromium requests generic media permission before the desktop capture handler.
-    // Display capture has an empty mediaTypes list; camera/microphone requests identify
-    // their devices. The display handler grants only explicitly selected system audio.
+    // Display capture keeps its existing explicit authorization flow. The profile
+    // editor may request a camera-only stream after the user starts the camera UI;
+    // microphone access remains denied.
     const captureVideo =
       permission === 'media' &&
       'mediaTypes' in details &&
@@ -541,21 +541,28 @@ async function main() {
         captureAuthorization.pending(),
         details.mediaTypes,
       );
+    const profileCamera =
+      permission === 'media' &&
+      'mediaTypes' in details &&
+      details.mediaTypes?.includes('video') &&
+      !details.mediaTypes?.includes('audio');
     callback(
       Boolean(
         window &&
         contents === window.webContents &&
         trustedUrl(contents.getURL()) &&
-        (allowedPermission(permission) || captureVideo),
+        (allowedPermission(permission) || captureVideo || profileCamera),
       ),
     );
   });
-  ses.setPermissionCheckHandler((contents, permission, origin) => {
+  ses.setPermissionCheckHandler((contents, permission, origin, details) => {
+    const profileCamera =
+      permission === 'media' && details?.mediaType === 'video';
     return Boolean(
       window &&
       contents === window.webContents &&
       trustedUrl(origin) &&
-      allowedPermission(permission),
+      (allowedPermission(permission) || profileCamera),
     );
   });
   ses.setDevicePermissionHandler(() => false);

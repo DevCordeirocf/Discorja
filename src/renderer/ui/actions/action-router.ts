@@ -214,7 +214,7 @@ export function bindActionRouter(
               publications:
                 state.multi?.publications.length ?? (state.sharing ? 1 : 0),
               participants:
-                state.roomState?.protocol === 3
+                state.roomState && state.roomState.protocol >= 3
                   ? state.roomState.participants.length
                   : state.roomState?.protocol === 2
                     ? state.roomState.participants.length

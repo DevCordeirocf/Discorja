@@ -28,6 +28,11 @@ const validName = (value: unknown): value is string =>
   value.trim().length > 0 &&
   !/[\u0000-\u001f\u007f]/u.test(value);
 
+const validAvatar = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  value.length <= 9_000 &&
+  (value === '' || /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/u.test(value));
+
 const validPeerId = (value: unknown): value is string =>
   boundedString(value, 64) && /^[a-zA-Z0-9-]+$/u.test(value);
 
@@ -137,15 +142,29 @@ export function parseClientMessage(value: unknown): ClientMessage | undefined {
       if (exactKeys(value, ['type', 'token']) && validToken(value.token))
         return { type: 'resume-room', token: value.token };
       break;
+    case 'update-profile':
+      if (
+        exactKeys(value, ['type', 'name', 'avatar']) &&
+        validName(value.name) &&
+        validAvatar(value.avatar)
+      )
+        return {
+          type: 'update-profile',
+          name: value.name.trim(),
+          avatar: value.avatar,
+        };
+      break;
     case 'create-room':
       if (
-        exactKeys(value, ['type', 'name'], ['roomName']) &&
+        exactKeys(value, ['type', 'name'], ['roomName', 'avatar']) &&
         validName(value.name) &&
-        (value.roomName === undefined || validName(value.roomName))
+        (value.roomName === undefined || validName(value.roomName)) &&
+        (value.avatar === undefined || validAvatar(value.avatar))
       )
         return {
           type: value.type,
           name: value.name.trim(),
+          ...(typeof value.avatar === 'string' ? { avatar: value.avatar } : {}),
           ...(typeof value.roomName === 'string'
             ? { roomName: value.roomName.trim() }
             : {}),
@@ -153,9 +172,10 @@ export function parseClientMessage(value: unknown): ClientMessage | undefined {
       break;
     case 'join-room': {
       if (
-        !exactKeys(value, ['type', 'code', 'name']) ||
+        !exactKeys(value, ['type', 'code', 'name'], ['avatar']) ||
         !validName(value.name) ||
-        !boundedString(value.code, 40)
+        !boundedString(value.code, 40) ||
+        (value.avatar !== undefined && !validAvatar(value.avatar))
       )
         return;
       const code = value.code.replace(/[- ]/gu, '').toUpperCase();
@@ -163,7 +183,12 @@ export function parseClientMessage(value: unknown): ClientMessage | undefined {
         code.length === 8 &&
         [...code].every((character) => ROOM_CODE_ALPHABET.includes(character))
       )
-        return { type: value.type, name: value.name.trim(), code };
+        return {
+          type: value.type,
+          name: value.name.trim(),
+          code,
+          ...(typeof value.avatar === 'string' ? { avatar: value.avatar } : {}),
+        };
       break;
     }
     case 'signal':

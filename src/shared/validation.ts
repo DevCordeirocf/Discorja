@@ -1,6 +1,6 @@
 import type { IceCandidate, ServerMessage, SignalPayload } from './protocol.js';
 
-export const MAX_MESSAGE_BYTES = 64 * 1024;
+export const MAX_MESSAGE_BYTES = 128 * 1024;
 export const object = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v);
 export const keys = (
@@ -22,6 +22,10 @@ export const token = (v: unknown): v is string =>
   text(v, 64, 64) && /^[a-f0-9]{64}$/.test(v);
 const name = (v: unknown) =>
   text(v, 40) && !!v.trim() && !/[\u0000-\u001f\u007f]/u.test(v);
+const avatar = (v: unknown) =>
+  typeof v === 'string' &&
+  v.length <= 9_000 &&
+  (v === '' || /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/u.test(v));
 export function candidate(v: unknown): v is IceCandidate {
   return (
     object(v) &&
@@ -50,7 +54,8 @@ export function isServerMessage(v: unknown): v is ServerMessage {
   switch (v.type) {
     case 'hello':
       return (
-        keys(v, ['type', 'protocol']) && (v.protocol === 2 || v.protocol === 3)
+        keys(v, ['type', 'protocol']) &&
+        (v.protocol === 2 || v.protocol === 3 || v.protocol === 4)
       );
     case 'room-state': {
       if (
@@ -70,7 +75,7 @@ export function isServerMessage(v: unknown): v is ServerMessage {
             'sharing',
             'resumeToken',
           ],
-          v.protocol === 3
+          v.protocol === 3 || v.protocol === 4
             ? [
                 'publications',
                 'maxPublishers',
@@ -80,7 +85,7 @@ export function isServerMessage(v: unknown): v is ServerMessage {
               ]
             : [],
         ) ||
-        (v.protocol !== 2 && v.protocol !== 3) ||
+        (v.protocol !== 2 && v.protocol !== 3 && v.protocol !== 4) ||
         !['created', 'joined', 'resumed', 'updated'].includes(
           String(v.reason),
         ) ||
@@ -102,9 +107,14 @@ export function isServerMessage(v: unknown): v is ServerMessage {
         !v.participants.every(
           (entry) =>
             object(entry) &&
-            keys(entry, ['peerId', 'name', 'role', 'connected']) &&
+            keys(
+              entry,
+              ['peerId', 'name', 'role', 'connected'],
+              v.protocol === 4 ? ['avatar'] : [],
+            ) &&
             peerId(entry.peerId) &&
             name(entry.name) &&
+            (!Object.hasOwn(entry, 'avatar') || avatar(entry.avatar)) &&
             ['owner', 'moderator', 'participant'].includes(
               String(entry.role),
             ) &&
@@ -113,7 +123,7 @@ export function isServerMessage(v: unknown): v is ServerMessage {
       )
         return false;
       const members = v.participants as { peerId: string; role: string }[];
-      if (v.protocol === 3) {
+      if (v.protocol === 3 || v.protocol === 4) {
         if (
           !Number.isInteger(v.maxPublishers) ||
           Number(v.maxPublishers) < 1 ||

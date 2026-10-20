@@ -69,7 +69,7 @@ export async function checkService(
   result.protocol = await new Promise<boolean>((resolve) => {
     const socket = new WebSocket(url, {
       origin: 'app://discorja',
-      maxPayload: 64 * 1024,
+      maxPayload: 128 * 1024,
       handshakeTimeout: timeoutMs,
       followRedirects: false,
     });

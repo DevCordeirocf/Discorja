@@ -21,7 +21,8 @@ export function bindFormEvents(
   root.addEventListener('input', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
-    if (target.id === 'display-name') actions.setDisplayName(target.value);
+    if (target.id === 'display-name' || target.id === 'profile-name')
+      actions.setDisplayName(target.value);
     if (target.id === 'room-code')
       target.value = actions.setJoinCode(target.value);
     if (target.id === 'signaling-url') actions.setSettingUrl(target.value);
