@@ -1,11 +1,14 @@
-import { token as validToken } from '../shared/validation.js';
+import {
+  ROOM_CODE_ALPHABET,
+  token as validToken,
+} from '../shared/validation.js';
 import type {
   ClientMessage,
   IceCandidate,
   SignalPayload,
 } from '../shared/protocol.js';
 
-export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export { ROOM_CODE_ALPHABET };
 
 const plainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -156,11 +159,25 @@ export function parseClientMessage(value: unknown): ClientMessage | undefined {
       break;
     case 'create-room':
       if (
-        exactKeys(value, ['type', 'name'], ['roomName', 'avatar']) &&
+        exactKeys(value, ['type', 'name'], ['roomName', 'avatar', 'code']) &&
         validName(value.name) &&
         (value.roomName === undefined || validName(value.roomName)) &&
-        (value.avatar === undefined || validAvatar(value.avatar))
-      )
+        (value.avatar === undefined || validAvatar(value.avatar)) &&
+        (value.code === undefined ||
+          (typeof value.code === 'string' && value.code.length <= 40))
+      ) {
+        const code =
+          typeof value.code === 'string'
+            ? value.code.replace(/[- ]/gu, '').toUpperCase()
+            : '';
+        if (
+          code &&
+          (code.length !== 8 ||
+            [...code].some(
+              (character) => !ROOM_CODE_ALPHABET.includes(character),
+            ))
+        )
+          break;
         return {
           type: value.type,
           name: value.name.trim(),
@@ -168,7 +185,9 @@ export function parseClientMessage(value: unknown): ClientMessage | undefined {
           ...(typeof value.roomName === 'string'
             ? { roomName: value.roomName.trim() }
             : {}),
+          ...(code ? { code } : {}),
         };
+      }
       break;
     case 'join-room': {
       if (

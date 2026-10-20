@@ -28,6 +28,39 @@
         <span class="startup-eye-glow startup-eye-glow-right"></span>
       </div>
     </div>
+    <div id="window-chrome" aria-label="Controles da janela">
+      <div class="window-drag-region" aria-hidden="true"></div>
+      <div
+        class="window-controls"
+        role="group"
+        aria-label="Controles da janela"
+      >
+        <button
+          type="button"
+          data-window-control="minimize"
+          aria-label="Minimizar"
+          title="Minimizar"
+        >
+          −
+        </button>
+        <button
+          type="button"
+          data-window-control="maximize"
+          aria-label="Maximizar ou restaurar"
+          title="Maximizar ou restaurar"
+        >
+          □
+        </button>
+        <button
+          type="button"
+          data-window-control="close"
+          aria-label="Fechar"
+          title="Fechar"
+        >
+          ×
+        </button>
+      </div>
+    </div>
     <div id="app" inert></div>
     <script type="module" src="/app.ts"></script>
   </body>

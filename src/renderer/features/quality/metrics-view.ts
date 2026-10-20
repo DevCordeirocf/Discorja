@@ -161,9 +161,15 @@ export function patchMetrics(root: HTMLElement, state: MetricsViewState): void {
         ? 'Direta'
         : metric?.route === 'relay'
           ? 'Retransmitida'
-          : '—',
+          : metric
+            ? 'Não identificada'
+            : '—',
     );
     const detail: string[] = [];
+    if (metric && metric.route !== 'direct' && metric.route !== 'relay')
+      detail.push(
+        'O navegador não informou os candidatos ICE selecionados; a rota da conexão não pôde ser identificada.',
+      );
     if (metric?.parameterError)
       detail.push(
         'O navegador não confirmou um limite de envio; confira as medições.',

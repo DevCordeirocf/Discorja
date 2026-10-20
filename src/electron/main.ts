@@ -10,6 +10,7 @@ import {
   protocol,
   powerMonitor,
   session,
+  shell,
 } from 'electron';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -332,6 +333,13 @@ function registerIpc() {
     });
   };
   handle('window:foreground', foreground);
+  handle('window:minimize', () => window?.minimize());
+  handle('window:toggle-maximize', () => {
+    if (!window || window.isDestroyed()) return;
+    if (window.isMaximized()) window.unmaximize();
+    else window.maximize();
+  });
+  handle('window:close', () => window?.close());
   handle('logs:record', (input: unknown) => {
     if (Date.now() - logWindowStarted >= 10_000) {
       logWindowStarted = Date.now();
@@ -613,6 +621,7 @@ async function main() {
   });
   registerIpc();
   window = new BrowserWindow({
+    frame: process.platform !== 'win32',
     width: 1280,
     height: 860,
     minWidth: 940,
@@ -644,7 +653,20 @@ async function main() {
   window.on('show', () => publishForeground(foreground()));
   window.on('hide', () => publishForeground(false));
   window.removeMenu();
-  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const externalUrl = new URL(url);
+      if (
+        externalUrl.protocol === 'https:' &&
+        externalUrl.hostname === 'github.com' &&
+        externalUrl.pathname.replace(/\/+$/u, '') === '/DevCordeiroCf'
+      )
+        void shell.openExternal(externalUrl.href).catch(() => undefined);
+    } catch {
+      // Invalid and untrusted URLs remain blocked.
+    }
+    return { action: 'deny' };
+  });
   window.webContents.on('will-navigate', (event) => {
     event.preventDefault();
   });

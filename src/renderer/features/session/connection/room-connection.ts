@@ -67,7 +67,12 @@ export async function connectRoomSignal(options: {
     );
     const message: ClientMessage =
       kind === 'create'
-        ? { type: 'create-room', name, avatar }
+        ? {
+            type: 'create-room',
+            name,
+            avatar,
+            ...(code ? { code } : {}),
+          }
         : { type: 'join-room', name, code, avatar };
     connection.send(message);
   } catch (error) {

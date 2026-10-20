@@ -668,13 +668,23 @@ export function createSignalingServer(options: SignalingOptions = {}): {
             );
             return;
           }
-          let code: string;
-          do {
-            code = Array.from(
-              { length: 8 },
-              () => ROOM_CODE_ALPHABET[randomInt(ROOM_CODE_ALPHABET.length)],
-            ).join('');
-          } while (rooms.has(code));
+          let code = message.code ?? '';
+          if (code && rooms.has(code)) {
+            error(
+              client,
+              'ROOM_CODE_IN_USE',
+              'Esse código já está sendo usado. Escolha outro ou gere um novo.',
+            );
+            return;
+          }
+          if (!code) {
+            do {
+              code = Array.from(
+                { length: 8 },
+                () => ROOM_CODE_ALPHABET[randomInt(ROOM_CODE_ALPHABET.length)],
+              ).join('');
+            } while (rooms.has(code));
+          }
           const room: Room = {
             logId: randomUUID(),
             createdAt: now(),

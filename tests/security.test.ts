@@ -7,6 +7,7 @@ import {
 } from '../src/electron/security';
 import { isServerMessage } from '../src/shared/validation';
 import { sanitizeDiagnostics } from '../src/shared/diagnostics';
+import { ROOM_PROTOCOL_VERSION } from '../src/shared/protocol';
 
 describe('Isolamento do aplicativo', () => {
   it('inclui contexto de suporte sem aceitar dados livres ou contexto de runtime do renderer', () => {
@@ -40,7 +41,7 @@ describe('Isolamento do aplicativo', () => {
     );
     expect(report.schemaVersion).toBe(2);
     expect(report.session).toMatchObject({
-      protocol: 3,
+      protocol: ROOM_PROTOCOL_VERSION,
       signaling: 'recovering',
       publishing: true,
       watching: true,
@@ -67,7 +68,7 @@ describe('Isolamento do aplicativo', () => {
       },
       '0.8.0',
     );
-    expect(invalid.session).toEqual({ protocol: 3 });
+    expect(invalid.session).toEqual({ protocol: ROOM_PROTOCOL_VERSION });
   });
   const root = path.resolve('dist/renderer');
   it('limita protocolo a arquivos locais permitidos sem streams alternativos', () => {

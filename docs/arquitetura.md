@@ -38,29 +38,29 @@ O processo principal usa isolamento de contexto e uma ponte de preload com opera
 
 ## Organização do código
 
-| Caminho                                       | Papel                                                                                               |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `src/electron/main.ts`                        | Cria a janela, autoriza captura, lê/salva endpoint, protege IPC e integra o atualizador.            |
-| `src/electron/preload.ts`                     | Expõe apenas as operações tipadas de `DiscorjaAPI` à interface.                                     |
-| `src/electron/config.ts`                      | Valida endpoint e lista de servidores ICE do cliente.                                               |
-| `src/renderer/app.ts`                         | Coordena estado da janela, eventos e serviços de sala/captura.                                      |
-| `src/renderer/views/`                         | Templates puros de início, qualidade, diagnóstico, navegação, configurações, sala, áudio e modais.  |
-| `src/renderer/ui/`                            | Eventos, acessibilidade, previews, efeitos, helpers HTML e ícones da interface.                     |
-| `src/renderer/media/`                         | WebRTC, captura de áudio, adaptação de qualidade e telemetria por peer.                              |
-| `src/renderer/transport/`                     | Conexão WebSocket de sinalização e validação das respostas.                                         |
-| `src/renderer/state/`                         | Persistência local de preferências, nome e qualidade.                                               |
-| `src/renderer/styles/`                        | CSS base e estilos do app, agregados na ordem de cascata definida em `app.css`.                     |
-| `src/renderer/features/capture/`              | Seleção, preparação, ativação e publicação da captura, áudio filtrado e ciclo das faixas.           |
-| `src/renderer/features/quality/`              | Leitura de controles, aplicação/rollback e atualização visual das métricas.                         |
-| `src/renderer/features/session/`              | Conexão, snapshots, mensagens, peers WebRTC, membros, recepção de publicações, áudio e recuperação. |
-| `src/renderer/features/settings/`             | Operações de configuração iniciadas pela interface.                                                 |
-| `src/renderer/features/diagnostics/`          | Exportação de relatórios de diagnóstico e logs locais.                                              |
-| `src/renderer/features/updates/`              | Comandos de download, verificação e instalação de atualizações.                                     |
-| `src/server/index.ts`                         | Entrada do serviço: variáveis de ambiente, porta e encerramento.                                    |
-| `src/server/config.ts`                        | Valores padrão e validação das opções de execução e limites.                                        |
-| `src/server/server.ts`                        | Ciclo HTTP/WebSocket, estado das salas, permissões e encaminhamento.                                |
-| `src/server/message-validation.ts`            | Valida e normaliza mensagens WebSocket recebidas antes do processamento.                            |
-| `src/shared/`                                 | Contratos, validação de snapshots, qualidade, logs e diagnósticos comuns.                           |
+| Caminho                              | Papel                                                                                               |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `src/electron/main.ts`               | Cria a janela, autoriza captura, lê/salva endpoint, protege IPC e integra o atualizador.            |
+| `src/electron/preload.ts`            | Expõe apenas as operações tipadas de `DiscorjaAPI` à interface.                                     |
+| `src/electron/config.ts`             | Valida endpoint e lista de servidores ICE do cliente.                                               |
+| `src/renderer/app.ts`                | Coordena estado da janela, eventos e serviços de sala/captura.                                      |
+| `src/renderer/views/`                | Templates puros de início, qualidade, diagnóstico, navegação, configurações, sala, áudio e modais.  |
+| `src/renderer/ui/`                   | Eventos, acessibilidade, previews, efeitos, helpers HTML e ícones da interface.                     |
+| `src/renderer/media/`                | WebRTC, captura de áudio, adaptação de qualidade e telemetria por peer.                             |
+| `src/renderer/transport/`            | Conexão WebSocket de sinalização e validação das respostas.                                         |
+| `src/renderer/state/`                | Persistência local de preferências, nome e qualidade.                                               |
+| `src/renderer/styles/`               | CSS base e estilos do app, agregados na ordem de cascata definida em `app.css`.                     |
+| `src/renderer/features/capture/`     | Seleção, preparação, ativação e publicação da captura, áudio filtrado e ciclo das faixas.           |
+| `src/renderer/features/quality/`     | Leitura de controles, aplicação/rollback e atualização visual das métricas.                         |
+| `src/renderer/features/session/`     | Conexão, snapshots, mensagens, peers WebRTC, membros, recepção de publicações, áudio e recuperação. |
+| `src/renderer/features/settings/`    | Operações de configuração iniciadas pela interface.                                                 |
+| `src/renderer/features/diagnostics/` | Exportação de relatórios de diagnóstico e logs locais.                                              |
+| `src/renderer/features/updates/`     | Comandos de download, verificação e instalação de atualizações.                                     |
+| `src/server/index.ts`                | Entrada do serviço: variáveis de ambiente, porta e encerramento.                                    |
+| `src/server/config.ts`               | Valores padrão e validação das opções de execução e limites.                                        |
+| `src/server/server.ts`               | Ciclo HTTP/WebSocket, estado das salas, permissões e encaminhamento.                                |
+| `src/server/message-validation.ts`   | Valida e normaliza mensagens WebSocket recebidas antes do processamento.                            |
+| `src/shared/`                        | Contratos, validação de snapshots, qualidade, logs e diagnósticos comuns.                           |
 
 O fluxo de dependências é unidirecional: `shared` não depende das camadas do app; renderer e server podem usar `shared`; somente `main` chama operações privilegiadas do sistema e as expõe pelo preload. O servidor não importa a interface nem o Electron. Seu build pode rodar como processo Node.js ou container Linux. O pacote desktop inclui o processo principal e a interface, sem iniciar um servidor de sinalização embutido.
 

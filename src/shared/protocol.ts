@@ -77,7 +77,13 @@ export type ClientMessage =
       signal: SignalPayload;
     }
   | { type: 'resume-room'; token: string }
-  | { type: 'create-room'; name: string; roomName?: string; avatar?: string }
+  | {
+      type: 'create-room';
+      name: string;
+      roomName?: string;
+      avatar?: string;
+      code?: string;
+    }
   | { type: 'join-room'; code: string; name: string; avatar?: string }
   | { type: 'update-profile'; name: string; avatar: string }
   | { type: 'signal'; peerId: string; signal: SignalPayload }
@@ -162,6 +168,10 @@ export interface UpdateState {
 }
 
 export interface DiscorjaAPI {
+  framelessWindow: boolean;
+  minimizeWindow(): Promise<void>;
+  toggleMaximizeWindow(): Promise<void>;
+  closeWindow(): Promise<void>;
   recordLog(event: import('./logs.js').LogEvent): Promise<void>;
   exportLogs(): Promise<boolean>;
   getForeground(): Promise<boolean>;

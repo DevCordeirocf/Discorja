@@ -4,6 +4,7 @@ import { SignalConnection } from '../../../transport/signal';
 import { connectRoomSignal } from './room-connection';
 import { recoverSignal } from '../lifecycle/signal-recovery';
 import { compactProfileAvatar } from '../../profile/profile-avatar';
+import { ROOM_CODE_ALPHABET } from '../../../../shared/validation';
 
 interface ConnectionState {
   api: DiscorjaAPI | undefined;
@@ -48,6 +49,7 @@ interface ConnectionEffects {
   setResumeDeadline(timer: ReturnType<typeof setTimeout>): void;
   focusDisplayName(): void;
   focusJoinCode(): void;
+  focusCreateCode(): void;
 }
 
 export function createConnectionController(effects: ConnectionEffects) {
@@ -81,7 +83,10 @@ export function createConnectionController(effects: ConnectionEffects) {
     });
   }
 
-  async function connectRoom(kind: 'create' | 'join'): Promise<void> {
+  async function connectRoom(
+    kind: 'create' | 'join',
+    requestedCode = '',
+  ): Promise<void> {
     const state = effects.getState();
     if (!state.api || !state.loaded || state.busy || state.hasRoom) return;
     const name = state.displayName.trim();
@@ -93,6 +98,19 @@ export function createConnectionController(effects: ConnectionEffects) {
     if (kind === 'join' && !/^[A-Z0-9]{8}$/.test(state.joinCode)) {
       effects.notify('Digite os 8 caracteres do código da sala.', 'error');
       effects.focusJoinCode();
+      return;
+    }
+    const createCode = requestedCode.replace(/[- ]/gu, '').toUpperCase();
+    if (
+      kind === 'create' &&
+      createCode &&
+      (createCode.length !== 8 ||
+        [...createCode].some(
+          (character) => !ROOM_CODE_ALPHABET.includes(character),
+        ))
+    ) {
+      effects.notify('Use 8 letras ou números válidos para o código.', 'error');
+      effects.focusCreateCode();
       return;
     }
     effects.saveDisplayName(name);
@@ -107,7 +125,7 @@ export function createConnectionController(effects: ConnectionEffects) {
       kind,
       name,
       avatar,
-      code: state.joinCode,
+      code: kind === 'create' ? createCode : state.joinCode,
       signalingUrl: state.signalingUrl,
       epoch,
       isCurrent: effects.isCurrentSession,

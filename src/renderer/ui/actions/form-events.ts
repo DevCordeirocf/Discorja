@@ -8,6 +8,7 @@ export interface FormEventActions {
   updatePlayback(): void;
   submitProfile(): void;
   submitJoin(): void;
+  submitCreateRoom(): void;
   submitSettings(): void;
   changeSystemAudio(enabled: boolean): void;
   changeExcludeAudio(enabled: boolean): void;
@@ -51,6 +52,7 @@ export function bindFormEvents(
     const formId = (event.target as HTMLElement).id;
     if (formId === 'profile-form') actions.submitProfile();
     else if (formId === 'join-form') actions.submitJoin();
+    else if (formId === 'create-room-form') actions.submitCreateRoom();
     else if (formId === 'settings-form') actions.submitSettings();
   });
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SignalConnection } from '../src/renderer/transport/signal';
+import { ROOM_PROTOCOL_VERSION } from '../src/shared/protocol';
 
 class Socket {
   static OPEN = 1;
@@ -53,7 +54,7 @@ describe('Compatibilidade da sinalização', () => {
     const { value, onDisconnect } = connection();
     const connected = value.connect();
     Socket.current.open();
-    Socket.current.message({ type: 'hello', protocol: 3 });
+    Socket.current.message({ type: 'hello', protocol: ROOM_PROTOCOL_VERSION });
     await connected;
     Socket.current.onclose?.({
       code: 1006,
@@ -76,11 +77,11 @@ describe('Compatibilidade da sinalização', () => {
     const socket = Socket.current;
     socket.open();
     expect(socket.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: 'hello', protocol: 3 }),
+      JSON.stringify({ type: 'hello', protocol: ROOM_PROTOCOL_VERSION }),
     );
     await Promise.resolve();
     expect(connected).toBe(false);
-    socket.message({ type: 'hello', protocol: 3 });
+    socket.message({ type: 'hello', protocol: ROOM_PROTOCOL_VERSION });
     await pending;
     expect(connected).toBe(true);
     socket.message({ type: 'host-state', sharing: false });
@@ -97,7 +98,7 @@ describe('Compatibilidade da sinalização', () => {
     const connected = value.connect();
     const socket = Socket.current;
     socket.open();
-    socket.message({ type: 'hello', protocol: 3 });
+    socket.message({ type: 'hello', protocol: ROOM_PROTOCOL_VERSION });
     await connected;
 
     await vi.advanceTimersByTimeAsync(5 * 60_000);

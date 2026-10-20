@@ -31,6 +31,7 @@ import { createSessionTerminationController } from './features/session/lifecycle
 import { createApplicationMessages } from './features/session/messaging/application-messages';
 import { createApplicationPeerRuntime } from './features/session/peers/application-peer-runtime';
 import { createConnectionController } from './features/session/connection/connection-controller';
+import { saveLastRoomCode } from './features/session/last-room-code';
 import { createAppSnapshotController } from './features/session/room-state/app-snapshot-controller';
 import { createApplicationViewBindings } from './ui/application/application-view-bindings';
 import { startApplicationRuntime } from './ui/application/application-runtime';
@@ -53,7 +54,27 @@ declare global {
   }
 }
 
+const api = window.discorja;
 const root = document.querySelector<HTMLDivElement>('#app')!;
+if (api?.framelessWindow) {
+  document.body.classList.add('frameless-window');
+  document
+    .querySelector<HTMLElement>('#window-chrome')
+    ?.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const control = target.closest<HTMLButtonElement>(
+        '[data-window-control]',
+      );
+      if (!control || control.disabled) return;
+      if (control.dataset.windowControl === 'minimize')
+        void api.minimizeWindow();
+      else if (control.dataset.windowControl === 'maximize')
+        void api.toggleMaximizeWindow();
+      else if (control.dataset.windowControl === 'close')
+        void api.closeWindow();
+    });
+}
 bindParticipantPhotoPreview(root);
 initializeBackgroundEffect();
 const announcements = document.createElement('div');
@@ -64,7 +85,6 @@ announcements.setAttribute('aria-live', 'polite');
 announcements.setAttribute('aria-atomic', 'true');
 document.body.append(announcements);
 let sessionEpoch = 0;
-const api = window.discorja;
 let persistentStorage: Storage | undefined;
 try {
   persistentStorage = localStorage;
@@ -412,6 +432,7 @@ const { applyRoomState } = createAppSnapshotController({
     roomState = snapshot;
     resumeToken = snapshot.resumeToken;
     room = nextRoom;
+    saveLastRoomCode(nextRoom.code);
   },
   confirmPublication: () => {
     publicationConfirmed = true;
@@ -449,6 +470,7 @@ const { applyRoomState } = createAppSnapshotController({
     resumeToken = snapshot.resumeToken;
     roomState = snapshot;
     room = nextRoom;
+    saveLastRoomCode(nextRoom.code);
   },
   syncViewers: (members) =>
     syncRoomMembers(members, viewers, (id) => peers?.remove(id)),
@@ -502,7 +524,10 @@ const onMessage = createApplicationMessages({
     resumeToken,
   }),
   updateState: (patch) => {
-    if (patch.room !== undefined) room = patch.room;
+    if (patch.room !== undefined) {
+      room = patch.room;
+      if (patch.room) saveLastRoomCode(patch.room.code);
+    }
     if (patch.signalRecovering !== undefined)
       signalRecovering = patch.signalRecovering;
     if (patch.remoteStream !== undefined) remoteStream = patch.remoteStream;
@@ -630,6 +655,8 @@ const { connectRoom } = createConnectionController({
     )?.focus(),
   focusJoinCode: () =>
     document.querySelector<HTMLInputElement>('#room-code')?.focus(),
+  focusCreateCode: () =>
+    document.querySelector<HTMLInputElement>('#create-room-code')?.focus(),
 });
 
 const captureActions = createAppCaptureController({

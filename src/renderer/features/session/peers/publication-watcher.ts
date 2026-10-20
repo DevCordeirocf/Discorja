@@ -3,7 +3,10 @@ import type {
   MultiRoomState,
   Publication,
 } from '../../../../shared/protocol';
-import type { PeerMetrics, StreamPreferences } from '../../../../shared/quality';
+import type {
+  PeerMetrics,
+  StreamPreferences,
+} from '../../../../shared/quality';
 import { RoomPeers } from '../../../media/rtc';
 import { stopTracks } from '../../capture';
 
@@ -193,8 +196,14 @@ export class PublicationWatcher {
       this.dependencies.logFailure(details);
       stopTracks(this.dependencies.getRemoteStream());
       this.dependencies.setRemoteStream(null);
+      const publisherName =
+        this.dependencies
+          .getMultiState()
+          ?.participants.find(
+            (person) => person.peerId === publication.publisherId,
+          )?.name ?? 'este participante';
       this.dependencies.setConnectionIssue(
-        'Não foi possível receber esta tela. Tente novamente ou escolha outra transmissão.',
+        `Não foi possível conectar seu dispositivo à tela de ${publisherName}. A conexão entre essas duas redes pode estar bloqueada por roteador/NAT, firewall ou VPN. Por isso, outras pessoas podem conseguir assistir enquanto você não. Tente novamente ou teste outra rede; se persistir, pode ser necessário configurar um servidor TURN.`,
       );
       if (this.retryAttempts < 2 && !this.retryTimer) {
         this.retryTimer = setTimeout(() => {

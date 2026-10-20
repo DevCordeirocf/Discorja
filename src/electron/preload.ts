@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DiscorjaAPI, UpdateState } from '../shared/protocol';
 
 const api: DiscorjaAPI = {
+  framelessWindow: process.platform === 'win32',
+  minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
+  toggleMaximizeWindow: () => ipcRenderer.invoke('window:toggle-maximize'),
+  closeWindow: () => ipcRenderer.invoke('window:close'),
   recordLog: (event) => ipcRenderer.invoke('logs:record', event),
   exportLogs: () => ipcRenderer.invoke('logs:export'),
   getForeground: () => ipcRenderer.invoke('window:foreground'),

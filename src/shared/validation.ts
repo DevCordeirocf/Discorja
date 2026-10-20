@@ -1,6 +1,7 @@
 import type { IceCandidate, ServerMessage, SignalPayload } from './protocol.js';
 
 export const MAX_MESSAGE_BYTES = 128 * 1024;
+export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const object = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v);
 export const keys = (

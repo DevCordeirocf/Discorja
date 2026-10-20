@@ -1,5 +1,8 @@
 import { RoomPeers } from '../../../media/rtc';
-import type { PeerMetrics, StreamPreferences } from '../../../../shared/quality';
+import type {
+  PeerMetrics,
+  StreamPreferences,
+} from '../../../../shared/quality';
 
 export interface RoomPeerCallbacks {
   sendSignal: ConstructorParameters<typeof RoomPeers>[1];

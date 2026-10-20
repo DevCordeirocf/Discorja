@@ -29,6 +29,13 @@ export interface SingleRoomView {
   }>;
 }
 
+function renderConnectionIssue(issue: string): string {
+  const developerName = 'DevCordeiroCf';
+  const index = issue.indexOf(developerName);
+  if (index < 0) return escape(issue);
+  return `${escape(issue.slice(0, index))}<a href="https://github.com/${developerName}" target="_blank" rel="noopener noreferrer">${developerName}</a>${escape(issue.slice(index + developerName.length))}`;
+}
+
 export function renderSingleRoom(view: SingleRoomView): string {
   const { room } = view;
   if (view.roomState) {
@@ -67,6 +74,6 @@ export function renderSingleRoom(view: SingleRoomView): string {
   <div class="broadcast-controls"><span>${icon('screen')}<span>${hasVideo ? escape(host ? view.sharedSourceName : 'Tela compartilhada') : 'Vídeo compartilhado · sem áudio'}</span></span>${host && view.sharing ? `<button class="button stop-button" data-action="stop">${icon('stop')} Parar de compartilhar</button>` : !host && hasVideo ? `<button class="button subtle" data-action="fullscreen">${icon('expand')} Tela cheia</button>` : `<span class="quiet-label">${host ? 'A captura só começa com você.' : 'A sala continua aberta.'}</span>`}</div></section>
   <aside class="room-sidebar"><section class="invite-card"><div class="mini-heading">${icon('lock')} SALA PRIVADA</div><h2>${host ? 'Chame quem importa.' : 'Você está na sala.'}</h2><p>${host ? 'Envie o código para seus amigos.' : 'Este é o código do seu encontro.'}</p><div class="room-code" aria-label="Código da sala">${escape(room.code.slice(0, 4))}<span></span>${escape(room.code.slice(4))}</div><button class="button secondary wide" data-action="copy">${icon('copy')} Copiar código</button><small>Todos devem usar o mesmo servidor.</small></section>
   <section class="people-card"><div class="section-heading"><h2>Na sala</h2><span>${host ? `${view.viewers.length + 1}/${room.maxViewers + 1}` : 'Você + anfitrião'}</span></div><div class="person"><span class="avatar">${escape(initial)}</span><div><strong>${escape(room.hostName)}${host ? ' <span>(você)</span>' : ''}</strong><small><span class="online-dot"></span>Anfitrião</small></div><span class="host-crown" aria-label="Anfitrião">✦</span></div>${host ? view.viewers.map((person) => `<div class="person"><span class="avatar viewer-avatar">${escape(person.name.charAt(0).toLocaleUpperCase('pt-BR'))}</span><div><strong>${escape(person.name)}</strong><small class="${person.failed ? 'failed-text' : ''}">${person.failed ? 'Falha de vídeo · reinicie a transmissão' : !view.sharing ? 'Na sala' : person.connected ? 'Assistindo agora' : 'Conectando ao vídeo…'}</small></div><button class="icon-button remove-button" data-action="kick" data-peer="${escape(person.id)}" title="Remover ${escape(person.name)}" aria-label="Remover ${escape(person.name)} da sala">${icon('close')}</button></div>`).join('') : `<div class="person"><span class="avatar viewer-avatar">${escape(view.displayName.charAt(0).toLocaleUpperCase('pt-BR'))}</span><div><strong>${escape(view.displayName)} <span>(você)</span></strong><small>Espectador</small></div></div>`}${host && !view.viewers.length ? `<div class="empty-people">${icon('users')}<p>Tem espaço para a sua turma.<br>Compartilhe o código para começar.</p></div>` : ''}</section><div class="room-note">${icon('shield')}<p>${host ? `Até ${room.maxViewers} amigos podem assistir. Cada conexão usa a internet do seu computador.` : 'O anfitrião controla a transmissão e pode encerrá-la a qualquer momento.'}</p></div></aside></div>
-  ${view.connectionIssue ? `<div class="connection-alert" role="alert">${icon('alert')}<p>${escape(view.connectionIssue)}</p><button class="button subtle" data-action="rejoin">${icon('refresh')} Entrar novamente</button></div>` : ''}
+  ${view.connectionIssue ? `<div class="connection-alert" role="alert">${icon('alert')}<p>${renderConnectionIssue(view.connectionIssue)}</p><button class="button subtle" data-action="rejoin">${icon('refresh')} Entrar novamente</button></div>` : ''}
   ${host && view.sharing ? `<div class="sharing-reminder">${icon('screen')} Sua tela está sendo transmitida. Tudo que aparecer na área escolhida poderá ser visto.</div>` : ''}`;
 }

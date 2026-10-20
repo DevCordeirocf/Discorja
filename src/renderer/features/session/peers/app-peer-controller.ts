@@ -1,5 +1,8 @@
 import type { MultiRoomState } from '../../../../shared/protocol';
-import type { PeerMetrics, StreamPreferences } from '../../../../shared/quality';
+import type {
+  PeerMetrics,
+  StreamPreferences,
+} from '../../../../shared/quality';
 import type { RoomPeers } from '../../../media/rtc';
 import { stopTracks } from '../../capture';
 import { createRoomPeers } from './create-room-peers';
@@ -14,16 +17,20 @@ export function createAppRoomPeers(options: {
   getPreferences: () => StreamPreferences;
   getMultiRoom: () => MultiRoomState | null;
   getPublicationId: () => string;
-  send: (message: {
-    type: 'stream-signal';
-    publicationId: string;
-    peerId: string;
-    signal: Parameters<ConstructorParameters<typeof RoomPeers>[1]>[1];
-  } | {
-    type: 'signal';
-    peerId: string;
-    signal: Parameters<ConstructorParameters<typeof RoomPeers>[1]>[1];
-  }) => void;
+  send: (
+    message:
+      | {
+          type: 'stream-signal';
+          publicationId: string;
+          peerId: string;
+          signal: Parameters<ConstructorParameters<typeof RoomPeers>[1]>[1];
+        }
+      | {
+          type: 'signal';
+          peerId: string;
+          signal: Parameters<ConstructorParameters<typeof RoomPeers>[1]>[1];
+        },
+  ) => void;
   getRoomRole: () => 'host' | 'viewer' | undefined;
   getRemoteSharing: () => boolean;
   getRemoteStream: () => MediaStream | null;
@@ -102,7 +109,7 @@ export function createAppRoomPeers(options: {
             stopTracks(options.getRemoteStream());
             options.setRemoteStream(null);
             options.setConnectionIssue(
-              'Não foi possível manter a conexão de vídeo. Entre novamente; se persistir, a rede pode precisar de um servidor TURN.',
+              'Não foi possível conectar seu dispositivo à transmissão. Roteador/NAT, firewall ou VPN podem estar bloqueando a conexão direta entre as redes. Outras pessoas podem conseguir assistir normalmente. Tente novamente ou teste outra rede; se persistir, Fale com o desenvolvedor DevCordeiroCf',
             );
           } else options.setConnectionIssue('');
         }

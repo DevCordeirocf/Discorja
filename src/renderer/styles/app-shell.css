@@ -52,6 +52,57 @@ body {
   overflow: hidden;
   background: var(--bg);
 }
+#window-chrome {
+  position: fixed;
+  z-index: 1999;
+  inset: 0 0 auto;
+  display: none;
+  height: 32px;
+  pointer-events: none;
+}
+.frameless-window #window-chrome {
+  display: block;
+}
+.window-drag-region {
+  position: absolute;
+  inset: 0 138px 0 0;
+  pointer-events: auto;
+  -webkit-app-region: drag;
+}
+.window-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  height: 32px;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+.window-controls button {
+  display: grid;
+  width: 46px;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  color: var(--text);
+  font-family: 'Segoe UI Symbol', sans-serif;
+  font-size: 16px;
+  line-height: 1;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.window-controls button:hover {
+  background: rgb(255 255 255 / 10%);
+}
+.window-controls button[data-window-control='close']:hover {
+  background: #c42b1c;
+}
+.window-controls button:focus-visible {
+  outline: 1px solid var(--purple);
+  outline-offset: -2px;
+}
 .app-shell,
 .app-shell *,
 #startup-splash,

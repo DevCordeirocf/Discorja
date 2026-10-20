@@ -156,6 +156,21 @@
   font-size: 12px;
   line-height: 18px;
 }
+.join-code-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.join-code-footer .field-help {
+  margin: 0;
+}
+.last-code-button {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 11px;
+  white-space: nowrap;
+}
 .home-credit {
   display: flex;
   align-items: center;
@@ -168,6 +183,26 @@
 }
 .home-credit span + span {
   color: var(--faint);
+}
+.home-credit a,
+.connection-alert a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgb(184 160 255 / 55%);
+  text-underline-offset: 3px;
+  transition:
+    color 140ms ease,
+    text-decoration-color 140ms ease;
+}
+.home-credit a:hover,
+.connection-alert a:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+.home-credit a:focus-visible,
+.connection-alert a:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 3px;
 }
 .home-main:has(#display-name) .page-heading {
   margin-bottom: 24px;

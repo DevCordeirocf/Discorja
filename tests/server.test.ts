@@ -10,6 +10,7 @@ import type {
   ServerMessage,
   MultiRoomState,
 } from '../src/shared/protocol.js';
+import { MAX_PAYLOAD } from '../src/server/config.js';
 
 type MessageOf<T extends ServerMessage['type']> = Extract<
   ServerMessage,
@@ -1120,10 +1121,11 @@ describe('sinalização Discorja', () => {
         code: 'INVALID_MESSAGE',
       });
     }
+    const oversizedPeer = await connect(url);
     const oversized = new Promise<number>((resolve) =>
-      peer.socket.once('close', resolve),
+      oversizedPeer.socket.once('close', resolve),
     );
-    peer.socket.send('a'.repeat(65_537));
+    oversizedPeer.socket.send('a'.repeat(MAX_PAYLOAD + 1));
     expect(await oversized).toBe(1009);
   });
 

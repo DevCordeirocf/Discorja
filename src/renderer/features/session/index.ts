@@ -1,6 +1,12 @@
 export { connectRoomSignal } from './connection/room-connection';
-export { receivePublicationSignal, receiveRoomSignal } from './messaging/incoming-signal';
-export { handleRoomClosed, handleRoomError } from './messaging/message-outcomes';
+export {
+  receivePublicationSignal,
+  receiveRoomSignal,
+} from './messaging/incoming-signal';
+export {
+  handleRoomClosed,
+  handleRoomError,
+} from './messaging/message-outcomes';
 export { endRoomSession, roomCloseType } from './lifecycle/room-lifecycle';
 export {
   createRoomMemberState,
@@ -20,7 +26,10 @@ export {
   applyLegacyRoomResumed,
 } from './messaging/legacy-room-messages';
 export { handlePublicationAction } from './peers/publication-actions';
-export { toggleIncomingAudio, toggleOutgoingAudio } from './peers/audio-actions';
+export {
+  toggleIncomingAudio,
+  toggleOutgoingAudio,
+} from './peers/audio-actions';
 export {
   copyRoomCode,
   handleRoomControlAction,

@@ -35,7 +35,7 @@ export interface AppActionBindingContext {
   stopSharing(): void;
   notify: RouterCallbacks['notify'];
   leaveRoom(): void;
-  connectRoom(kind: 'create' | 'join'): void;
+  connectRoom(kind: 'create' | 'join', code?: string): void;
   confirmRoomSwitch(): void;
   requestCreate(): void;
   toggleSidebar(): void;
@@ -77,8 +77,8 @@ export function bindAppActionRouter(context: AppActionBindingContext): void {
     toggleSidebar: context.toggleSidebar,
     testConnection: context.testConnection,
     leaveRoom: context.leaveRoom,
-    connectRoom: (kind) => {
-      void context.connectRoom(kind);
+    connectRoom: (kind, code) => {
+      void context.connectRoom(kind, code);
     },
     setJoinCode: (value) => context.updateState({ joinCode: value }),
     confirmCreate: context.requestCreate,

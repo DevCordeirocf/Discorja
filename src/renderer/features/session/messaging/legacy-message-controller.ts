@@ -1,5 +1,8 @@
 import type { ServerMessage } from '../../../../shared/protocol';
-import { handleViewerJoined, handleViewerLeft } from '../room-state/room-members';
+import {
+  handleViewerJoined,
+  handleViewerLeft,
+} from '../room-state/room-members';
 import { applyLegacyHostState } from './legacy-room-messages';
 import { handleRoomClosed, handleRoomError } from './message-outcomes';
 import {

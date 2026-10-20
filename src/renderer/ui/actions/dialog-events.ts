@@ -8,6 +8,7 @@ type AppModal =
   | 'switch'
   | 'diagnostics'
   | 'profile'
+  | 'create'
   | null;
 
 interface DialogEventState {

@@ -16,7 +16,7 @@ describe('templates da interface', () => {
     expect(room).toContain('data-action="room"');
     expect(room).toContain('>Sala</span>');
     expect(collapsed).toContain('class="profile-button"');
-    expect(collapsed).toContain('aria-label="Alterar seu nome"');
+    expect(collapsed).toContain('aria-label="Alterar seu perfil"');
     expect(collapsed).toContain('>A</span>');
   });
 
@@ -46,7 +46,8 @@ describe('templates da interface', () => {
     });
 
     expect(html).toContain('Conectando…');
-    expect(html.match(/disabled/g)).toHaveLength(3);
+    expect(html).toContain('data-action="use-last-room-code"');
+    expect(html.match(/disabled/g)).toHaveLength(4);
   });
 
   it('mostra os perfis disponíveis e escapa a mensagem de estado', () => {
@@ -59,8 +60,8 @@ describe('templates da interface', () => {
       status: '<falha>',
     });
 
-    expect(html).toContain('1080p · 120 FPS');
-    expect(html).toContain('value="1080p120" selected');
+    expect(html).toContain('value="1080p30" selected');
+    expect(html).toContain('value="120" selected>120 QPS</option>');
     expect(html).toContain('&lt;falha&gt;');
     expect(html).not.toContain(
       '<p class="quality-status" role="status"><falha>',

@@ -48,7 +48,7 @@ export function bindApplicationInputEvents(options: {
     persistent?: boolean,
   ): void;
   requestRoomSwitch(target: { kind: 'join'; code: string }): void;
-  connectRoom(kind: 'join'): Promise<void>;
+  connectRoom(kind: 'create' | 'join', code?: string): Promise<void>;
   saveSettings(): Promise<void>;
   changeQuality(isVideoBitrate: boolean, prefix?: string): void;
   cancelSources(): void;
@@ -91,6 +91,14 @@ export function bindApplicationInputEvents(options: {
       if (state().room)
         options.requestRoomSwitch({ kind: 'join', code: state().joinCode });
       else void options.connectRoom('join');
+    },
+    submitCreateRoom: () => {
+      const code =
+        options.root.querySelector<HTMLInputElement>('#create-room-code')
+          ?.value ?? '';
+      options.updateState({ modal: null });
+      options.render();
+      void options.connectRoom('create', code);
     },
     submitSettings: () => void options.saveSettings(),
     changeSystemAudio: (enabled) => {
