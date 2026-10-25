@@ -75,6 +75,17 @@ function renderRoomCard(
   return `<li class="room-card"><div class="room-card-top"><h3>${escape(room.name)}</h3>${status}</div><div class="room-card-people"><span class="avatar-stack" role="img" aria-label="${people}">${avatars}</span><span class="room-card-count">${room.participants}/${room.maxParticipants}</span></div>${button}</li>`;
 }
 
+/** The person's photo when it has arrived; otherwise the initial. */
+function renderOnlineAvatar(
+  name: string,
+  photo: string,
+  index: number,
+): string {
+  return photo
+    ? `<span class="stack-avatar has-photo" aria-hidden="true"><img src="${escape(photo)}" alt=""></span>`
+    : `<span class="stack-avatar tone-${index % 5}" aria-hidden="true">${escape([...name.trim()][0]?.toLocaleUpperCase('pt-BR') ?? '?')}</span>`;
+}
+
 function renderGroupPage(view: GroupHomeView): string {
   const selected = view.selected!;
   const canUse = view.enabled && view.status === 'online';
@@ -96,7 +107,7 @@ function renderGroupPage(view: GroupHomeView): string {
     ? `<ul class="room-cards">${rooms.map((room) => renderRoomCard(room, view, canUse)).join('')}</ul>`
     : `<div class="group-empty"><strong>Nenhuma sala aberta</strong>${view.status === 'online' ? '' : '<span>As salas aparecem quando a conexão com o servidor estiver pronta.</span>'}</div>`;
   const onlineList = online.length
-    ? `<ul class="online-chips">${online.map((name, index) => `<li class="online-chip"><span class="stack-avatar tone-${index % 5}" aria-hidden="true">${escape([...name.trim()][0]?.toLocaleUpperCase('pt-BR') ?? '?')}</span>${escape(name)}${inRoom.has(name) ? '<small>· na sala</small>' : ''}</li>`).join('')}</ul>`
+    ? `<ul class="online-chips">${online.map((name, index) => `<li class="online-chip">${renderOnlineAvatar(name, view.onlinePhotos[index] ?? '', index)}${escape(name)}${inRoom.has(name) ? '<small>· na sala</small>' : ''}</li>`).join('')}</ul>`
     : '<p class="group-online-empty">Ninguém com o grupo aberto agora.</p>';
   return `<section class="group-home" aria-labelledby="group-title">${banner}<header class="group-home-header"><div class="group-identity"><span class="group-badge" aria-hidden="true">${escape(groupInitials(selected.name))}</span><div><h1 id="group-title">${escape(selected.name)}</h1><p class="group-summary">${escape(summary)}</p></div></div><div class="group-header-actions"><button type="button" class="button secondary" data-action="copy-group-invite">Convidar</button><div class="menu-anchor" data-menu><button type="button" class="icon-button group-more" data-action="toggle-group-menu" data-menu-toggle aria-haspopup="menu" aria-expanded="${view.menuOpen}" aria-label="Mais opções do grupo" title="Mais opções do grupo"><span aria-hidden="true">⋯</span></button>${menu}</div></div></header><section class="group-cta" aria-label="Criar sala no grupo"><span>Começar uma sala neste grupo</span><button type="button" class="button primary" data-action="create-group-room" ${canUse ? '' : 'disabled'}>+ Criar sala</button></section><section class="group-section" aria-labelledby="live-title"><h2 id="live-title">Ao vivo agora</h2>${roomList}</section><section class="group-section" aria-labelledby="online-title"><h2 id="online-title">Online agora</h2>${onlineList}</section></section>`;
 }

@@ -1,8 +1,14 @@
 import type { AppPage } from '../../views/design';
 import type { AppModal } from '../../views/modals';
+import {
+  isSettingsSection,
+  type SettingsSection,
+} from '../../views/settings-view';
 
 export function handleNavigationAction(options: {
   action?: string;
+  /** data-section of the clicked button, for the settings navigation. */
+  section?: string;
   busy: boolean;
   hasRoom: boolean;
   activePage: AppPage;
@@ -11,6 +17,7 @@ export function handleNavigationAction(options: {
   setActivePage: (page: AppPage) => void;
   setPreviousPage: (page: AppPage) => void;
   setModal: (modal: AppModal) => void;
+  setSettingsSection: (section: SettingsSection) => void;
   clearSwitchTarget: () => void;
   setReturnFocusAction: (action: string) => void;
   setEditingName: (editing: boolean) => void;
@@ -20,6 +27,7 @@ export function handleNavigationAction(options: {
   dismissUpdate: () => void;
   confirmSwitch: () => void;
   focusDisplayName: () => void;
+  focusSettingsSection: (section: SettingsSection) => void;
   render: () => void;
   focusSettings: () => void;
 }): boolean {
@@ -33,6 +41,18 @@ export function handleNavigationAction(options: {
     setModal,
     render,
   } = options;
+  const openSettings = (section: SettingsSection): void => {
+    if (activePage !== 'settings') {
+      options.setPreviousPage(activePage);
+      options.setSettingUrl(options.configUrl);
+      options.clearConnectionCheck();
+    }
+    options.setSettingsSection(section);
+    setActivePage('settings');
+    setModal(null);
+    options.setNotice(null);
+    render();
+  };
   switch (action) {
     case 'room':
       setActivePage(hasRoom ? 'room' : 'home');
@@ -59,10 +79,11 @@ export function handleNavigationAction(options: {
       render();
       return true;
     case 'edit-name':
-      options.setReturnFocusAction('edit-name');
-      setModal('profile');
-      render();
-      options.focusDisplayName();
+      if (!busy) {
+        options.setReturnFocusAction('edit-name');
+        openSettings('perfil');
+        options.focusDisplayName();
+      }
       return true;
     case 'home':
       setActivePage('home');
@@ -71,14 +92,15 @@ export function handleNavigationAction(options: {
       return true;
     case 'settings':
       if (!busy) {
-        if (activePage !== 'settings') options.setPreviousPage(activePage);
-        setActivePage('settings');
-        setModal(null);
         options.setReturnFocusAction('settings');
-        options.setNotice(null);
-        options.setSettingUrl(options.configUrl);
-        options.clearConnectionCheck();
+        openSettings('transmissao');
+      }
+      return true;
+    case 'settings-section':
+      if (isSettingsSection(options.section)) {
+        options.setSettingsSection(options.section);
         render();
+        options.focusSettingsSection(options.section);
       }
       return true;
     case 'close-settings':

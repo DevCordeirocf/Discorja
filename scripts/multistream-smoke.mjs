@@ -175,8 +175,8 @@ try {
   const c = await join('Carla', invite);
   const d = await join('Davi', invite);
   await openSettings(a);
-  await a.locator('#settings-quality-preset').selectOption('1080p30');
-  await a.locator('#settings-fps').selectOption('60');
+  await a.locator('#settings-quality-preset-1080p30').check();
+  await a.locator('#settings-fps-60').check();
   await a.locator('[data-action=close-settings]').click();
   await capture(a);
   await capture(b);

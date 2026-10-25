@@ -4,6 +4,15 @@ import {
   type StreamPreferences,
 } from '../../../shared/quality';
 
+/** Reads a select by id or the checked radio of the group with that name. */
+function choice(document: Document, id: string): string | undefined {
+  return (
+    document.querySelector<HTMLSelectElement>(`select#${id}`)?.value ??
+    document.querySelector<HTMLInputElement>(`input[name="${id}"]:checked`)
+      ?.value
+  );
+}
+
 export function readQualityControls(
   document: Document,
   root: ParentNode,
@@ -11,10 +20,8 @@ export function readQualityControls(
   bitrateChanged = false,
   prefix = '',
 ): StreamPreferences {
-  const preset = document.querySelector<HTMLSelectElement>(
-    `#${prefix}quality-preset`,
-  )?.value;
-  const fps = document.querySelector<HTMLSelectElement>(`#${prefix}fps`)?.value;
+  const preset = choice(document, `${prefix}quality-preset`);
+  const fps = choice(document, `${prefix}fps`);
   const requestedBitrate = bitrateChanged
     ? Number(
         root.querySelector<HTMLInputElement>(`#${prefix}video-bitrate`)?.value,
@@ -29,13 +36,10 @@ export function readQualityControls(
       bitrateChanged && requestedBitrate === presetBitrate
         ? undefined
         : (requestedBitrate ?? current.videoBitrateMbps),
-    preferredCodec: document.querySelector<HTMLSelectElement>(
-      `#${prefix}preferred-codec`,
-    )?.value,
+    preferredCodec: choice(document, `${prefix}preferred-codec`),
     preset,
     fps: fps ? Number(fps) : current.fps,
-    content: document.querySelector<HTMLSelectElement>(`#${prefix}content-mode`)
-      ?.value,
+    content: choice(document, `${prefix}content-mode`),
     adaptive: document.querySelector<HTMLInputElement>(
       `#${prefix}adaptive-quality`,
     )?.checked,

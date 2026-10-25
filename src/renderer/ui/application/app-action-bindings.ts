@@ -2,6 +2,7 @@ import { bindActionRouter } from '../actions/action-router';
 import type { ActionRouterState } from '../actions/action-router';
 import type { AppPage } from '../../views/design';
 import type { AppModal } from '../../views/modals';
+import type { SettingsSection } from '../../views/settings-view';
 import type { ClientMessage } from '../../../shared/protocol';
 
 type RouterCallbacks = Parameters<typeof bindActionRouter>[2];
@@ -12,6 +13,7 @@ export type AppActionStateUpdate = Partial<{
   activePage: AppPage;
   previousPage: AppPage;
   modal: AppModal;
+  settingsSection: SettingsSection;
   switchTarget: { kind: 'create' | 'join'; code?: string } | null;
   returnFocusAction: string;
   editingName: boolean;
@@ -65,6 +67,8 @@ export function bindAppActionRouter(context: AppActionBindingContext): void {
     setActivePage: (value) => context.updateState({ activePage: value }),
     setPreviousPage: (value) => context.updateState({ previousPage: value }),
     setModal: (value) => context.updateState({ modal: value }),
+    setSettingsSection: (value) =>
+      context.updateState({ settingsSection: value }),
     clearSwitchTarget: () => context.updateState({ switchTarget: null }),
     setReturnFocusAction: (value) =>
       context.updateState({ returnFocusAction: value }),

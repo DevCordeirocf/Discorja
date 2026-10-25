@@ -9,7 +9,7 @@ O fundo cinza foi mantido. Cada arquivo usa a mesma cor nos dois chifres; a cor 
 
 [Comparar no Figma](https://www.figma.com/design/YbeCeb5y0429UnVs7tqdCN?node-id=17-47)
 
-São propostas geradas pela ferramenta integrada de edição de imagem, a partir de `discorja-grafite.png`. Pequenas diferenças de traço podem existir. A variação lilás é a base da logo oficial sem fundo usada no aplicativo; `scripts/process-logo.mjs` remove o fundo e amplia a arte dentro do ícone quadrado.
+São propostas geradas pela ferramenta integrada de edição de imagem, a partir de `discorja-grafite.png`. Pequenas diferenças de traço podem existir. A variação lilás foi a base da logo antiga, substituída pelo mascote Forja; veja `LOGO.md`. Estes arquivos ficam apenas como histórico.
 
 ## Instruções usadas na edição
 

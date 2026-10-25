@@ -9,6 +9,44 @@ export interface ChangelogEntry {
 /** Notes shown in "Novidades do Discorja", newest first. Add one per release. */
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '0.12.0',
+    date: '2026-10-25',
+    items: [
+      {
+        kind: 'novo',
+        text: 'Logo nova: o Forja, com chifres e olhar determinado, no lilás do Discorja.',
+      },
+      {
+        kind: 'novo',
+        text: 'Configurações ocupam a janela inteira, com seções para Perfil, Transmissão, Conexão, Atualizações e Diagnóstico. "Voltar" ou Esc retornam para onde você estava.',
+      },
+      {
+        kind: 'melhoria',
+        text: 'Editar perfil agora fica em Configurações › Perfil, com uma prévia de como você aparece em "Online agora" e na sala.',
+      },
+      {
+        kind: 'melhoria',
+        text: 'Alterações no perfil ou no servidor mostram uma barra com "Salvar alterações" e "Descartar".',
+      },
+      {
+        kind: 'melhoria',
+        text: 'Transmissão: resolução, QPS e tipo de conteúdo são escolhidos com um clique. As opções de QPS agora são 30, 60, 75, 90 e 120; quem usava 45 ou 70 passa para 30 ou 75.',
+      },
+      {
+        kind: 'melhoria',
+        text: 'O Início conecta mais rápido quando o servidor gratuito está dormindo e volta sozinho se ele adormecer de novo.',
+      },
+      {
+        kind: 'novo',
+        text: '"Online agora" mostra a foto de perfil de cada pessoa, inclusive de quem já está numa sala do grupo.',
+      },
+      {
+        kind: 'correção',
+        text: '"Tirar foto" só aparece com a câmera aberta.',
+      },
+    ],
+  },
+  {
     version: '0.11.0',
     date: '2026-10-25',
     items: [

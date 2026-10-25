@@ -252,7 +252,7 @@ button:disabled {
   --startup-eye-glow-duration: 1650ms;
   --startup-eye-glow-peak: 56%;
   position: absolute;
-  top: 53%;
+  top: 44.6%;
   width: 22%;
   height: 15%;
   border-radius: 50%;
@@ -272,10 +272,10 @@ button:disabled {
     cubic-bezier(0.2, 0.65, 0.25, 1) var(--startup-eye-glow-delay) both;
 }
 .startup-eye-glow-left {
-  left: 27%;
+  left: 25.4%;
 }
 .startup-eye-glow-right {
-  left: 52%;
+  left: 52.6%;
 }
 @keyframes startup-logo-enter {
   from {

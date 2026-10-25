@@ -6,7 +6,6 @@ export interface FormEventActions {
   setSettingUrl(value: string): void;
   setReceiveVolume(value: number): boolean;
   updatePlayback(): void;
-  submitProfile(): void;
   submitSettings(): void;
   changeSystemAudio(enabled: boolean): void;
   changeExcludeAudio(enabled: boolean): void;
@@ -45,9 +44,8 @@ export function bindFormEvents(
 
   root.addEventListener('submit', (event) => {
     event.preventDefault();
-    const formId = (event.target as HTMLElement).id;
-    if (formId === 'profile-form') actions.submitProfile();
-    else if (formId === 'settings-form') actions.submitSettings();
+    if ((event.target as HTMLElement).id === 'settings-form')
+      actions.submitSettings();
   });
 
   root.addEventListener('change', (event) => {

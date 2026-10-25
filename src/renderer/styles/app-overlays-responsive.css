@@ -62,8 +62,7 @@
   flex: 0 0 auto;
   font-size: 12px;
 }
-.start-card,
-.settings-card {
+.start-card {
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
@@ -75,31 +74,6 @@
 }
 .nav-item:hover:not(.active) {
   transform: translateX(2px);
-}
-
-.profile-modal {
-  width: 440px;
-  padding: 24px 28px 0;
-  border-radius: 18px;
-  transition:
-    width 650ms cubic-bezier(0.22, 1, 0.36, 1),
-    padding 450ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-.profile-modal:has(.profile-photo-preview.camera-active) {
-  width: min(520px, calc(100vw - 48px));
-}
-.profile-modal .modal-heading {
-  align-items: flex-start;
-  margin-bottom: 22px;
-}
-.profile-modal .modal-heading h2 {
-  margin: 2px 0 0;
-  font-size: 21px;
-}
-.profile-modal-intro {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 12px;
 }
 .profile-editor {
   display: flex;
@@ -180,26 +154,6 @@
 .profile-photo-preview.camera-active + .profile-photo-actions {
   animation: profile-controls-enter 420ms 120ms both;
 }
-.profile-modal:has(.profile-photo-preview.camera-active)
-  .profile-camera-status {
-  margin: 10px 0 14px !important;
-}
-.profile-name-section {
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
-}
-.profile-name-field {
-  display: block;
-  margin-bottom: 8px;
-  color: #c8bbd6;
-  font-size: 12px;
-}
-.profile-modal #profile-name {
-  width: 100%;
-}
-.profile-modal .modal-footer {
-  margin-top: 20px;
-}
 @keyframes profile-controls-enter {
   from {
     opacity: 0;
@@ -272,30 +226,13 @@
       width: min(70vw, 320px);
       height: min(70vw, 320px);
     }
-    .profile-modal {
-      padding: 20px 20px 0;
-    }
-    .profile-modal:has(.profile-photo-preview.camera-active) {
-      width: calc(100vw - 24px);
-    }
     .profile-photo-actions .button {
       flex: 1 1 130px;
     }
   }
-
-  .settings-page {
-    gap: 16px;
-  }
-  .settings-column {
-    gap: 16px;
-  }
-  .settings-card {
-    padding: 20px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .profile-modal,
   .profile-editor,
   .profile-photo-preview,
   .profile-camera-status {
@@ -348,128 +285,11 @@
     min-height: 40px;
     padding: 8px 12px;
   }
-  .settings-page-actions {
-    justify-content: flex-end;
-  }
-  .update-card,
-  .logs-card {
-    min-height: 0;
-  }
 }
 
 @media (max-width: 860px) {
-  .settings-main {
-    height: 100dvh;
-    min-height: 0;
-    overflow: hidden;
-  }
-  .settings-page {
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-    gap: 8px;
-  }
-  .settings-column {
-    gap: 8px;
-  }
-  .settings-card {
-    padding: 10px;
-    border-radius: 12px;
-  }
-  .settings-card h2 {
-    font-size: 15px;
-    line-height: 20px;
-    margin-bottom: 7px;
-  }
-  .settings-card p {
-    margin-bottom: 7px;
-    font-size: 11px;
-    line-height: 15px;
-  }
   .server-actions {
     margin-top: 8px;
-  }
-  .settings-page-actions {
-    gap: 6px;
-  }
-  .settings-page-actions .button {
-    min-height: 36px;
-    padding-inline: 9px;
-    font-size: 11px;
-  }
-}
-
-@media (max-height: 780px) {
-  .settings-main .page-heading {
-    margin-bottom: 12px;
-  }
-  .settings-page {
-    gap: 12px;
-  }
-  .settings-column {
-    gap: 10px;
-  }
-  .settings-card {
-    padding: 13px;
-  }
-  .settings-card h2 {
-    margin-bottom: 9px;
-  }
-  .settings-card p {
-    margin-bottom: 10px;
-    font-size: 12px;
-    line-height: 17px;
-  }
-  .transmission-settings > .quality-panel .quality-heading {
-    margin-bottom: 10px;
-  }
-  .transmission-settings .quality-controls {
-    gap: 10px 12px;
-  }
-  .transmission-settings .quality-field > label {
-    margin-bottom: 5px;
-  }
-  .transmission-settings .quality-field select,
-  .transmission-settings .budget-input {
-    height: 34px;
-  }
-}
-
-@media (max-height: 700px) {
-  .settings-main {
-    padding-block: 12px;
-  }
-  .settings-main .page-heading {
-    min-height: 38px;
-    margin-bottom: 8px;
-  }
-  .settings-main .page-heading h1 {
-    font-size: 22px;
-    line-height: 28px;
-  }
-  .settings-page {
-    gap: 8px;
-  }
-  .settings-column {
-    gap: 7px;
-  }
-  .settings-card {
-    padding: 10px;
-  }
-  .transmission-settings .quality-heading {
-    margin-bottom: 7px;
-  }
-  .transmission-settings .quality-heading p,
-  .transmission-settings .quality-help {
-    display: none;
-  }
-  .transmission-settings .quality-controls {
-    gap: 7px 9px;
-  }
-  .transmission-settings .quality-field select,
-  .transmission-settings .budget-input {
-    height: 31px;
-  }
-  .settings-page-actions .button {
-    min-height: 34px;
   }
 }
 

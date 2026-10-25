@@ -137,11 +137,11 @@ try {
   );
   // Resolution and frame rate are separate controls; the per-viewer default
   // follows the resolution profile.
-  await page.locator('#settings-quality-preset').selectOption('720p30');
+  await page.locator('#settings-quality-preset-720p30').check();
   await expect(page.locator('#settings-video-bitrate')).toHaveValue('4');
-  await page.locator('#settings-quality-preset').selectOption('1080p30');
-  await page.locator('#settings-fps').selectOption('120');
-  await expect(page.locator('#settings-fps')).toHaveValue('120');
+  await page.locator('#settings-quality-preset-1080p30').check();
+  await page.locator('#settings-fps-120').check();
+  await expect(page.locator('#settings-fps-120')).toBeChecked();
   await expect(page.locator('#settings-video-bitrate')).toHaveValue('8');
   await expect(page.locator('#settings-upload-budget')).toHaveAttribute(
     'max',
@@ -151,10 +151,10 @@ try {
     'max',
     '100',
   );
-  await page.locator('#settings-fps').selectOption('60');
-  await page.locator('#settings-fps').focus();
-  await page.locator('#settings-fps').selectOption('60');
-  await expect(page.locator('#settings-fps')).toHaveValue('60');
+  await page.locator('#settings-fps-60').check();
+  await page.locator('#settings-fps-60').focus();
+  await page.locator('#settings-fps-60').check();
+  await expect(page.locator('#settings-fps-60')).toBeChecked();
   await expect(page.locator('#settings-video-bitrate')).toHaveValue('8');
   await page.locator('#settings-video-bitrate').fill('24');
   await page.locator('#settings-video-bitrate').press('Tab');
@@ -173,7 +173,9 @@ try {
   checks.push(
     'Per-viewer bitrate and MB/s hint can be changed and returned to the profile default',
   );
-  await page.locator('.rail [data-action=room]').click();
+  await expect(page.locator('.rail')).toHaveCount(0);
+  await page.locator('[data-action=close-settings]').click();
+  await expect(page.locator('.rail [data-action=room]')).toBeVisible();
   await page.locator('.video-stage').hover();
   await page.locator('[data-action=show-diagnostics]').focus();
   await page.locator('[data-action=show-diagnostics]').click();

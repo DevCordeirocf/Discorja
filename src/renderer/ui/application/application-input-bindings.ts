@@ -29,6 +29,9 @@ export type ApplicationInputUpdate = Partial<{
 export interface ApplicationInputState {
   displayName: string;
   profileDraft: ProfileDraft;
+  /** Unsaved changes in Configurações; they show the save bar. */
+  profileDirty: boolean;
+  serverDirty: boolean;
   joinCode: string;
   room: { role: 'host' | 'viewer'; code: string } | null;
   systemAudioSupported: boolean;
@@ -71,39 +74,64 @@ export function bindApplicationInputEvents(options: {
     options.root.querySelector<HTMLInputElement>(field)?.focus();
     return true;
   };
+  /** Typing does not re-render, so the save bar and preview follow here. */
+  const syncSettingsChanges = (): void => {
+    const current = state();
+    const bar = options.root.querySelector<HTMLElement>('.settings-savebar');
+    if (bar) bar.hidden = !current.profileDirty && !current.serverDirty;
+    const name = current.profileDraft.name.trim();
+    for (const element of options.root.querySelectorAll(
+      '[data-profile-preview-name]',
+    ))
+      element.textContent = name || 'Seu nome';
+    for (const element of options.root.querySelectorAll(
+      '[data-profile-preview-initial], #profile-photo-fallback',
+    ))
+      element.textContent = name.charAt(0).toLocaleUpperCase('pt-BR') || '?';
+  };
+  /** Saves the profile draft; false when it is not ready or invalid. */
+  const saveProfile = (): boolean => {
+    if (processingPhoto) {
+      options.notify('Aguarde a foto terminar de carregar.', 'error');
+      return false;
+    }
+    const draft = state().profileDraft;
+    const name = draft.name.trim();
+    if (invalidName(name, '#profile-name')) return false;
+    options.saveDisplayName(name);
+    options.saveProfilePhoto(draft.photo);
+    options.updateRoomProfile(name, draft.photo);
+    options.updateState({
+      displayName: name,
+      profilePhoto: draft.photo,
+      profileDraft: null,
+      editingName: false,
+    });
+    options.render();
+    options.notify('Perfil atualizado.', 'success', true);
+    return true;
+  };
   bindFormEvents(options.root, {
     setDisplayName: (value) => options.updateState({ displayName: value }),
-    setProfileDraftName: (value) =>
-      options.updateState({ profileDraft: { name: value } }),
-    setSettingUrl: (value) => options.updateState({ settingUrl: value }),
+    setProfileDraftName: (value) => {
+      options.updateState({ profileDraft: { name: value } });
+      syncSettingsChanges();
+    },
+    setSettingUrl: (value) => {
+      options.updateState({ settingUrl: value });
+      syncSettingsChanges();
+    },
     setReceiveVolume: (value) => {
       const muted = value === 0;
       options.updateState({ receiveVolume: value, receiveMuted: muted });
       return muted;
     },
     updatePlayback: options.updatePlayback,
-    submitProfile: () => {
-      if (processingPhoto) {
-        options.notify('Aguarde a foto terminar de carregar.', 'error');
-        return;
-      }
-      const draft = state().profileDraft;
-      const name = draft.name.trim();
-      if (invalidName(name, '#profile-name')) return;
-      options.saveDisplayName(name);
-      options.saveProfilePhoto(draft.photo);
-      options.updateRoomProfile(name, draft.photo);
-      options.updateState({
-        displayName: name,
-        profilePhoto: draft.photo,
-        profileDraft: null,
-        editingName: false,
-        modal: null,
-      });
-      options.render();
-      options.notify('Perfil atualizado.', 'success', true);
+    submitSettings: () => {
+      const { profileDirty, serverDirty } = state();
+      if (profileDirty && !saveProfile()) return;
+      if (serverDirty) void options.saveSettings();
     },
-    submitSettings: () => void options.saveSettings(),
     changeSystemAudio: (enabled) => {
       options.updateState({
         includeSystemAudio: enabled && state().systemAudioSupported,
@@ -127,7 +155,7 @@ export function bindApplicationInputEvents(options: {
     onProcessing: (processing) => {
       processingPhoto = processing;
       const save = options.root.querySelector<HTMLButtonElement>(
-        '#profile-form button[type="submit"]',
+        '.settings-savebar button[type="submit"]',
       );
       if (save) save.disabled = processing;
     },
@@ -161,7 +189,7 @@ export function bindApplicationInputEvents(options: {
     render: options.render,
     focusSettings: () =>
       options.root
-        .querySelector<HTMLButtonElement>('[data-action=settings]')
+        .querySelector<HTMLButtonElement>('[data-action=toggle-profile-menu]')
         ?.focus(),
   });
   return { afterRender: camera.afterRender };

@@ -34,7 +34,8 @@ import type {
   LegacyRoomState,
 } from '../shared/protocol.js';
 
-type Protocol = 1 | 2 | 3 | 4 | 5;
+/** Rooms use up to 5; 6 is the group listing socket with photos. */
+type Protocol = 1 | 2 | 3 | 4 | 5 | 6;
 /** Groups one socket may follow, and distinct groups kept in memory. */
 const MAX_GROUPS_PER_SOCKET = 8;
 const MAX_GROUPS = 500;
@@ -243,15 +244,35 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     }));
     // People in the group's rooms count as online too: the app closes its
     // group listing while it shows a room. Nobody outside the group appears.
-    const online = [
-      ...new Set([
-        ...[...entry.subscribers].map((subscriber) =>
-          subscriber.groups.get(groupKey)!,
-        ),
-        ...open.flatMap((room) => members(room).map((member) => member.name)),
-      ]),
-    ].slice(0, 32);
-    return { type: 'group-state', groupKey, rooms: listed, online };
+    // Each name keeps the first photo found for it.
+    const people = new Map<string, string>();
+    for (const [name, photo] of [
+      ...[...entry.subscribers].map(
+        (subscriber) =>
+          [subscriber.groups.get(groupKey)!, subscriber.avatarId] as const,
+      ),
+      ...open.flatMap((room) =>
+        members(room).map((member) => [member.name, member.avatarId] as const),
+      ),
+    ])
+      if (!people.get(name)) people.set(name, photo);
+    const online = [...people.keys()].slice(0, 32);
+    return {
+      type: 'group-state',
+      groupKey,
+      rooms: listed,
+      online,
+      avatars: online.map((name) => people.get(name)!),
+    };
+  };
+  /** Photos in the listing are lobby protocol 6; older apps reject the field. */
+  const sendGroupState = (client: Client, message: ServerMessage) => {
+    if (message.type !== 'group-state' || client.protocol >= 6)
+      send(client, message);
+    else {
+      const { avatars: _avatars, ...listing } = message;
+      send(client, listing);
+    }
   };
   /** Coalesces bursts (join, publish, profile) into one listing per group. */
   const scheduleGroupState = (groupKey: string | undefined) => {
@@ -261,7 +282,8 @@ export function createSignalingServer(options: SignalingOptions = {}): {
       entry.timer = undefined;
       const message = groupState(groupKey);
       if (message)
-        for (const subscriber of entry.subscribers) send(subscriber, message);
+        for (const subscriber of entry.subscribers)
+          sendGroupState(subscriber, message);
     }, GROUP_STATE_DELAY_MS);
     entry.timer.unref();
   };
@@ -769,7 +791,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         roomId: client.room?.logId,
       });
       if (message.type === 'hello') {
-        if (client.room || ![2, 3, 4, 5].includes(message.protocol)) {
+        if (client.room || ![2, 3, 4, 5, 6].includes(message.protocol)) {
           error(
             client,
             'PROTOCOL_MISMATCH',
@@ -777,14 +799,72 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           );
           return;
         }
-        client.protocol = message.protocol as 2 | 3 | 4 | 5;
+        client.protocol = message.protocol as 2 | 3 | 4 | 5 | 6;
         // Groups belong to the newer protocol; leaving them keeps state consistent.
         if (client.protocol < 5)
           for (const groupKey of [...client.groups.keys()])
             unsubscribeGroup(client, groupKey);
         send(client, {
           type: 'hello',
-          protocol: message.protocol as 2 | 3 | 4 | 5,
+          protocol: message.protocol as 2 | 3 | 4 | 5 | 6,
+        });
+        return;
+      }
+      if (
+        message.type === 'set-group-profile' ||
+        message.type === 'get-group-avatar'
+      ) {
+        if (client.protocol < 6 || client.room) {
+          error(
+            client,
+            'PROTOCOL_MISMATCH',
+            'Fotos em "Online agora" usam a conexão de grupos.',
+          );
+          return;
+        }
+        if (message.type === 'set-group-profile') {
+          if (!consume(client.profiles, limits.socketProfiles)) {
+            error(
+              client,
+              'RATE_LIMITED',
+              'Aguarde um pouco antes de alterar o perfil de novo.',
+            );
+            return;
+          }
+          const avatar = acceptAvatar(message.avatar, 5);
+          if (client.avatar === avatar) return;
+          setAvatar(client, avatar);
+          for (const groupKey of client.groups.keys())
+            scheduleGroupState(groupKey);
+          return;
+        }
+        // Only someone following the group gets photos of who is in it.
+        const entry = client.groups.has(message.groupKey)
+          ? groups.get(message.groupKey)
+          : undefined;
+        const owner = entry
+          ? [
+              ...entry.subscribers,
+              ...[...entry.rooms]
+                .filter((room) => rooms.get(room.code) === room)
+                .flatMap(members),
+            ].find(
+              (person) =>
+                person.avatarId === message.avatarId && !!person.avatar,
+            )
+          : undefined;
+        // Like get-avatar, anything unexpected is silently dropped.
+        if (
+          !owner ||
+          client.socket.bufferedAmount > AVATAR_BUFFER_LIMIT ||
+          !consume(client.avatarRequests, limits.socketAvatars)
+        )
+          return;
+        send(client, {
+          type: 'group-avatar',
+          groupKey: message.groupKey,
+          avatarId: owner.avatarId,
+          avatar: owner.avatar,
         });
         return;
       }
@@ -834,8 +914,17 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         client.groups.set(message.groupKey, message.name);
         entry.subscribers.add(client);
         const listing = groupState(message.groupKey);
-        if (listing) send(client, listing);
+        if (listing) sendGroupState(client, listing);
         scheduleGroupState(message.groupKey);
+        return;
+      }
+      // The group listing socket never joins rooms; rooms stay on protocol 5.
+      if (client.protocol > 5) {
+        error(
+          client,
+          'PROTOCOL_MISMATCH',
+          'Esta conexão serve apenas para grupos.',
+        );
         return;
       }
       if (message.type === 'resume-room') {

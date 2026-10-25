@@ -1,5 +1,5 @@
 export type QualityPresetId = '720p30' | '1080p30' | '1080p60' | '1080p120';
-export type FrameRate = 30 | 45 | 60 | 70 | 90 | 120;
+export type FrameRate = 30 | 60 | 75 | 90 | 120;
 export type ContentMode = 'motion' | 'detail';
 
 export interface StreamPreferences {
@@ -45,9 +45,22 @@ export const QUALITY_PRESETS = {
   },
 } as const;
 
-export const FRAME_RATE_OPTIONS: readonly FrameRate[] = [
-  30, 45, 60, 70, 90, 120,
-];
+export const FRAME_RATE_OPTIONS: readonly FrameRate[] = [30, 60, 75, 90, 120];
+
+/** Rates offered before 0.12; saved values move to the closest current option. */
+const LEGACY_FRAME_RATES: Readonly<Record<number, FrameRate>> = {
+  45: 30,
+  70: 75,
+};
+
+function normalizeFrameRate(value: unknown): FrameRate | undefined {
+  if (typeof value !== 'number') return undefined;
+  if (FRAME_RATE_OPTIONS.includes(value as FrameRate))
+    return value as FrameRate;
+  return Object.hasOwn(LEGACY_FRAME_RATES, value)
+    ? LEGACY_FRAME_RATES[value]
+    : undefined;
+}
 
 export const DEFAULT_STREAM_PREFERENCES: StreamPreferences = {
   preset: '720p30',
@@ -61,11 +74,9 @@ export function normalizePreferences(input: unknown): StreamPreferences {
     input && typeof input === 'object'
       ? (input as Partial<StreamPreferences>)
       : {};
+  const fps = normalizeFrameRate(value.fps);
   return {
-    ...(typeof value.fps === 'number' &&
-    FRAME_RATE_OPTIONS.includes(value.fps as FrameRate)
-      ? { fps: value.fps as FrameRate }
-      : {}),
+    ...(fps ? { fps } : {}),
     ...(typeof value.videoBitrateMbps === 'number' &&
     Number.isFinite(value.videoBitrateMbps) &&
     value.videoBitrateMbps > 0

@@ -94,7 +94,7 @@ async function join(viewer: Peer, code: string, name = 'Amigo') {
   return viewer.next('room-joined');
 }
 
-async function modern(url: string, protocol: 2 | 3 | 4 | 5 = 2) {
+async function modern(url: string, protocol: 2 | 3 | 4 | 5 | 6 = 2) {
   const peer = await connect(url);
   peer.send({ type: 'hello', protocol });
   expect(await peer.next('hello')).toEqual({ type: 'hello', protocol });
@@ -1567,6 +1567,137 @@ describe('Grupos no protocolo 5', () => {
     owner.send({ type: 'close-room' });
     while (listing.rooms.length) listing = await friend.next('group-state');
     expect(listing.online).toEqual(['Bia']);
+  });
+});
+
+describe('Fotos em "Online agora" no protocolo 6 do lobby', () => {
+  const groupKey = 'c'.repeat(64);
+  const wait = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+  async function listingWith(
+    peer: Peer,
+    predicate: (value: MessageOf<'group-state'>) => boolean,
+  ) {
+    for (let index = 0; index < 20; index++) {
+      const value = await peer.next('group-state');
+      if (predicate(value)) return value;
+    }
+    throw new Error('Listagem esperada não recebida.');
+  }
+
+  it('lista a foto de quem está online e entrega a imagem a quem segue o grupo', async () => {
+    const { url } = await start();
+    const avatar = gifAvatar();
+    const bia = await modern(url, 6);
+    bia.send({ type: 'set-group-profile', avatar });
+    bia.send({ type: 'subscribe-group', groupKey, name: 'Bia' });
+    const own = await bia.next('group-state');
+    expect(own.online).toEqual(['Bia']);
+    expect(own.avatars![0]).toMatch(/^[a-f0-9]{16}$/);
+
+    const caio = await modern(url, 6);
+    caio.send({ type: 'subscribe-group', groupKey, name: 'Caio' });
+    const listing = await caio.next('group-state');
+    expect(listing.online).toEqual(['Bia', 'Caio']);
+    expect(listing.avatars).toEqual([own.avatars![0], '']);
+    caio.send({
+      type: 'get-group-avatar',
+      groupKey,
+      avatarId: own.avatars![0],
+    });
+    expect(await caio.next('group-avatar')).toEqual({
+      type: 'group-avatar',
+      groupKey,
+      avatarId: own.avatars![0],
+      avatar,
+    });
+
+    // Apps that only speak protocol 5 keep receiving the old listing shape.
+    const old = await modern(url, 5);
+    old.send({ type: 'subscribe-group', groupKey, name: 'Ana' });
+    expect(await old.next('group-state')).not.toHaveProperty('avatars');
+
+    bia.send({ type: 'set-group-profile', avatar: '' });
+    const cleared = await listingWith(caio, (value) => !value.avatars![0]);
+    expect(cleared.avatars).toEqual(['', '', '']);
+  });
+
+  it('entrega a foto de quem está numa sala do grupo', async () => {
+    const { url } = await start();
+    const avatar = gifAvatar(32, 32);
+    const owner = await modern(url, 5);
+    owner.send({ type: 'create-room', name: 'Ana', groupKey, avatar });
+    await state(owner, (value) => value.reason === 'created');
+    const friend = await modern(url, 6);
+    friend.send({ type: 'subscribe-group', groupKey, name: 'Bia' });
+    const listing = await listingWith(friend, (value) =>
+      value.online.includes('Ana'),
+    );
+    const avatarId = listing.avatars![listing.online.indexOf('Ana')];
+    expect(avatarId).toMatch(/^[a-f0-9]{16}$/);
+    friend.send({ type: 'get-group-avatar', groupKey, avatarId });
+    expect((await friend.next('group-avatar')).avatar).toBe(avatar);
+  });
+
+  it('não entrega fotos a quem não segue o grupo ou pede outro identificador', async () => {
+    const { url } = await start();
+    const bia = await modern(url, 6);
+    bia.send({ type: 'set-group-profile', avatar: gifAvatar() });
+    bia.send({ type: 'subscribe-group', groupKey, name: 'Bia' });
+    const avatarId = (await bia.next('group-state')).avatars![0];
+    const stranger = await modern(url, 6);
+    stranger.send({ type: 'get-group-avatar', groupKey, avatarId });
+    stranger.send({
+      type: 'subscribe-group',
+      groupKey: 'd'.repeat(64),
+      name: 'X',
+    });
+    await stranger.next('group-state');
+    stranger.send({
+      type: 'get-group-avatar',
+      groupKey: 'd'.repeat(64),
+      avatarId,
+    });
+    bia.send({ type: 'get-group-avatar', groupKey, avatarId: '0'.repeat(16) });
+    await wait(150);
+    expect(
+      [...stranger.inbox, ...bia.inbox].some(
+        (message) => message.type === 'group-avatar',
+      ),
+    ).toBe(false);
+  });
+
+  it('exige o protocolo 6, valida a imagem e não abre salas nessa conexão', async () => {
+    const { url } = await start();
+    const old = await modern(url, 5);
+    old.send({ type: 'set-group-profile', avatar: gifAvatar() });
+    expect(await old.next('error')).toMatchObject({
+      code: 'PROTOCOL_MISMATCH',
+    });
+    const lobby = await modern(url, 6);
+    lobby.send({ type: 'set-group-profile', avatar: gifAvatar(300, 300) });
+    expect(await lobby.next('error')).toMatchObject({
+      code: 'INVALID_MESSAGE',
+    });
+    lobby.send({ type: 'create-room', name: 'Ana', groupKey });
+    expect(await lobby.next('error')).toMatchObject({
+      code: 'PROTOCOL_MISMATCH',
+    });
+    lobby.send({ type: 'join-room', code: 'ABCDEFGH', name: 'Ana' });
+    expect(await lobby.next('error')).toMatchObject({
+      code: 'PROTOCOL_MISMATCH',
+    });
+  });
+
+  it('limita trocas de foto seguidas', async () => {
+    const { url } = await start();
+    const lobby = await modern(url, 6);
+    for (let index = 0; index < 7; index++)
+      lobby.send({
+        type: 'set-group-profile',
+        avatar: index % 2 ? gifAvatar() : '',
+      });
+    expect(await lobby.next('error')).toMatchObject({ code: 'RATE_LIMITED' });
   });
 });
 

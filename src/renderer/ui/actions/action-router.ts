@@ -23,6 +23,7 @@ import { handleNavigationAction } from './navigation-actions';
 import { enterRoomFullscreen } from '../media/media-playback';
 import type { AppPage } from '../../views/design';
 import type { AppModal } from '../../views/modals';
+import type { SettingsSection } from '../../views/settings-view';
 
 export interface ActionRouterState {
   api: DiscorjaAPI | undefined;
@@ -67,6 +68,7 @@ export function bindActionRouter(
     setActivePage(page: AppPage): void;
     setPreviousPage(page: AppPage): void;
     setModal(value: AppModal): void;
+    setSettingsSection(value: SettingsSection): void;
     clearSwitchTarget(): void;
     setReturnFocusAction(value: string): void;
     setEditingName(value: boolean): void;
@@ -138,6 +140,7 @@ export function bindActionRouter(
     if (
       handleNavigationAction({
         action: button.dataset.action,
+        section: button.dataset.section,
         busy: !!state.busy,
         hasRoom: !!state.room,
         activePage: state.activePage,
@@ -146,6 +149,7 @@ export function bindActionRouter(
         setActivePage: actions.setActivePage,
         setPreviousPage: actions.setPreviousPage,
         setModal: actions.setModal,
+        setSettingsSection: actions.setSettingsSection,
         clearSwitchTarget: actions.clearSwitchTarget,
         setReturnFocusAction: actions.setReturnFocusAction,
         setEditingName: actions.setEditingName,
@@ -155,11 +159,19 @@ export function bindActionRouter(
         dismissUpdate: actions.dismissUpdate,
         confirmSwitch: actions.confirmSwitch,
         focusDisplayName: () =>
-          root.querySelector<HTMLInputElement>('#display-name')?.focus(),
+          root.querySelector<HTMLInputElement>('#profile-name')?.focus(),
+        focusSettingsSection: (section) =>
+          root
+            .querySelector<HTMLButtonElement>(
+              `[data-action="settings-section"][data-section="${section}"]`,
+            )
+            ?.focus(),
         render: actions.render,
         focusSettings: () =>
           root
-            .querySelector<HTMLButtonElement>('[data-action=settings]')
+            .querySelector<HTMLButtonElement>(
+              '[data-action=toggle-profile-menu]',
+            )
             ?.focus(),
       })
     )

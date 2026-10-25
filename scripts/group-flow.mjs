@@ -149,13 +149,17 @@ export async function ensureWatching(page) {
   await expect(idle).toHaveCount(0);
 }
 
-/** Opens Configurações through the profile menu. */
-export async function openSettings(page) {
+/** Opens Configurações through the profile menu, optionally on a section. */
+export async function openSettings(page, section) {
   const toggle = page.locator('[data-action=toggle-profile-menu]');
   if ((await toggle.getAttribute('aria-expanded')) !== 'true')
     await toggle.click();
   await page.locator('.profile-menu [data-action=settings]').click();
   await expect(page.locator('[data-action=close-settings]')).toBeVisible();
+  if (section)
+    await page
+      .locator(`[data-action=settings-section][data-section=${section}]`)
+      .click();
 }
 
 /**

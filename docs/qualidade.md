@@ -63,7 +63,7 @@ Os resultados e limites da execução desta versão estão em [validação local
 | 1080p · 60 FPS  | 1920 × 1080, até 60 FPS     | 12 Mbps                     | Movimento, quando fonte, computador e rede sustentarem. |
 | 1080p · 120 FPS | 1920 × 1080, até 120 FPS    | 30 Mbps                     | Alta fluidez, com fonte e hardware compatíveis.         |
 
-Esses valores são decisões do Discorja, não requisitos mínimos universais de banda. O padrão é 720p/30 FPS, conteúdo com detalhes e adaptação habilitada. O orçamento total padrão é 100 Mbps, editável entre 4 e 500 Mbps; ajuste-o ao upload real disponível e deixe folga para o restante da conexão.
+Em Configurações › Transmissão, a resolução (720p ou 1080p) e os quadros por segundo (30, 60, 75, 90 ou 120 QPS) são escolhidos separadamente. Preferências salvas antes da 0.12 com 45 ou 70 QPS passam para 30 e 75 QPS, respectivamente. Esses valores são decisões do Discorja, não requisitos mínimos universais de banda. O padrão é 720p/30 FPS, conteúdo com detalhes e adaptação habilitada. O orçamento total padrão é 100 Mbps, editável entre 4 e 500 Mbps; ajuste-o ao upload real disponível e deixe folga para o restante da conexão.
 
 O aplicativo solicita para cada envio o menor teto entre o perfil e sua parcela do orçamento total. Com quatro espectadores em 1080p/60 FPS e orçamento de 40 Mbps, a parcela inicial é de até 10 Mbps por pessoa, em vez de quatro envios de 12 Mbps. A adaptação pode reduzir cada envio abaixo dessa parcela. O orçamento não mede a velocidade contratada e não reserva banda no roteador.
 

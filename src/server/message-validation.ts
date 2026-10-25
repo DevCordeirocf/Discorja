@@ -124,6 +124,22 @@ export function parseClientMessage(value: unknown): ClientMessage | undefined {
       )
         return { type: 'unsubscribe-group', groupKey: value.groupKey };
       break;
+    case 'set-group-profile':
+      if (exactKeys(value, ['type', 'avatar']) && profileAvatar(value.avatar))
+        return { type: 'set-group-profile', avatar: value.avatar };
+      break;
+    case 'get-group-avatar':
+      if (
+        exactKeys(value, ['type', 'groupKey', 'avatarId']) &&
+        validGroupKey(value.groupKey) &&
+        validAvatarId(value.avatarId)
+      )
+        return {
+          type: 'get-group-avatar',
+          groupKey: value.groupKey,
+          avatarId: value.avatarId,
+        };
+      break;
     case 'create-room':
       if (
         exactKeys(

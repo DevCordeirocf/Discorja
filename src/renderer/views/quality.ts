@@ -14,10 +14,88 @@ export interface QualityPanelView {
   status: string;
 }
 
+/** One row of mutually exclusive choices; each option is a real radio input. */
+function segmented(
+  id: string,
+  labelId: string,
+  options: Array<{ value: string; label: string; checked: boolean }>,
+  disabled: boolean,
+): string {
+  return `<div id="${id}" class="segmented" role="radiogroup" aria-labelledby="${labelId}">${options
+    .map(
+      (option) =>
+        `<label class="segmented-option"><input class="segmented-input" type="radio" id="${id}-${option.value}" name="${id}" value="${option.value}" ${option.checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span>${option.label}</span></label>`,
+    )
+    .join('')}</div>`;
+}
+
+const row = (copy: string, control: string, extra = ''): string =>
+  `<div class="settings-row ${extra}"><div class="settings-row-copy">${copy}</div><div class="settings-row-control">${control}</div></div>`;
+
+/** Configurações › Transmissão. Changes apply right away, as before. */
 export function renderQualityPanel(view: QualityPanelView): string {
   const selected = view.pendingPreferences ?? view.preferences;
   const disabled = view.disabled || view.applying;
-  return `<section class="quality-panel" aria-labelledby="quality-heading"><div class="quality-heading"><div><h2 id="quality-heading">Qualidade da transmissão</h2><p>Defina a resolução e os quadros por segundo. A entrega real aparece nas medições.</p></div><span class="quality-state">${view.applying ? '<span class="spinner"></span> Aplicando' : view.sharing ? 'Ajuste sem parar' : 'Antes de começar'}</span></div>
-  <div class="quality-controls"><div class="quality-field"><label for="quality-preset">Qualidade da imagem</label><select id="quality-preset" ${disabled ? 'disabled' : ''}><option value="720p30" ${selected.preset.startsWith('720p') ? 'selected' : ''}>720p · 1280 × 720</option><option value="1080p30" ${selected.preset.startsWith('1080p') ? 'selected' : ''}>1080p · 1920 × 1080</option></select></div><div class="quality-field"><label for="fps">Quadros por segundo (QPS)</label><select id="fps" ${disabled ? 'disabled' : ''}>${FRAME_RATE_OPTIONS.map((fps) => `<option value="${fps}" ${(selected.fps ?? QUALITY_PRESETS[selected.preset].fps) === fps ? 'selected' : ''}>${fps} QPS</option>`).join('')}</select></div><div class="quality-field"><label for="content-mode">O que vai aparecer?</label><select id="content-mode" ${disabled ? 'disabled' : ''}><option value="detail" ${selected.content === 'detail' ? 'selected' : ''}>Textos e detalhes</option><option value="motion" ${selected.content === 'motion' ? 'selected' : ''}>Vídeos e jogos</option></select></div><div class="quality-field"><label for="preferred-codec">Formato na próxima transmissão</label><select id="preferred-codec" ${disabled ? 'disabled' : ''}>${['auto', 'H264', 'VP8', 'VP9', 'AV1'].map((codec) => `<option value="${codec}" ${(selected.preferredCodec ?? 'auto') === codec ? 'selected' : ''}>${codec === 'auto' ? 'Automático' : codec}</option>`).join('')}</select></div><label class="adaptive-control" for="adaptive-quality"><input id="adaptive-quality" type="checkbox" ${selected.adaptive ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>Ajustar à conexão</strong><small>Reduz quando necessário e recupera aos poucos.</small></span></label><div class="quality-field budget-field"><label for="upload-budget">Limite total de envio · até 500 Mbps</label><div class="budget-input"><input id="upload-budget" type="number" min="4" max="500" step="1" inputmode="numeric" value="${selected.maxUploadMbps}" aria-describedby="upload-budget-help" ${disabled ? 'disabled' : ''}><span>Mbps</span></div></div><div class="quality-field bitrate-field"><label for="video-bitrate">Teto por espectador · até 100 Mbps</label><div class="budget-input"><input id="video-bitrate" type="number" min="1" max="100" step="1" value="${selected.videoBitrateMbps ?? QUALITY_PRESETS[selected.preset].bitrate / 1_000_000}" aria-describedby="video-bitrate-help" ${disabled ? 'disabled' : ''}><span>Mbps</span></div><small id="video-bitrate-help">${selected.videoBitrateMbps ? 'Personalizado' : 'Padrão do perfil'} · ${((selected.videoBitrateMbps ?? QUALITY_PRESETS[selected.preset].bitrate / 1_000_000) / 8).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} MB/s por espectador, no máximo.</small></div></div>
-  <p id="upload-budget-help" class="quality-help">O limite total é dividido entre espectadores. O QPS real depende da tela, do computador e da rede.</p><p class="quality-status" role="status">${escape(view.status)}</p></section>`;
+  const profile = QUALITY_PRESETS[selected.preset];
+  const fps = selected.fps ?? profile.fps;
+  const bitrate = selected.videoBitrateMbps ?? profile.bitrate / 1_000_000;
+  const is1080 = selected.preset.startsWith('1080p');
+  return `<section class="settings-section transmission-settings" aria-labelledby="settings-quality-heading"><header class="settings-section-heading"><div><h2 id="settings-quality-heading">Transmissão</h2><p>Metas de qualidade para a sua tela. A entrega real depende da máquina e da rede.</p></div><span class="settings-pill">${view.applying ? '<span class="spinner"></span> Aplicando' : view.sharing ? 'Ajuste sem parar' : 'Antes de começar'}</span></header>
+  <h3 class="settings-group-title">Imagem</h3><div class="settings-group">${row(
+    `<span id="settings-quality-preset-label" class="settings-row-title">Resolução</span><small>${is1080 ? '1920 × 1080' : '1280 × 720'}</small>`,
+    segmented(
+      'settings-quality-preset',
+      'settings-quality-preset-label',
+      [
+        { value: '720p30', label: '720p', checked: !is1080 },
+        { value: '1080p30', label: '1080p', checked: is1080 },
+      ],
+      disabled,
+    ),
+  )}${row(
+    '<span id="settings-fps-label" class="settings-row-title">Quadros por segundo</span><small>Mais QPS deixa o movimento mais suave.</small>',
+    segmented(
+      'settings-fps',
+      'settings-fps-label',
+      FRAME_RATE_OPTIONS.map((option) => ({
+        value: String(option),
+        label: String(option),
+        checked: option === fps,
+      })),
+      disabled,
+    ),
+  )}${row(
+    '<span id="settings-content-mode-label" class="settings-row-title">O que vai aparecer?</span><small>Prioriza nitidez ou fluidez.</small>',
+    segmented(
+      'settings-content-mode',
+      'settings-content-mode-label',
+      [
+        {
+          value: 'detail',
+          label: 'Textos e detalhes',
+          checked: selected.content === 'detail',
+        },
+        {
+          value: 'motion',
+          label: 'Vídeos e jogos',
+          checked: selected.content === 'motion',
+        },
+      ],
+      disabled,
+    ),
+  )}${row(
+    '<label class="settings-row-title" for="settings-preferred-codec">Formato de vídeo</label><small>Vale a partir da próxima transmissão.</small>',
+    `<select id="settings-preferred-codec" class="settings-select" ${disabled ? 'disabled' : ''}>${['auto', 'H264', 'VP8', 'VP9', 'AV1'].map((codec) => `<option value="${codec}" ${(selected.preferredCodec ?? 'auto') === codec ? 'selected' : ''}>${codec === 'auto' ? 'Automático' : codec}</option>`).join('')}</select>`,
+  )}</div>
+  <h3 class="settings-group-title">Rede</h3><div class="settings-group">${row(
+    '<label class="settings-row-title" for="settings-adaptive-quality">Ajustar à conexão</label><small>Reduz quando necessário e recupera aos poucos.</small>',
+    `<input id="settings-adaptive-quality" class="switch" type="checkbox" role="switch" ${selected.adaptive ? 'checked' : ''} ${disabled ? 'disabled' : ''}>`,
+  )}${row(
+    '<label class="settings-row-title" for="settings-upload-budget">Limite total de envio</label><small id="settings-upload-budget-help">Dividido entre os espectadores · até 500 Mbps.</small>',
+    `<div class="budget-input"><input id="settings-upload-budget" type="number" min="4" max="500" step="1" inputmode="numeric" value="${selected.maxUploadMbps}" aria-describedby="settings-upload-budget-help" ${disabled ? 'disabled' : ''}><span>Mbps</span></div>`,
+  )}${row(
+    `<label class="settings-row-title" for="settings-video-bitrate">Teto por espectador</label><small id="settings-video-bitrate-help">${selected.videoBitrateMbps ? 'Personalizado' : 'Padrão do perfil'} · ${(bitrate / 8).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} MB/s por espectador, no máximo · até 100 Mbps.</small>`,
+    `<div class="budget-input"><input id="settings-video-bitrate" type="number" min="1" max="100" step="1" value="${bitrate}" aria-describedby="settings-video-bitrate-help" ${disabled ? 'disabled' : ''}><span>Mbps</span></div>`,
+  )}</div>
+  <p class="quality-status" role="status">${escape(view.status)}</p></section>`;
 }

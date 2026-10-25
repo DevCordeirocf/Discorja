@@ -12,6 +12,12 @@ export type SignalPayload =
 export const ROOM_PROTOCOL_VERSION = 5;
 /** Protocols this app offers, newest first, so older servers still work. */
 export const CLIENT_PROTOCOLS: readonly number[] = [ROOM_PROTOCOL_VERSION, 4];
+/**
+ * The group listing socket only: 6 adds photos to "Online agora". Rooms stay
+ * on 5, and older servers answer 6 with PROTOCOL_MISMATCH, so 5 is offered next.
+ */
+export const LOBBY_PROTOCOL_VERSION = 6;
+export const LOBBY_PROTOCOLS: readonly number[] = [LOBBY_PROTOCOL_VERSION, 5];
 export interface RoomParticipant {
   peerId: string;
   name: string;
@@ -109,6 +115,9 @@ export type ClientMessage =
   | { type: 'get-avatar'; peerId: string; avatarId: string }
   | { type: 'subscribe-group'; groupKey: string; name: string }
   | { type: 'unsubscribe-group'; groupKey: string }
+  /** Lobby protocol 6: the photo shown in "Online agora"; '' removes it. */
+  | { type: 'set-group-profile'; avatar: string }
+  | { type: 'get-group-avatar'; groupKey: string; avatarId: string }
   | { type: 'join-room'; code: string; name: string; avatar?: string }
   | { type: 'update-profile'; name: string; avatar: string }
   | { type: 'signal'; peerId: string; signal: SignalPayload }
@@ -118,7 +127,7 @@ export type ClientMessage =
   | { type: 'leave-room' };
 
 export type ServerMessage =
-  | { type: 'hello'; protocol: 2 | 3 | 4 | 5 }
+  | { type: 'hello'; protocol: 2 | 3 | 4 | 5 | 6 }
   | {
       type: 'participant-avatar';
       peerId: string;
@@ -130,6 +139,14 @@ export type ServerMessage =
       groupKey: string;
       rooms: GroupRoom[];
       online: string[];
+      /** Lobby protocol 6: avatarId for each name in `online`, '' without photo. */
+      avatars?: string[];
+    }
+  | {
+      type: 'group-avatar';
+      groupKey: string;
+      avatarId: string;
+      avatar: string;
     }
   | {
       type: 'stream-signal';

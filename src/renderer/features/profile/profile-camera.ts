@@ -39,7 +39,11 @@ export function bindProfileCamera(options: {
     const capture = options.root.querySelector<HTMLButtonElement>(
       '[data-action="profile-capture"]',
     );
-    if (capture) capture.disabled = !active;
+    // "Tirar foto" only exists while the camera is open.
+    if (capture) {
+      capture.disabled = !active;
+      capture.hidden = !active;
+    }
     const stop = options.root.querySelector<HTMLButtonElement>(
       '[data-action="profile-stop-camera"]',
     );

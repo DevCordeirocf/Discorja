@@ -13,6 +13,7 @@ import {
 import type { AppModal } from '../../views/modals';
 import type { ChangelogEntry } from '../../features/whats-new/changelog';
 import type { AppPage } from '../../views/design';
+import type { SettingsSection } from '../../views/settings-view';
 import type { AppViewState } from './app-views';
 import { createAppViews } from './app-views';
 import {
@@ -60,6 +61,9 @@ export interface ApplicationViewReadContext {
   selectedSource: string;
   sourcePage: 'screen' | 'window';
   page: AppPage;
+  previousPage: AppPage;
+  settingsSection: SettingsSection;
+  settingsDirty: boolean;
   notice: ApplicationRenderState['notice'];
   updateDismissed: boolean;
   updatePrompted: boolean;
@@ -102,12 +106,10 @@ function toAppViewState(state: ApplicationViewReadContext): AppViewState {
     config: state.config,
     serverUrl: state.serverUrl,
     connected: !!state.room,
-    settingsDisabled:
-      !state.apiAvailable ||
-      !state.loaded ||
-      busy ||
-      state.applyingPreferences ||
-      (!!state.room && state.room.role !== 'host'),
+    settingsSection: state.settingsSection,
+    settingsBackTo:
+      state.previousPage === 'room' && state.room ? 'room' : 'home',
+    settingsDirty: state.settingsDirty,
     saving: state.busy === 'settings',
     testing: state.testingConnection,
     connectionStatus: state.room

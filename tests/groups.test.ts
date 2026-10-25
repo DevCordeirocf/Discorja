@@ -89,17 +89,19 @@ describe('grupos salvos no aplicativo', () => {
 });
 
 describe('lobby de grupos', () => {
-  function fakeLobby(connect: () => Promise<number>) {
+  function fakeLobby(connect: LobbyConnection['connect'], photo = '') {
     const sent: unknown[] = [];
     let deliver: (message: ServerMessage) => void = () => undefined;
     const statuses: string[] = [];
     const onListing = vi.fn();
+    const onAvatar = vi.fn();
     const lobby = createGroupLobby({
       getSignalingUrl: () => 'wss://exemplo.test',
       getName: () => 'Bia',
+      getPhoto: () => photo,
       onListing,
+      onAvatar,
       onStatus: (status) => statuses.push(status),
-      warmUp: async () => true,
       createConnection: (_url, onMessage): LobbyConnection => {
         deliver = onMessage;
         return {
@@ -114,6 +116,7 @@ describe('lobby de grupos', () => {
       sent,
       statuses,
       onListing,
+      onAvatar,
       deliver: (message: ServerMessage) => deliver(message),
     };
   }
@@ -137,6 +140,7 @@ describe('lobby de grupos', () => {
     expect(fake.onListing).toHaveBeenCalledWith(key, {
       rooms: [],
       online: ['Bia'],
+      avatars: [''],
     });
     fake.lobby.setKeys([]);
     expect(fake.sent.at(-1)).toEqual({
@@ -145,6 +149,85 @@ describe('lobby de grupos', () => {
     });
     fake.lobby.setActive(false);
     expect(fake.lobby.status).toBe('idle');
+  });
+
+  it('com o protocolo 6 envia a foto antes de seguir o grupo e busca as fotos', async () => {
+    const key = 'a'.repeat(64);
+    const photo = 'data:image/jpeg;base64,/9j/4AAQSkZJRgAB';
+    const connect = vi.fn<LobbyConnection['connect']>(async () => 6);
+    const fake = fakeLobby(connect, photo);
+    fake.lobby.setKeys([key]);
+    fake.lobby.setActive(true);
+    await tick();
+    expect(connect.mock.calls[0]![0].protocols).toEqual([6, 5]);
+    expect(fake.sent).toEqual([
+      { type: 'set-group-profile', avatar: photo },
+      { type: 'subscribe-group', groupKey: key, name: 'Bia' },
+    ]);
+    fake.deliver({
+      type: 'group-state',
+      groupKey: key,
+      rooms: [],
+      online: ['Bia', 'Caio'],
+      avatars: ['0123456789abcdef', ''],
+    });
+    expect(fake.onListing).toHaveBeenCalledWith(key, {
+      rooms: [],
+      online: ['Bia', 'Caio'],
+      avatars: ['0123456789abcdef', ''],
+    });
+    fake.lobby.requestAvatar(key, '0123456789abcdef');
+    // Only groups this app follows are asked about.
+    fake.lobby.requestAvatar('b'.repeat(64), '0123456789abcdef');
+    expect(fake.sent.at(-1)).toEqual({
+      type: 'get-group-avatar',
+      groupKey: key,
+      avatarId: '0123456789abcdef',
+    });
+    expect(fake.sent).toHaveLength(3);
+    const avatar = {
+      type: 'group-avatar' as const,
+      groupKey: key,
+      avatarId: '0123456789abcdef',
+      avatar: photo,
+    };
+    fake.deliver(avatar);
+    expect(fake.onAvatar).toHaveBeenCalledWith(avatar);
+    fake.lobby.refreshProfile();
+    expect(fake.sent.slice(3)).toEqual([
+      { type: 'set-group-profile', avatar: photo },
+      { type: 'subscribe-group', groupKey: key, name: 'Bia' },
+    ]);
+    fake.lobby.setActive(false);
+  });
+
+  it('com servidor no protocolo 5 não envia nem pede fotos', async () => {
+    const key = 'a'.repeat(64);
+    const fake = fakeLobby(
+      async () => 5,
+      'data:image/jpeg;base64,/9j/4AAQSkZJRgAB',
+    );
+    fake.lobby.setKeys([key]);
+    fake.lobby.setActive(true);
+    await tick();
+    fake.lobby.requestAvatar(key, '0123456789abcdef');
+    fake.lobby.refreshProfile();
+    expect(fake.sent).toEqual([
+      { type: 'subscribe-group', groupKey: key, name: 'Bia' },
+      { type: 'subscribe-group', groupKey: key, name: 'Bia' },
+    ]);
+    fake.lobby.setActive(false);
+  });
+
+  it('não envia uma foto em formato inválido', async () => {
+    const fake = fakeLobby(async () => 6, 'data:image/png;base64,AAAA');
+    fake.lobby.setKeys(['a'.repeat(64)]);
+    fake.lobby.setActive(true);
+    await tick();
+    expect(fake.sent).toEqual([
+      { type: 'subscribe-group', groupKey: 'a'.repeat(64), name: 'Bia' },
+    ]);
+    fake.lobby.setActive(false);
   });
 
   it('avisa quando o servidor é antigo', async () => {
@@ -156,6 +239,75 @@ describe('lobby de grupos', () => {
     fake.lobby.setActive(true);
     await tick();
     expect(fake.lobby.status).toBe('unsupported');
+  });
+
+  it('acorda o servidor pelo próprio WebSocket e tenta de novo logo', async () => {
+    vi.useFakeTimers();
+    try {
+      let release: (protocol: number) => void = () => undefined;
+      const connect = vi
+        .fn<LobbyConnection['connect']>()
+        .mockImplementationOnce(() => Promise.reject(new Error('tempo')))
+        .mockImplementationOnce(
+          () => new Promise((resolve) => (release = resolve)),
+        );
+      const fake = fakeLobby(connect);
+      fake.lobby.setActive(true);
+      // The first attempt waits for a sleeping server instead of 10 s.
+      expect(connect.mock.calls[0]![0]).toEqual({
+        protocols: [6, 5],
+        timeoutMs: 20_000,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fake.lobby.status).toBe('waking');
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(connect).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(connect).toHaveBeenCalledTimes(2);
+      release(5);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fake.lobby.status).toBe('online');
+      expect(fake.statuses).not.toContain('offline');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('mostra que está acordando quando a resposta demora', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = fakeLobby(() => new Promise(() => undefined));
+      fake.lobby.setActive(true);
+      await vi.advanceTimersByTimeAsync(1_499);
+      expect(fake.lobby.status).toBe('connecting');
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fake.lobby.status).toBe('waking');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('desacelera as tentativas depois da janela de despertar', async () => {
+    vi.useFakeTimers();
+    try {
+      const connect = vi.fn<LobbyConnection['connect']>(() =>
+        Promise.reject(new Error('fora do ar')),
+      );
+      const fake = fakeLobby(connect);
+      fake.lobby.setActive(true);
+      await vi.advanceTimersByTimeAsync(90_000);
+      // Every 2 s while waking: at most 30 connections per minute.
+      expect(connect.mock.calls.length).toBeLessThanOrEqual(46);
+      expect(fake.lobby.status).toBe('offline');
+      const before = connect.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(connect.mock.calls.length - before).toBeLessThanOrEqual(1);
+      // Later attempts use the normal timeout.
+      expect(connect.mock.calls.at(-1)![0]).toEqual({ protocols: [6, 5] });
+      fake.lobby.setActive(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -175,13 +327,14 @@ describe('início com grupos', () => {
   ): Parameters<typeof renderGroupHome>[0] => ({
     groups: [group],
     selected: group,
-    listing: { rooms: [room], online: ['Ana', 'Caio'] },
+    listing: { rooms: [room], online: ['Ana', 'Caio'], avatars: ['', ''] },
     status: 'online',
     draftName: '',
     draftInvite: '',
     leaving: null,
     addTab: 'join',
     liveGroups: [group.secret],
+    onlinePhotos: ['', ''],
     enabled: true,
     displayName: 'Ana',
     currentRoomCode: null,
@@ -213,11 +366,24 @@ describe('início com grupos', () => {
         listing: {
           rooms: [{ ...room, participants: 10, maxParticipants: 10 }],
           online: [],
+          avatars: [],
         },
       }),
     );
     expect(full).toMatch(
       /data-action="join-group-room"[^>]*disabled>Sala cheia/u,
+    );
+  });
+
+  it('mostra a foto em "Online agora" quando ela chega e a inicial antes', () => {
+    const html = renderGroupHome(
+      view({ onlinePhotos: ['blob:discorja/"x"', ''] }),
+    );
+    expect(html).toContain(
+      '<span class="stack-avatar has-photo" aria-hidden="true"><img src="blob:discorja/&quot;x&quot;" alt=""></span>Ana',
+    );
+    expect(html).toMatch(
+      /<span class="stack-avatar tone-1" aria-hidden="true">C<\/span>Caio/u,
     );
   });
 

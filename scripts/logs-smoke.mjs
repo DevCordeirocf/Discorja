@@ -128,7 +128,7 @@ try {
     powerMonitor.emit('suspend');
     powerMonitor.emit('resume');
   });
-  await openSettings(page);
+  await openSettings(page, 'diagnostico');
   await application.evaluate(({ dialog }, target) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: target });
   }, exportPath);
@@ -174,7 +174,7 @@ try {
   await application.close();
   application = undefined;
   page = await launch();
-  await openSettings(page);
+  await openSettings(page, 'diagnostico');
   await application.evaluate(({ dialog }, target) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: target });
   }, exportPath);

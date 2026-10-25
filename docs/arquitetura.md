@@ -1,8 +1,12 @@
 # Arquitetura e privacidade
 
+## Fotos no lobby na 0.12.0
+
+A conexão de grupos do Início negocia o protocolo 6 (recuando para o 5 com servidores antigos) apenas para trazer fotos em "Online agora": o app envia sua foto uma vez por conexão (`set-group-profile`), a listagem leva só `avatarId` e cada imagem é buscada sob demanda (`get-group-avatar`) e conferida pelo hash, como nas salas. As salas continuam no protocolo 5. Detalhes em [salas.md](salas.md).
+
 ## Protocolo 5 na 0.11.0
 
-Fotos de perfil deixam de viajar dentro de cada `room-state`: o snapshot leva só `avatarId` e a imagem é buscada uma vez (`get-avatar`) e guardada como `blob:` no renderer. Grupos usam uma conexão de "lobby" separada, aberta apenas enquanto o Início está na tela; o servidor indexa salas por `groupKey` em memória e nunca recebe o segredo do convite. Quedas curtas da sinalização não fecham conexões WebRTC saudáveis em salas multi-tela: só os links quebrados são renegociados após a retomada. Antes de abrir o WebSocket, o app consulta `/health` por até 60 s para acordar servidores gratuitos suspensos. Detalhes e matriz de compatibilidade em [salas.md](salas.md).
+Fotos de perfil deixam de viajar dentro de cada `room-state`: o snapshot leva só `avatarId` e a imagem é buscada uma vez (`get-avatar`) e guardada como `blob:` no renderer. Grupos usam uma conexão de "lobby" separada, aberta apenas enquanto o Início está na tela; o servidor indexa salas por `groupKey` em memória e nunca recebe o segredo do convite. Quedas curtas da sinalização não fecham conexões WebRTC saudáveis em salas multi-tela: só os links quebrados são renegociados após a retomada. O lobby abre o WebSocket direto, e é ele que acorda servidores gratuitos suspensos: a primeira tentativa espera até 20 s, e as falhas são repetidas a cada 2 s por até 90 s (no máximo 30 conexões por minuto). Uma queda depois de conectado reabre essa janela, pois o servidor gratuito pode ter adormecido. Passada a janela sem sucesso, as tentativas espaçam para 2, 5, 10 e 30 s. A conexão de sala ainda consulta `/health` por até 60 s antes de abrir o WebSocket. Detalhes e matriz de compatibilidade em [salas.md](salas.md).
 
 ## Consolidação na 0.8.0
 

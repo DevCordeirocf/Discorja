@@ -6,6 +6,7 @@ import {
 import {
   captureConstraints,
   DEFAULT_STREAM_PREFERENCES,
+  FRAME_RATE_OPTIONS,
   normalizePreferences,
   QUALITY_PRESETS,
 } from '../src/shared/quality';
@@ -60,6 +61,15 @@ describe('preferências e limites de qualidade', () => {
     expect(normalizePreferences({ maxUploadMbps: 800 }).maxUploadMbps).toBe(
       500,
     );
+  });
+  it('oferece 30, 60, 75, 90 e 120 QPS e migra valores antigos salvos', () => {
+    expect(FRAME_RATE_OPTIONS).toEqual([30, 60, 75, 90, 120]);
+    for (const fps of FRAME_RATE_OPTIONS)
+      expect(normalizePreferences({ fps }).fps).toBe(fps);
+    expect(normalizePreferences({ fps: 45 }).fps).toBe(30);
+    expect(normalizePreferences({ fps: 70 }).fps).toBe(75);
+    for (const invalid of [0, 15, 144, NaN, '60', 'constructor'])
+      expect(normalizePreferences({ fps: invalid }).fps).toBeUndefined();
   });
   it('define tetos concretos de captura e bitrate para cada preset', () => {
     expect(QUALITY_PRESETS['720p30'].bitrate).toBe(4_000_000);

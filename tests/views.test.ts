@@ -5,6 +5,8 @@ import { renderDiagnostics } from '../src/renderer/views/diagnostics';
 import { renderSingleRoom } from '../src/renderer/views/single-room';
 import { renderSidebar, type RailGroup } from '../src/renderer/views/design';
 import { renderAppShell } from '../src/renderer/views/app-shell';
+import { renderSettingsView } from '../src/renderer/views/settings-view';
+import { renderProfileSettings } from '../src/renderer/views/profile-settings';
 
 const rail = (
   overrides: Partial<Parameters<typeof renderSidebar>[0]> = {},
@@ -77,7 +79,7 @@ describe('templates da interface', () => {
     expect(open).not.toContain('<Luís>');
   });
 
-  it('mostra o título só em Configurações', () => {
+  it('mostra Configurações sem a lateral de grupos', () => {
     const shell = (page: 'home' | 'settings') =>
       renderAppShell({
         page,
@@ -89,12 +91,94 @@ describe('templates da interface', () => {
         room: '',
         modal: '',
       });
-    expect(shell('home')).not.toContain('class="page-heading"');
-    expect(shell('settings')).toContain('<h1>Configurações</h1>');
     expect(shell('home')).toContain('class="app-shell has-rail"');
+    expect(shell('home')).toContain('<aside class="rail">');
+    expect(shell('settings')).toContain('class="app-shell no-rail"');
+    expect(shell('settings')).not.toContain('<aside class="rail">');
   });
 
-  it('mostra os perfis disponíveis e escapa a mensagem de estado', () => {
+  it('organiza Configurações em seções e destaca o caminho de volta', () => {
+    const view = (
+      overrides: Partial<Parameters<typeof renderSettingsView>[0]> = {},
+    ) =>
+      renderSettingsView({
+        section: 'transmissao',
+        config: {
+          signalingUrl: 'wss://servidor.exemplo',
+          iceServers: [],
+          version: '0.12.0',
+          updatesConfigured: true,
+          systemAudioSupported: true,
+        },
+        update: { status: 'idle' },
+        serverUrl: 'wss://servidor.exemplo',
+        connected: false,
+        saving: false,
+        testing: false,
+        connectionStatus: 'Não testado',
+        backTo: 'home',
+        dirty: false,
+        qualityControls: '<p>qualidade</p>',
+        profileControls: '<p>perfil</p>',
+        ...overrides,
+      });
+    const html = view();
+    expect(html).toContain('data-action="close-settings"');
+    expect(html).toContain('Voltar ao Início');
+    expect(view({ backTo: 'room' })).toContain('Voltar à sala');
+    for (const section of [
+      'perfil',
+      'transmissao',
+      'conexao',
+      'atualizacoes',
+      'diagnostico',
+    ])
+      expect(html).toContain(`data-section="${section}"`);
+    expect(html).toContain('data-section="transmissao" aria-current="page"');
+    expect(html).toContain('<p>qualidade</p>');
+    expect(html).not.toContain('<p>perfil</p>');
+    expect(view({ section: 'perfil' })).toContain('<p>perfil</p>');
+    expect(html).toMatch(/class="settings-savebar"[^>]*hidden/);
+    expect(view({ dirty: true })).not.toMatch(
+      /class="settings-savebar"[^>]*hidden/,
+    );
+    const server = view({ section: 'conexao', serverUrl: '"><x>' });
+    expect(server).toContain('&quot;&gt;&lt;x&gt;');
+    expect(view({ section: 'conexao', connected: true })).toContain(
+      'Saia da sala para alterar o servidor.',
+    );
+    const updates = view({
+      section: 'atualizacoes',
+      update: { status: 'available', version: '0.13.0' },
+    });
+    expect(updates).toContain('data-action="download-update"');
+    expect(updates).toContain('aria-label="Atualização disponível"');
+    expect(view({ section: 'diagnostico' })).toContain(
+      'data-action="export-logs"',
+    );
+  });
+
+  it('edita o perfil em Configurações e escapa nome e foto', () => {
+    const html = renderProfileSettings({
+      name: '<Luís>',
+      photo: 'data:image/png;base64,"x',
+    });
+    expect(html).toContain('id="profile-photo-preview"');
+    expect(html).toContain('data-action="profile-choose-photo"');
+    expect(html).toContain('Escolher mídia');
+    expect(html).toContain(
+      'data-action="profile-capture" disabled hidden>Tirar foto',
+    );
+    expect(html).toContain('data-action="profile-remove-photo"');
+    expect(html).toContain('value="&lt;Luís&gt;"');
+    expect(html).not.toContain('<Luís>');
+    expect(html).toContain('&quot;x');
+    const empty = renderProfileSettings({ name: '', photo: '' });
+    expect(empty).not.toContain('data-action="profile-remove-photo"');
+    expect(empty).toContain('Seu nome');
+  });
+
+  it('mostra QPS e resolução como escolhas e escapa a mensagem de estado', () => {
     const html = renderQualityPanel({
       preferences: { ...DEFAULT_STREAM_PREFERENCES, preset: '1080p120' },
       pendingPreferences: null,
@@ -104,12 +188,16 @@ describe('templates da interface', () => {
       status: '<falha>',
     });
 
-    expect(html).toContain('value="1080p30" selected');
-    expect(html).toContain('value="120" selected>120 QPS</option>');
-    expect(html).toContain('&lt;falha&gt;');
-    expect(html).not.toContain(
-      '<p class="quality-status" role="status"><falha>',
+    expect(html).toContain(
+      'id="settings-quality-preset-1080p30" name="settings-quality-preset" value="1080p30" checked',
     );
+    for (const fps of [30, 60, 75, 90, 120])
+      expect(html).toContain(`id="settings-fps-${fps}"`);
+    expect(html).not.toContain('id="settings-fps-45"');
+    expect(html).toContain('value="120" checked');
+    expect(html).toContain('role="switch"');
+    expect(html).toContain('&lt;falha&gt;');
+    expect(html).not.toContain('<falha>');
   });
 
   it('renderiza diagnóstico de anfitrião vazio e escapa nomes de espectadores', () => {

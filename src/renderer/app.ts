@@ -14,6 +14,7 @@ import { type FilteredAudioPipeline } from './media/audio-capture';
 import { createPreferenceStore } from './state/preference-store';
 import { renderSidebar, type AppPage } from './views/design';
 import { type AppModal } from './views/modals';
+import { type SettingsSection } from './views/settings-view';
 import { createAppSettingsController } from './features/settings/app-controller';
 import { liveAudioTracks as liveAudio, stopTracks } from './features/capture';
 import { createAppCaptureController } from './features/capture/app-controller';
@@ -122,7 +123,7 @@ let config: AppConfig = {
 let loaded = !api;
 let displayName = preferenceStore.displayName();
 let profilePhoto = preferenceStore.profilePhoto();
-// Profile changes stay here until "Salvar perfil"; closing the modal drops them.
+// Profile changes stay here until saved; leaving Configurações drops them.
 let profileDraft: { name: string; photo: string } | null = null;
 const currentProfileDraft = () =>
   profileDraft ?? { name: displayName, photo: profilePhoto };
@@ -144,6 +145,7 @@ let joinCode = '';
 let settingUrl = config.signalingUrl;
 let activePage: AppPage = 'home';
 let previousPage: AppPage = 'home';
+let settingsSection: SettingsSection = 'transmissao';
 let sidebarCollapsed = preferenceStore.sidebarCollapsed();
 let testingConnection = false;
 let connectionCheck = '';
@@ -879,6 +881,9 @@ const appViewController = createApplicationViewBindings({
     selectedSource,
     sourcePage,
     page: activePage,
+    previousPage,
+    settingsSection,
+    settingsDirty: profileDirty() || serverDirty(),
     notice,
     updateDismissed,
     updatePrompted,
@@ -976,6 +981,19 @@ const { toggleSidebar, testConnection } = createInterfaceActions({
   }),
 });
 
+/** Unsaved edits in Configurações › Perfil. */
+function profileDirty(): boolean {
+  return (
+    !!profileDraft &&
+    (profileDraft.name !== displayName || profileDraft.photo !== profilePhoto)
+  );
+}
+
+/** A server address typed but not saved; it can only change outside a room. */
+function serverDirty(): boolean {
+  return !room && settingUrl.trim() !== config.signalingUrl;
+}
+
 function updateRoomProfile(name: string, photo: string): void {
   if (!room || (roomState?.protocol ?? 0) < 4) return;
   const epoch = sessionEpoch;
@@ -1008,6 +1026,8 @@ const groups = createGroupsFeature({
   storage: persistentStorage,
   getSignalingUrl: () => config.signalingUrl,
   getDisplayName: () => displayName,
+  getProfilePhoto: () => profilePhoto,
+  reducedMotion: () => matchMedia('(prefers-reduced-motion: reduce)').matches,
   render,
   notify: (message, kind) => notify(message, kind),
   copyInvite: async (invite) => {
@@ -1121,6 +1141,12 @@ bindExtraActions(root, {
     modal = null;
     render();
   },
+  'discard-settings': () => {
+    profileDraft = null;
+    settingUrl = config.signalingUrl;
+    connectionCheck = '';
+    render();
+  },
 });
 
 /** Closes the open menu on a click outside it or on an item that acts. */
@@ -1142,7 +1168,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 function render(): void {
-  if (modal !== 'profile') profileDraft = null;
+  if (activePage !== 'settings') profileDraft = null;
   checkWhatsNew();
   if (groupsReady) groups.setVisible(activePage === 'home');
   appViewController.render();
@@ -1195,6 +1221,7 @@ bindAppActionRouter({
     if ('activePage' in patch) activePage = patch.activePage!;
     if ('previousPage' in patch) previousPage = patch.previousPage!;
     if ('modal' in patch) modal = patch.modal!;
+    if ('settingsSection' in patch) settingsSection = patch.settingsSection!;
     if ('switchTarget' in patch) switchTarget = patch.switchTarget!;
     if ('returnFocusAction' in patch)
       returnFocusAction = patch.returnFocusAction!;
@@ -1214,6 +1241,8 @@ bindAppActionRouter({
   getState: () => ({
     displayName,
     profileDraft: currentProfileDraft(),
+    profileDirty: profileDirty(),
+    serverDirty: serverDirty(),
     joinCode,
     room,
     systemAudioSupported: config.systemAudioSupported,
@@ -1224,8 +1253,12 @@ bindAppActionRouter({
     sourcePage,
   }),
   updateState: (patch) => {
+    const profileChanged =
+      ('displayName' in patch && patch.displayName !== displayName) ||
+      ('profilePhoto' in patch && patch.profilePhoto !== profilePhoto);
     if ('displayName' in patch) displayName = patch.displayName!;
     if ('profilePhoto' in patch) profilePhoto = patch.profilePhoto!;
+    if (profileChanged) groups.refreshProfile();
     if ('profileDraft' in patch)
       profileDraft = patch.profileDraft
         ? { ...currentProfileDraft(), ...patch.profileDraft }

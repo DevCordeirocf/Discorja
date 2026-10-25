@@ -1,6 +1,7 @@
 import type { StorageLike } from '../../state/preference-store';
 import { createGroupStore, type StoredGroup } from '../../state/group-store';
 import { MAX_LOCAL_GROUPS } from '../../../shared/groups';
+import { createAvatarCache } from '../profile/avatar-cache';
 import {
   createGroupSecret,
   deriveGroupKey,
@@ -27,12 +28,17 @@ export interface GroupsViewState {
   addTab: 'join' | 'create';
   /** Secrets of the groups with at least one live screen, for the side bar. */
   liveGroups: string[];
+  /** Photo URL for each name in `listing.online`; '' shows the initial. */
+  onlinePhotos: string[];
 }
 
 export interface GroupsFeatureOptions {
   storage?: StorageLike;
   getSignalingUrl(): string;
   getDisplayName(): string;
+  /** The saved photo, shared with the groups in "Online agora". */
+  getProfilePhoto?(): string;
+  reducedMotion?(): boolean;
   render(): void;
   notify(message: string, kind?: 'error' | 'info' | 'success'): void;
   copyInvite(invite: string): Promise<void>;
@@ -55,9 +61,22 @@ export function createGroupsFeature(options: GroupsFeatureOptions) {
   let leavingSecret: string | null = null;
   let addTab: 'join' | 'create' = 'join';
 
+  // Photos of "Online agora", fetched once per avatarId and checked by hash.
+  const photos = createAvatarCache({
+    request: (groupKey, avatarId) => lobby.requestAvatar(groupKey, avatarId),
+    onChange: () => options.render(),
+    reducedMotion: () => options.reducedMotion?.() ?? false,
+  });
   const lobby = createGroupLobby({
     getSignalingUrl: options.getSignalingUrl,
     getName: options.getDisplayName,
+    getPhoto: () => options.getProfilePhoto?.() ?? '',
+    onAvatar: (photo) =>
+      void photos.receive({
+        peerId: photo.groupKey,
+        avatarId: photo.avatarId,
+        avatar: photo.avatar,
+      }),
     onListing: (groupKey, listing) => {
       listings.set(groupKey, listing);
       options.render();
@@ -121,10 +140,17 @@ export function createGroupsFeature(options: GroupsFeatureOptions) {
         groups[0] ??
         null;
       const key = selected ? keys.get(selected.secret) : undefined;
+      const listing = key ? (listings.get(key) ?? null) : null;
       return {
         groups,
         selected,
-        listing: key ? (listings.get(key) ?? null) : null,
+        listing,
+        // Photos are only requested while the listing connection is up.
+        onlinePhotos: (listing?.avatars ?? []).map((avatarId) =>
+          key && avatarId && status === 'online'
+            ? (photos.urlFor(key, avatarId) ?? '')
+            : '',
+        ),
         status,
         draftName,
         draftInvite,
@@ -138,6 +164,10 @@ export function createGroupsFeature(options: GroupsFeatureOptions) {
           })
           .map((group) => group.secret),
       };
+    },
+    /** Shares a saved name or photo with the groups. */
+    refreshProfile(): void {
+      lobby.refreshProfile();
     },
     /** The lobby only runs while the Início page is on screen. */
     setVisible(visible: boolean): void {

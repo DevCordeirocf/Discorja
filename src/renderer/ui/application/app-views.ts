@@ -10,7 +10,11 @@ import type { PeerMetrics, StreamPreferences } from '../../../shared/quality';
 import { renderDiagnostics } from '../../views/diagnostics';
 import { renderModal, type AppModal } from '../../views/modals';
 import { renderQualityPanel } from '../../views/quality';
-import { renderSettingsView } from '../../views/settings-view';
+import { renderProfileSettings } from '../../views/profile-settings';
+import {
+  renderSettingsView,
+  type SettingsSection,
+} from '../../views/settings-view';
 import { renderSingleRoom } from '../../views/single-room';
 import { renderStage } from '../../views/stage';
 import { patchMetrics } from '../../features/quality';
@@ -56,7 +60,9 @@ export interface AppViewState {
   config: AppConfig;
   serverUrl: string;
   connected: boolean;
-  settingsDisabled: boolean;
+  settingsSection: SettingsSection;
+  settingsBackTo: 'room' | 'home';
+  settingsDirty: boolean;
   saving: boolean;
   testing: boolean;
   connectionStatus: string;
@@ -146,27 +152,32 @@ export function createAppViews(deps: {
     },
     renderSettingsPage: () => {
       const s = state();
-      const qualityControls = renderQualityPanel({
-        preferences: s.preferences,
-        pendingPreferences: s.pendingPreferences,
-        disabled: s.disabled,
-        applying: s.applyingPreferences,
-        sharing: s.sharing,
-        status: s.qualityStatus,
-      }).replace(
-        /(id|for|aria-labelledby|aria-describedby)="(quality-heading|quality-preset|fps|content-mode|preferred-codec|adaptive-quality|upload-budget(?:-help)?|video-bitrate(?:-help)?)/g,
-        (_, attribute: string, id: string) => `${attribute}="settings-${id}`,
-      );
       return renderSettingsView({
+        section: s.settingsSection,
         config: s.config,
         update: s.update,
         serverUrl: s.serverUrl,
         connected: s.connected,
-        disabled: s.settingsDisabled,
         saving: s.saving,
         testing: s.testing,
         connectionStatus: s.connectionStatus,
-        qualityControls,
+        backTo: s.settingsBackTo,
+        dirty: s.settingsDirty,
+        qualityControls:
+          s.settingsSection === 'transmissao'
+            ? renderQualityPanel({
+                preferences: s.preferences,
+                pendingPreferences: s.pendingPreferences,
+                disabled: s.disabled,
+                applying: s.applyingPreferences,
+                sharing: s.sharing,
+                status: s.qualityStatus,
+              })
+            : '',
+        profileControls:
+          s.settingsSection === 'perfil'
+            ? renderProfileSettings(s.profileDraft)
+            : '',
       });
     },
     renderRoom: () => {
@@ -204,8 +215,6 @@ export function createAppViews(deps: {
       const s = state();
       return renderModal({
         modal: s.modal,
-        displayName: s.profileDraft.name,
-        profilePhoto: s.profileDraft.photo,
         isRoomOwner: s.isRoomOwner,
         update: s.update,
         version: s.config.version,

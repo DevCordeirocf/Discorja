@@ -243,11 +243,13 @@ async function chooseQuality(page, preset) {
   if (!(await page.locator('#settings-quality-preset').count()))
     await openSettings(page);
   const { resolution, fps } = QUALITY[preset];
-  await expect(page.locator('#settings-quality-preset')).toBeEnabled();
-  await page.locator('#settings-quality-preset').selectOption(resolution);
-  await expect(page.locator('#settings-fps')).toBeEnabled();
-  await page.locator('#settings-fps').selectOption(fps);
-  await expect(page.locator('#settings-fps')).toHaveValue(fps);
+  await expect(
+    page.locator(`#settings-quality-preset-${resolution}`),
+  ).toBeEnabled();
+  await page.locator(`#settings-quality-preset-${resolution}`).check();
+  await expect(page.locator(`#settings-fps-${fps}`)).toBeEnabled();
+  await page.locator(`#settings-fps-${fps}`).check();
+  await expect(page.locator(`#settings-fps-${fps}`)).toBeChecked();
   await page.locator('[data-action=close-settings]').click();
 }
 
@@ -367,7 +369,7 @@ try {
     }),
   );
   await expect(host.getByRole('dialog')).toHaveCount(0);
-  await openSettings(host);
+  await openSettings(host, 'atualizacoes');
   await host.locator('[data-action=install-update]').click();
   await expect(
     host.getByRole('heading', { name: 'Atualização pronta' }),
@@ -415,7 +417,7 @@ try {
   await host.locator('[data-action=close-settings]').click();
   await chooseQuality(host, '1080p60');
   await openSettings(host);
-  await host.locator('#settings-content-mode').selectOption('motion');
+  await host.locator('#settings-content-mode-motion').check();
   await host.locator('[data-action=close-settings]').click();
   await host.locator('[data-action=choose-source]').click();
   await expect(
@@ -559,8 +561,8 @@ try {
     });
     if (preset === '1080p30') {
       await openSettings(host);
-      await host.locator('#settings-content-mode').selectOption('detail');
-      await expect(host.locator('#settings-content-mode')).toBeEnabled();
+      await host.locator('#settings-content-mode-detail').check();
+      await expect(host.locator('#settings-content-mode-detail')).toBeEnabled();
       await host.locator('[data-action=close-settings]').click();
       recordQuality({
         profile: '1080p30-detail',
@@ -568,8 +570,8 @@ try {
         receiver: await collectQuality(viewer),
       });
       await openSettings(host);
-      await host.locator('#settings-content-mode').selectOption('motion');
-      await expect(host.locator('#settings-content-mode')).toBeEnabled();
+      await host.locator('#settings-content-mode-motion').check();
+      await expect(host.locator('#settings-content-mode-motion')).toBeEnabled();
       await host.locator('[data-action=close-settings]').click();
     }
     assert.equal(
@@ -617,7 +619,7 @@ try {
   checks.push(
     'A 24Mbps per-viewer video ceiling applies to real RTP parameters and returns to the profile default without restarting capture',
   );
-  await host.locator('.quality-panel').screenshot({
+  await host.locator('.transmission-settings').screenshot({
     path: 'test-results/quality-controls.png',
   });
   await host.locator('[data-action=close-settings]').click();

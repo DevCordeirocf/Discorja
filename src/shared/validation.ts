@@ -97,7 +97,7 @@ export function isServerMessage(v: unknown): v is ServerMessage {
     case 'hello':
       return (
         keys(v, ['type', 'protocol']) &&
-        [2, 3, 4, 5].includes(Number(v.protocol))
+        [2, 3, 4, 5, 6].includes(Number(v.protocol))
       );
     case 'participant-avatar':
       return (
@@ -107,13 +107,25 @@ export function isServerMessage(v: unknown): v is ServerMessage {
         profileAvatar(v.avatar) &&
         v.avatar !== ''
       );
+    case 'group-avatar':
+      return (
+        keys(v, ['type', 'groupKey', 'avatarId', 'avatar']) &&
+        groupKey(v.groupKey) &&
+        avatarId(v.avatarId) &&
+        profileAvatar(v.avatar) &&
+        v.avatar !== ''
+      );
     case 'group-state':
       return (
-        keys(v, ['type', 'groupKey', 'rooms', 'online']) &&
+        keys(v, ['type', 'groupKey', 'rooms', 'online'], ['avatars']) &&
         groupKey(v.groupKey) &&
         Array.isArray(v.online) &&
         v.online.length <= 32 &&
         v.online.every((entry) => name(entry)) &&
+        (v.avatars === undefined ||
+          (Array.isArray(v.avatars) &&
+            v.avatars.length === v.online.length &&
+            v.avatars.every((entry) => entry === '' || avatarId(entry)))) &&
         Array.isArray(v.rooms) &&
         v.rooms.length <= 20 &&
         v.rooms.every(

@@ -1,5 +1,24 @@
 # Salas, participantes e permissões
 
+## Versão 0.12.0: fotos em "Online agora" (protocolo 6 do lobby)
+
+Só a conexão do Início (lobby de grupos) passa a oferecer o protocolo 6, com recuo para o 5 (`hello 6` → `PROTOCOL_MISMATCH` → `hello 5`). As salas continuam no protocolo 5, e o servidor recusa `create-room`, `join-room` e `resume-room` numa conexão que negociou o 6.
+
+| Mensagem                                    | Direção              | Regras                                                                                                                                          |
+| ------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `set-group-profile {avatar}`                | app → servidor       | Protocolo 6, fora de sala. Mesmo formato e checagem das fotos do protocolo 5; `''` remove a foto. Limite de 6 por minuto.                       |
+| `group-state {..., avatars[]}`              | servidor → inscritos | Só para conexões no protocolo 6: um `avatarId` (ou `''`) para cada nome de `online[]`, na mesma ordem. O protocolo 5 não recebe o campo.        |
+| `get-group-avatar {groupKey, avatarId}`     | app → servidor       | Só de quem segue o grupo; a foto precisa ser de alguém inscrito no grupo ou numa sala aberta dele. Pedidos inválidos são ignorados, até 40/min. |
+| `group-avatar {groupKey, avatarId, avatar}` | servidor → app       | O app confere o hash antes de mostrar a imagem.                                                                                                 |
+
+O app envia a foto salva antes de seguir os grupos e a reenvia, junto com o nome, quando o perfil é salvo. Quem está numa sala do grupo aparece com a foto usada na sala.
+
+| App ↔ servidor       | Resultado                                                                   |
+| -------------------- | --------------------------------------------------------------------------- |
+| 0.11 ↔ servidor 0.12 | Protocolo 5 no Início, sem fotos em "Online agora"; o resto continua igual. |
+| 0.12 ↔ servidor 0.11 | O Início negocia o 5 e mostra só as iniciais.                               |
+| 0.12 ↔ servidor 0.12 | Fotos em "Online agora", inclusive de quem está numa sala do grupo.         |
+
 ## Versão 0.11.0: protocolo 5, grupos e fotos animadas
 
 O aplicativo oferece o protocolo 5 e, se o servidor for antigo, negocia o 4 na mesma conexão (`hello 5` → `PROTOCOL_MISMATCH` → `hello 4`). A retomada sempre usa o protocolo da sala.

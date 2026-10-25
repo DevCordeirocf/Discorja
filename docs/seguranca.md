@@ -1,5 +1,10 @@
 # Segurança e operação sem serviços pagos
 
+## Fotos em "Online agora" — 0.12.0
+
+- A foto do lobby passa pela mesma validação das fotos do protocolo 5 (formato, bytes iniciais e tamanho) e só é guardada em memória enquanto a conexão do Início está aberta. O servidor entrega uma imagem somente a quem segue o grupo e somente se ela pertencer a alguém inscrito no grupo ou numa sala aberta dele; pedidos fora disso são ignorados, com limite de 40 por minuto e de 6 trocas de foto por minuto. O app confere o hash antes de exibir. Fotos e chaves não entram nos logs.
+- Uma conexão que negociou o protocolo 6 não pode criar, entrar ou retomar salas.
+
 ## Protocolo 5, grupos e painel — 0.11.0
 
 - **Fotos:** o tipo é conferido pelos bytes iniciais (JPEG, GIF, WebP) no app e no servidor, e GIF/WebP acima de 256 × 256 px são recusados, limitando o custo de decodificação. O servidor calcula o `avatarId`; o app só usa a imagem se o hash conferir. A CSP do renderer passou a aceitar `img-src blob:` para exibir as fotos guardadas em memória; scripts continuam restritos a `'self'`. A conversão de GIF usa `gifenc` (MIT, sem dependências), empacotado no renderer.
