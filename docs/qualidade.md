@@ -28,7 +28,7 @@ Cada pessoa recebe no máximo uma publicação. Cartões sem vídeo evitam downl
 
 ## Áudio na versão 0.4.0
 
-Som do computador opcional, com limite solicitado de 128 kbps por espectador e reserva de 160 kbps por conexão com áudio antes do orçamento de vídeo. O orçamento mantém 15% de folga. A negociação fica com o navegador, sem alterações manuais de SDP. Microfone e câmera continuam bloqueados.
+Som do computador opcional, com limite solicitado de 128 kbps por espectador e reserva de 160 kbps por conexão com áudio antes do orçamento de vídeo. O orçamento mantém 15% de folga. A negociação fica com o navegador, sem alterações manuais de SDP. O microfone continua bloqueado; a câmera serve só para a foto de perfil e não ocupa banda da transmissão.
 
 Vídeo e áudio usam o mesmo stream e conexão para sincronização pelo WebRTC. Silenciar o envio mantém a captura; encerrar o áudio libera a track sem interromper o vídeo. O diagnóstico inclui bitrate, jitter, perda, amostras ocultadas e buffer médio quando disponíveis. Esses números não certificam sincronização labial ou ausência de cortes.
 

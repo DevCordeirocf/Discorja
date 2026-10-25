@@ -2,7 +2,7 @@
 
 ## O que o Discorja oferece
 
-O anfitrião pode compartilhar vídeo com o som do computador. O modo padrão captura o loopback geral do Windows. Há também a opção **Excluir o áudio do Discord da transmissão**, que usa a captura nativa por processo do Windows para remover o aplicativo Discord e seus processos filhos, mantendo a call audível localmente. São reconhecidos Discord, Discord PTB e Discord Canary; mantenha apenas uma instância aberta. Microfone e câmera continuam negados.
+O anfitrião pode compartilhar vídeo com o som do computador. O modo padrão captura o loopback geral do Windows. Há também a opção **Excluir o áudio do Discord da transmissão**, que usa a captura nativa por processo do Windows para remover o aplicativo Discord e seus processos filhos, mantendo a call audível localmente. São reconhecidos Discord, Discord PTB e Discord Canary; mantenha apenas uma instância aberta. O microfone continua negado. A câmera é usada apenas para tirar a foto de perfil e não participa do áudio nem da transmissão.
 
 Ao desenvolver ou empacotar no Windows, `npm run audio:build` compila o helper com Visual Studio Build Tools gratuito e a carga **Desenvolvimento para desktop com C++**. `npm run dist:win` e `npm run pack:win` fazem essa compilação automaticamente e incluem o executável no pacote. Quem instala o Discorja não precisa instalar ferramentas de desenvolvimento.
 

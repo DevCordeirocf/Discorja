@@ -152,15 +152,15 @@ Variáveis de ambiente de endpoint prevalecem sobre o valor salvo ao iniciar. `.
 
 Escolher uma janela ou monitor concede aos participantes acesso ao conteúdo visível naquela fonte. Revise a prévia e feche informações privadas antes de iniciar. Um espectador pode registrar o conteúdo com ferramentas próprias; o aplicativo não consegue impedir isso.
 
-O som opcional do computador usa o loopback do Windows; a opção de exclusão do Discord troca essa faixa por captura WASAPI do áudio do sistema excluindo a árvore de processos do aplicativo Discord. O helper envia PCM localmente ao renderer, que o adapta a uma faixa WebRTC; não grava o conteúdo nem silencia a reprodução local. A captura só começa por ação do anfitrião. Se a API nativa falhar, o app permanece em vídeo sem áudio. Microfone e câmera continuam negados; ver [áudio e Discord](audio.md).
+O som opcional do computador usa o loopback do Windows; a opção de exclusão do Discord troca essa faixa por captura WASAPI do áudio do sistema excluindo a árvore de processos do aplicativo Discord. O helper envia PCM localmente ao renderer, que o adapta a uma faixa WebRTC; não grava o conteúdo nem silencia a reprodução local. A captura só começa por ação do anfitrião. Se a API nativa falhar, o app permanece em vídeo sem áudio. O microfone continua negado; ver [áudio e Discord](audio.md). A câmera só é liberada, sem áudio, depois que a pessoa clica em **Abrir câmera** em Configurações › Perfil; o quadro tirado vira a foto de perfil, o fluxo é encerrado e nunca entra em uma transmissão.
 
-O aplicativo não inclui aprovação individual de novos participantes, senha adicional, recuperação de sala após reinício, emissão automática de credenciais TURN, múltiplos anfitriões, SFU ou câmera. A interface mostra o estado da captura e mantém o controle de parar disponível durante a transmissão.
+O aplicativo não inclui aprovação individual de novos participantes, senha adicional, recuperação de sala após reinício, emissão automática de credenciais TURN, múltiplos anfitriões, SFU ou transmissão de câmera. A interface mostra o estado da captura e mantém o controle de parar disponível durante a transmissão.
 
 ## Segurança do aplicativo e do serviço
 
 A janela usa sandbox, isolamento de contexto, `nodeIntegration` desativado e política de conteúdo restrita. O processo principal valida o remetente das chamadas IPC e aceita somente a interface local esperada. A ponte permite obter fontes, selecionar/cancelar captura, salvar endpoint, copiar código e consultar/aplicar atualização; ela não oferece execução genérica de comandos ou leitura arbitrária de arquivos.
 
-A lista de fontes é gerada pelo processo principal. A seleção tem validade curta e uso controlado; a captura depende dessa seleção explícita e de solicitação de vídeo autorizada. Câmera e microfone são negados neste MVP. Navegação e abertura de conteúdo remoto não devem ser usadas para inserir código na interface privilegiada.
+A lista de fontes é gerada pelo processo principal. A seleção tem validade curta e uso controlado; a captura depende dessa seleção explícita e de solicitação de vídeo autorizada. O microfone é negado. A câmera só é aceita em pedidos de vídeo sem áudio, usados pelo editor de foto de perfil após ação explícita; ela não é uma fonte de compartilhamento. Navegação e abertura de conteúdo remoto não devem ser usadas para inserir código na interface privilegiada.
 
 A sinalização aplica validação e limites de carga/tentativas e verifica `Origin`. O campo `Origin` não é autenticação: um cliente próprio pode enviá-lo. O código de convite também não substitui contas ou autorização persistente. Os limites usam o IP TCP; o proxy deve ser considerado ao dimensionar o uso. Veja [implantação](implantacao.md).
 

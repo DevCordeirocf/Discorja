@@ -49,7 +49,7 @@ Proteger o computador dos participantes, o processo do servidor e a distribuiç�
 
 O foco é impedir que entrar em uma sala ou receber uma transmissão dê a alguém acesso ao Windows, aos arquivos ou aos comandos do computador. Participantes e servidores de sinalização devem ser tratados como fontes de dados não confiáveis, mesmo em um grupo de amigos. Não existe garantia de segurança total; o objetivo é reduzir riscos verificáveis e testar cada controle.
 
-O grupo usa o Discord para voz. Microfone e câmera continuam negados no Discorja. Ao adicionar áudio do computador, validar que a configuração anunciada como isolada não retransmite a chamada do Discord.
+O grupo usa o Discord para voz. O microfone continua negado no Discorja. A câmera só é liberada, sem áudio, depois que a pessoa clica em **Abrir câmera** em Configurações › Perfil; o quadro tirado vira a foto de perfil, o fluxo é encerrado e nunca entra em uma transmissão. Ao adicionar áudio do computador, validar que a configuração anunciada como isolada não retransmite a chamada do Discord.
 
 Na implementação 0.4.0, áudio do computador exige escolha e confirmação em cada captura. A autorização expira em quinze segundos, é consumida uma única vez e pode ser revogada durante a consulta da fonte. Permissões de mídia de dispositivo continuam negadas mesmo com uma seleção de tela pendente. Cancelar/fechar o app e encerrar a sala liberam as tracks. A prévia fica silenciada, e a recepção começa sem som. O loopback não exclui automaticamente Discord ou outros processos; as limitações estão em [audio.md](audio.md). Os hooks de áudio dos testes ficam em `scripts/fixtures/` e não fazem parte dos arquivos empacotados.
 
@@ -224,7 +224,7 @@ Não foi inspecionada a configuração de cobrança das suas contas. Serviços g
 - [ ] Servidor sem privilégios administrativos, portas mínimas e separação de arquivos/segredos verificados no ambiente real.
 - [ ] Cenário de servidor comprometido testado contra o app; sinalização não controla instaladores, comandos ou arquivos locais.
 - [ ] `/api/stats` sem dados pessoais, com autenticação e limites.
-- [ ] Microfone/câmera negados; captura e áudio respeitam escolha e parada do usuário.
+- [ ] Microfone negado; câmera liberada só para a foto de perfil, sem áudio e após **Abrir câmera**; captura e áudio respeitam escolha e parada do usuário.
 - [ ] Alertas da cadeia de empacotamento tratados ou justificados com revisão agendada.
 - [ ] Revisão de workflows, permissões, actions e segredos concluída.
 - [ ] Configuração real dos provedores impede excedentes pagos; cotas e suspensão documentadas.
