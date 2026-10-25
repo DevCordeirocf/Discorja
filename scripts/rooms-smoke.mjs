@@ -4,11 +4,26 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createSignalingServer } from '../dist/server/server.js';
 import { installQualityProbe } from './quality-probe.mjs';
+import {
+  appReady,
+  backToRoom,
+  copyInvite,
+  createGroup,
+  createRoom,
+  currentRoom,
+  ensureWatching,
+  joinGroup,
+  joinRoom,
+  requestRoom,
+  roomControls,
+  showGroup,
+} from './group-flow.mjs';
 
 await mkdir('test-results', { recursive: true });
 const service = createSignalingServer();
 await new Promise((done) => service.server.listen(0, '127.0.0.1', done));
 const applications = [],
+  pages = [],
   checks = [],
   errors = [];
 const env = {
@@ -23,6 +38,7 @@ const deadline = setTimeout(() => {
   for (const application of applications) application.process().kill();
 }, 240000);
 
+let invite;
 async function launch(name) {
   const profile = await mkdtemp(resolve('test-results/rooms-profile-'));
   const application = await electron.launch({
@@ -33,8 +49,9 @@ async function launch(name) {
   });
   applications.push(application);
   const page = await application.firstWindow();
+  pages.push(page);
   page.on('pageerror', (error) => errors.push(error.message));
-  await expect(page.locator('[data-action=create]')).toBeEnabled();
+  await appReady(page);
   await installQualityProbe(page);
   await page.evaluate(() => {
     window.__roomCaptureTracks = [];
@@ -47,21 +64,21 @@ async function launch(name) {
       return stream;
     };
   });
-  await page.locator('#display-name').fill(name);
+  // The first app creates the group; every other one enters with its invite.
+  if (invite) await joinGroup(page, { name, invite });
+  else {
+    await createGroup(page, { name, group: 'Turma das salas' });
+    invite = await copyInvite(application, page);
+  }
   return { application, page };
 }
-async function create(page) {
-  await page.locator('[data-action=create]').click();
-  await expect(page.locator('.room-code')).toBeVisible();
-  return (await page.locator('.room-code').innerText()).replace(/\s/g, '');
+/** Creates a room in the group; rooms are named after their owner. */
+async function create(page, owner) {
+  await createRoom(page);
+  await expect(currentRoom(page)).toHaveText(`Sala de ${owner}`);
+  return `Sala de ${owner}`;
 }
-async function join(page, code) {
-  await page.locator('#room-code').fill(code);
-  await page
-    .getByRole('button', { name: 'Entrar na sala', exact: true })
-    .click();
-  await expect(page.locator('.room-code')).toBeVisible();
-}
+const join = joinRoom;
 async function capture(page) {
   await page.locator('[data-action=choose-source]').click();
   await page.getByRole('tab', { name: 'Guias' }).click();
@@ -73,11 +90,7 @@ async function capture(page) {
   await expect(page.locator('[data-action=stop]')).toBeVisible();
 }
 async function video(page) {
-  if (!(await page.locator('[data-action=stop-watching]').count())) {
-    const watch = page.locator('[data-action=watch-screen]').first();
-    await expect(watch).toBeVisible();
-    await watch.click();
-  }
+  await ensureWatching(page);
   await expect
     .poll(
       () =>
@@ -99,15 +112,11 @@ async function activePeers(page) {
 }
 async function leave(page) {
   await page.locator('[data-action=leave]').click();
-  await expect(page.locator('[data-action=create]')).toBeVisible();
-  await expect(page.locator('.room-code')).toHaveCount(0);
+  await expect(page.locator('[data-action=create-group-room]')).toBeVisible();
+  await expect(roomControls(page)).toHaveCount(0);
 }
-async function requestSwitchFromHome(page, code) {
-  await page.locator('nav [data-action=home]').click();
-  await page.locator('#room-code').fill(code);
-  await page
-    .getByRole('button', { name: 'Entrar na sala', exact: true })
-    .click();
+async function requestSwitchFromHome(page, roomName) {
+  await requestRoom(page, roomName);
   await expect(
     page.getByRole('heading', { name: 'Trocar de sala?' }),
   ).toBeVisible();
@@ -115,7 +124,7 @@ async function requestSwitchFromHome(page, code) {
 
 try {
   const { application: ownerApp, page: owner } = await launch('Dono');
-  const first = await create(owner);
+  const first = await create(owner, 'Dono');
   const fixtureReady = ownerApp.waitForEvent('window');
   await ownerApp.evaluate(({ BrowserWindow }, fixturePath) => {
     const fixture = new BrowserWindow({
@@ -137,7 +146,7 @@ try {
   const { page: nextPublisher } = await launch('Publicador');
   await join(nextPublisher, first);
   const { page: otherOwner } = await launch('Outro dono');
-  const second = await create(otherOwner);
+  const second = await create(otherOwner, 'Outro dono');
   await capture(owner);
   await capture(otherOwner);
   await video(friend);
@@ -171,20 +180,22 @@ try {
   checks.push('Leaving returns to the main menu before joining another room');
   await requestSwitchFromHome(friend, first);
   await friend.locator('[data-action=cancel-switch]').click();
-  await expect(friend.locator('.room-code')).toContainText(second.slice(0, 4));
+  await backToRoom(friend);
+  await expect(currentRoom(friend)).toHaveText(second);
   await video(friend);
   assert.equal(await activePeers(friend), 1);
   checks.push('Cancelling a switch keeps the active room and its media');
   await requestSwitchFromHome(friend, first);
   await friend.locator('[data-action=confirm-switch]').click();
-  await expect(friend.locator('.room-code')).toContainText(first.slice(0, 4));
+  await expect(currentRoom(friend)).toHaveText(first);
   await video(friend);
   assert.equal(await activePeers(friend), 1);
   checks.push('Confirmed replacement still closes the prior room session');
-  await expect.poll(() => activePeers(owner)).toBe(1);
+  await expect.poll(() => activePeers(otherOwner)).toBe(0);
+  await expect.poll(() => activePeers(owner)).toBe(2);
   await video(nextPublisher);
   checks.push(
-    'Switch closes previous receivers and tracks; old publisher releases that connection while its other viewer continues',
+    'Switch closes previous receivers and tracks; the left room publisher releases that connection while the destination publisher keeps its other viewer',
   );
   await expect(
     nextPublisher.locator('[data-action=choose-source]'),
@@ -233,10 +244,11 @@ try {
     'Moderator controls appear and disappear following server authorization',
   );
   await leave(owner);
-  const third = await create(owner);
-  await expect(owner.locator('.room-code')).toContainText(third.slice(0, 4));
-  await expect(friend.locator('.room-code')).toHaveCount(0);
-  await expect(nextPublisher.locator('.room-code')).toHaveCount(0);
+  await expect(roomControls(friend)).toHaveCount(0);
+  await expect(roomControls(nextPublisher)).toHaveCount(0);
+  await create(owner, 'Dono');
+  await expect(roomControls(friend)).toHaveCount(0);
+  await expect(roomControls(nextPublisher)).toHaveCount(0);
   assert.equal(
     await nextPublisher.evaluate(() =>
       window.__roomCaptureTracks.every((track) => track.readyState === 'ended'),
@@ -250,10 +262,16 @@ try {
   await join(friend, second);
   await video(friend);
   await leave(friend);
-  await friend.locator('#room-code').fill('ABCDEFGH');
+  // A listed room may close before the click arrives; point one card at a code
+  // the server does not know to exercise that stale destination.
+  await showGroup(friend);
   await friend
-    .getByRole('button', { name: 'Entrar na sala', exact: true })
-    .click();
+    .locator('[data-action=join-group-room]:not([disabled])')
+    .first()
+    .evaluate((button) => {
+      button.dataset.code = 'ABCDEFGH';
+      button.click();
+    });
   await expect(
     friend
       .locator('.notice')
@@ -270,6 +288,10 @@ try {
   console.log(JSON.stringify({ passed: checks.length, checks }, null, 2));
 } catch (error) {
   failure = String(error);
+  for (const [index, page] of pages.entries())
+    await page
+      .screenshot({ path: `test-results/rooms-failure-${index}.png` })
+      .catch(() => {});
   throw error;
 } finally {
   clearTimeout(deadline);

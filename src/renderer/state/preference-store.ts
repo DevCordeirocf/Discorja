@@ -34,7 +34,7 @@ export function createPreferenceStore(storage?: StorageLike) {
       const photo = read('discorja.profile-photo');
       return photo &&
         photo.length <= 250_000 &&
-        /^data:image\/(?:jpeg|png|webp);base64,/.test(photo)
+        /^data:image\/(?:jpeg|png|webp|gif);base64,/.test(photo)
         ? photo
         : '';
     },
@@ -46,6 +46,12 @@ export function createPreferenceStore(storage?: StorageLike) {
         /* Profile pictures are optional; the current session continues. */
       }
     },
+    lastSeenVersion: (): string | null => {
+      const version = read('discorja.last-seen-version');
+      return version && /^\d+\.\d+\.\d+$/.test(version) ? version : null;
+    },
+    saveLastSeenVersion: (version: string) =>
+      write('discorja.last-seen-version', version),
     sidebarCollapsed: () => read('discorja.sidebar-collapsed') === 'true',
     saveSidebarCollapsed: (collapsed: boolean) =>
       write('discorja.sidebar-collapsed', String(collapsed)),

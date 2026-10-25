@@ -1,12 +1,16 @@
 import type { ClientMessage, ServerMessage } from '../../../../shared/protocol';
 import { errorFields, type LogEventName } from '../../../../shared/logs';
 import { SignalConnection } from '../../../transport/signal';
+import { warmUpServer } from '../../../transport/server-warmup';
 
 export async function connectRoomSignal(options: {
   kind: 'create' | 'join';
   name: string;
-  avatar: string;
+  /** Builds the avatar once the negotiated protocol is known. */
+  prepareAvatar: (protocol: number) => Promise<string>;
   code: string;
+  /** Lists the new room to a group; needs protocol 5. */
+  groupKey?: string;
   signalingUrl: string;
   epoch: number;
   isCurrent: (epoch: number) => boolean;
@@ -18,6 +22,9 @@ export async function connectRoomSignal(options: {
     timer: ReturnType<typeof setTimeout>,
   ) => void;
   onTimeout: () => void;
+  onWaking: () => void;
+  /** Clears the "waking" notice once the socket is open. */
+  onConnected: () => void;
   render: () => void;
   log: (event: LogEventName, details?: Record<string, unknown>) => void;
   onFailure: (message: string) => void;
@@ -25,8 +32,9 @@ export async function connectRoomSignal(options: {
   const {
     kind,
     name,
-    avatar,
+    prepareAvatar,
     code,
+    groupKey,
     signalingUrl,
     epoch,
     isCurrent,
@@ -35,6 +43,8 @@ export async function connectRoomSignal(options: {
     setSocket,
     setPending,
     onTimeout,
+    onWaking,
+    onConnected,
     render,
     log,
     onFailure,
@@ -53,8 +63,17 @@ export async function connectRoomSignal(options: {
   setSocket(connection);
   render();
   try {
-    await connection.connect();
-    log('signal.connected');
+    await warmUpServer(signalingUrl, {
+      onWaking: () => {
+        if (isCurrent(epoch)) onWaking();
+      },
+      isCancelled: () => !isCurrent(epoch),
+    });
+    if (!isCurrent(epoch)) return;
+    const protocol = await connection.connect();
+    log('signal.connected', { clientProtocol: protocol });
+    if (isCurrent(epoch)) onConnected();
+    const avatar = await prepareAvatar(protocol);
     if (!isCurrent(epoch)) {
       connection.disconnect();
       return;
@@ -72,6 +91,7 @@ export async function connectRoomSignal(options: {
             name,
             avatar,
             ...(code ? { code } : {}),
+            ...(groupKey && protocol >= 5 ? { groupKey } : {}),
           }
         : { type: 'join-room', name, code, avatar };
     connection.send(message);

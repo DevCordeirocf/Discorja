@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { LogEvent } from '../shared/logs.js';
+import { MAX_MESSAGE_BYTES } from '../shared/validation.js';
 
 export interface RateLimit {
   max: number;
@@ -21,12 +22,25 @@ export interface SignalingOptions {
   heartbeatIntervalMs?: number;
   cleanupIntervalMs?: number;
   rateLimits?: Partial<Record<RateLimitName, RateLimit>>;
+  /**
+   * Proxies in front of the service that append X-Forwarded-For. Use 1 behind
+   * Render so each user gets their own IP limits; 0 trusts only the socket.
+   */
+  trustProxyHops?: number;
   /** Injectable clock for deterministic expiry tests. */
   now?: () => number;
 }
 
 export type RateLimitName =
-  'socketMessages' | 'ipMessages' | 'socketJoins' | 'ipJoins' | 'ipConnections';
+  | 'socketMessages'
+  | 'ipMessages'
+  | 'socketJoins'
+  | 'ipJoins'
+  | 'ipConnections'
+  | 'socketProfiles'
+  | 'socketAvatars'
+  | 'socketGroups'
+  | 'ipGroups';
 
 export interface ResolvedSignalingConfig {
   origins: Set<string>;
@@ -42,9 +56,10 @@ export interface ResolvedSignalingConfig {
   cleanupMs: number;
   limits: Record<RateLimitName, RateLimit>;
   ipRetentionMs: number;
+  trustProxyHops: 0 | 1;
 }
 
-export const MAX_PAYLOAD = 128 * 1024;
+export const MAX_PAYLOAD = MAX_MESSAGE_BYTES;
 
 const DEFAULT_ORIGINS = [
   'app://discorja',
@@ -123,6 +138,10 @@ export function resolveSignalingConfig(
     socketJoins: { max: 12, windowMs: 60_000 },
     ipJoins: { max: 40, windowMs: 60_000 },
     ipConnections: { max: 60, windowMs: 60_000 },
+    socketProfiles: { max: 6, windowMs: 60_000 },
+    socketAvatars: { max: 40, windowMs: 60_000 },
+    socketGroups: { max: 20, windowMs: 60_000 },
+    ipGroups: { max: 60, windowMs: 60_000 },
   };
   const limits: Record<RateLimitName, RateLimit> = {
     ...defaults,
@@ -132,6 +151,9 @@ export function resolveSignalingConfig(
     positiveInteger(limit.max, 1, `${name}.max`);
     positiveInteger(limit.windowMs, 1, `${name}.windowMs`);
   }
+  const trustProxyHops = options.trustProxyHops ?? 0;
+  if (trustProxyHops !== 0 && trustProxyHops !== 1)
+    throw new Error('trustProxyHops deve ser 0 ou 1.');
 
   return {
     origins: new Set(options.allowedOrigins ?? DEFAULT_ORIGINS),
@@ -148,5 +170,6 @@ export function resolveSignalingConfig(
     limits,
     ipRetentionMs:
       Math.max(...Object.values(limits).map((limit) => limit.windowMs)) * 2,
+    trustProxyHops,
   };
 }

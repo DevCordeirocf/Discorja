@@ -1,6 +1,9 @@
 import type { CaptureSource, UpdateState } from '../../shared/protocol';
 import { escapeHtml } from '../ui/components/html';
 import { icon } from '../ui/components/icons';
+import { DISPLAY_NAME_MAX } from '../../shared/validation';
+import type { ChangelogEntry } from '../features/whats-new/changelog';
+import { renderWhatsNewModal } from './whats-new';
 
 export type AppModal =
   | 'settings'
@@ -9,7 +12,9 @@ export type AppModal =
   | 'switch'
   | 'diagnostics'
   | 'profile'
-  | 'create'
+  | 'add-group'
+  | 'whats-new'
+  | 'leave-group'
   | null;
 interface ModalView {
   modal: AppModal;
@@ -24,6 +29,9 @@ interface ModalView {
   sourcePage: 'screen' | 'window';
   displayName: string;
   profilePhoto: string;
+  whatsNew: ChangelogEntry[];
+  /** Extra dialogs owned by features (for example groups). */
+  renderFeatureModal?: (modal: AppModal) => string;
 }
 
 export function renderModal(options: ModalView): string {
@@ -42,10 +50,12 @@ export function renderModal(options: ModalView): string {
     profilePhoto,
   } = options;
   if (!modal) return '';
-  if (modal === 'create')
-    return `<div class="modal-overlay"><section class="modal settings-modal create-room-modal" role="dialog" aria-modal="true" aria-labelledby="create-room-title"><div class="modal-heading"><div><h2 id="create-room-title">Criar sala</h2><p class="modal-description">Escolha um código para compartilhar com as pessoas.</p></div><button class="icon-button" data-action="close-modal" aria-label="Fechar">${icon('close')}</button></div><form id="create-room-form"><label class="field-label" for="create-room-code">Código personalizado <span>(opcional)</span></label><div class="create-room-code-row"><input class="text-input" id="create-room-code" aria-label="Código personalizado com 8 caracteres" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="8" placeholder="8 caracteres"><button type="button" class="button secondary" data-action="generate-room-code">Gerar</button></div><p class="field-help">Use 8 caracteres imprimíveis; símbolos, espaços, letras e números são aceitos. Deixe vazio para gerar automaticamente.</p><div class="create-room-code-actions"><button type="button" class="button subtle" data-action="use-last-created-room-code">Usar último código</button></div><div class="modal-footer"><button type="button" class="button subtle" data-action="close-modal">Cancelar</button><button class="button primary" type="submit">Criar sala</button></div></form></section></div>`;
+  if (modal === 'whats-new')
+    return renderWhatsNewModal({ version, entries: options.whatsNew });
+  const featureModal = options.renderFeatureModal?.(modal);
+  if (featureModal) return featureModal;
   if (modal === 'profile')
-    return `<div class="modal-overlay profile-overlay"><section class="modal profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title"><div class="modal-heading"><div><h2 id="profile-modal-title">Seu perfil</h2><p class="profile-modal-intro">Como as pessoas vão reconhecer você.</p></div><button class="icon-button" data-action="close-modal" aria-label="Fechar perfil">${icon('close')}</button></div><form id="profile-form"><div class="profile-editor"><div class="profile-photo-preview" id="profile-photo-preview"><img id="profile-photo-image" src="${escapeHtml(profilePhoto)}" alt="Sua foto de perfil" ${profilePhoto ? '' : 'hidden'}><span id="profile-photo-fallback" class="avatar" ${profilePhoto ? 'hidden' : ''}>${escapeHtml(displayName.trim().charAt(0).toLocaleUpperCase('pt-BR') || '?')}</span><video id="profile-camera-video" autoplay muted playsinline hidden></video><canvas id="profile-camera-canvas" hidden aria-label="Prévia pixelada da câmera"></canvas></div><div class="profile-photo-actions"><input id="profile-photo-file" type="file" accept="image/*" hidden><button type="button" class="button secondary" data-action="profile-choose-photo">Escolher foto</button><button type="button" class="button subtle" data-action="profile-start-camera">Abrir câmera</button><button type="button" class="button primary" data-action="profile-capture" disabled>Tirar foto</button><button type="button" class="button subtle" data-action="profile-stop-camera" hidden>Cancelar câmera</button>${profilePhoto ? '<button type="button" class="button subtle" data-action="profile-remove-photo">Remover foto</button>' : ''}</div></div><p id="profile-camera-status" class="profile-camera-status" role="status">A câmera só será ativada quando você escolher abrir.</p><div class="profile-name-section"><label class="profile-name-field" for="profile-name">Nome de exibição</label><input id="profile-name" class="text-input" autocomplete="nickname" maxlength="32" required placeholder="Seu nome" value="${escapeHtml(displayName)}"></div><div class="modal-footer"><button type="button" class="button subtle" data-action="close-modal">Cancelar</button><button class="button primary" type="submit">Salvar perfil</button></div></form></section></div>`;
+    return `<div class="modal-overlay profile-overlay"><section class="modal profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title"><div class="modal-heading"><div><h2 id="profile-modal-title">Seu perfil</h2><p class="profile-modal-intro">Como as pessoas vão reconhecer você.</p></div><button class="icon-button" data-action="close-modal" aria-label="Fechar perfil">${icon('close')}</button></div><form id="profile-form"><div class="profile-editor"><div class="profile-photo-preview" id="profile-photo-preview"><img id="profile-photo-image" src="${escapeHtml(profilePhoto)}" alt="Sua foto de perfil" ${profilePhoto ? '' : 'hidden'}><span id="profile-photo-fallback" class="avatar" ${profilePhoto ? 'hidden' : ''}>${escapeHtml(displayName.trim().charAt(0).toLocaleUpperCase('pt-BR') || '?')}</span><video id="profile-camera-video" autoplay muted playsinline hidden></video><canvas id="profile-camera-canvas" hidden aria-label="Prévia pixelada da câmera"></canvas></div><div class="profile-photo-actions"><input id="profile-photo-file" type="file" accept="image/gif,image/jpeg,image/png,image/webp" hidden><button type="button" class="button secondary" data-action="profile-choose-photo">Escolher foto</button><button type="button" class="button subtle" data-action="profile-start-camera">Abrir câmera</button><button type="button" class="button primary" data-action="profile-capture" disabled>Tirar foto</button><button type="button" class="button subtle" data-action="profile-stop-camera" hidden>Cancelar câmera</button>${profilePhoto ? '<button type="button" class="button subtle" data-action="profile-remove-photo">Remover foto</button>' : ''}<a class="button subtle giphy-link" href="https://giphy.com/" target="_blank" rel="noopener noreferrer">Procurar GIFs no GIPHY</a></div></div><p class="field-help profile-gif-help">Baixe um GIF no GIPHY e escolha o arquivo em "Escolher foto". Animações viram um quadrado de até 128 px e até 6 segundos.</p><p id="profile-camera-status" class="profile-camera-status" role="status">A câmera só será ativada quando você escolher abrir.</p><div class="profile-name-section"><label class="profile-name-field" for="profile-name">Nome de exibição</label><input id="profile-name" class="text-input" autocomplete="nickname" maxlength="${DISPLAY_NAME_MAX}" required placeholder="Seu nome" value="${escapeHtml(displayName)}"></div><div class="modal-footer"><button type="button" class="button subtle" data-action="close-modal">Cancelar</button><button class="button primary" type="submit">Salvar perfil</button></div></form></section></div>`;
   if (modal === 'switch')
     return `<div class="modal-overlay"><section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h2 id="modal-title">Trocar de sala?</h2><p class="modal-description">A transmissão e a reprodução atuais serão encerradas antes de conectar à próxima sala.${isRoomOwner ? ' Como você é o dono, a sala atual será encerrada para todos.' : ''} A próxima conexão pode falhar; nenhuma captura será reiniciada automaticamente.</p><div class="modal-footer"><button class="button subtle" data-action="cancel-switch">Continuar nesta sala</button><button class="button primary" data-action="confirm-switch">Trocar de sala</button></div></section></div>`;
   if (modal === 'update')

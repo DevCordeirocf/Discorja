@@ -1,14 +1,20 @@
 import {
-  ROOM_PROTOCOL_VERSION,
+  CLIENT_PROTOCOLS,
   type ClientMessage,
   type ServerMessage,
 } from '../../shared/protocol';
+import { healthUrl } from './server-warmup';
 
 import { isServerMessage, MAX_MESSAGE_BYTES } from '../../shared/validation';
 export { isServerMessage } from '../../shared/validation';
 
+/** Inbound budget per socket; well above the server's own per-socket limit. */
+const MAX_INBOUND_MESSAGES = 600;
+const INBOUND_WINDOW_MS = 10_000;
+
 export class SignalConnection {
   private static readonly roomHeartbeatIntervalMs = 5 * 60_000;
+  private static readonly encoder = new TextEncoder();
   private socket: WebSocket | null = null;
   private intentional = false;
   private abortOpen: (() => void) | null = null;
@@ -26,7 +32,18 @@ export class SignalConnection {
     }) => void,
   ) {}
 
-  connect(timeoutMs = 10_000): Promise<void> {
+  /**
+   * Opens the socket and negotiates the first protocol, in order, that the
+   * server accepts. Resolves with the negotiated protocol.
+   */
+  connect(
+    options: { timeoutMs?: number; protocols?: readonly number[] } = {},
+  ): Promise<number> {
+    const timeoutMs = options.timeoutMs ?? 10_000;
+    const protocols = options.protocols?.length
+      ? options.protocols
+      : CLIENT_PROTOCOLS;
+    let offered = 0;
     const startedAt = Date.now();
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -40,10 +57,16 @@ export class SignalConnection {
       };
       const timer = setTimeout(() => {
         fail(
-          'O servidor não confirmou o protocolo de salas. Atualize o servidor para a versão 0.7.0 ou confira seu endereço.',
+          'O servidor não respondeu a tempo. Confira o endereço em Configurações ou tente novamente.',
         );
         this.disconnect();
       }, timeoutMs);
+      const incompatible = () => {
+        fail(
+          'O servidor de sinalização usa uma versão incompatível com este aplicativo.',
+        );
+        this.disconnect();
+      };
       this.abortOpen = () => fail('Conexão cancelada.');
       try {
         socket = new WebSocket(this.url);
@@ -57,15 +80,15 @@ export class SignalConnection {
       socket.onopen = () => {
         if (settled || this.intentional) return;
         socket.send(
-          JSON.stringify({ type: 'hello', protocol: ROOM_PROTOCOL_VERSION }),
+          JSON.stringify({ type: 'hello', protocol: protocols[offered] }),
         );
       };
       socket.onmessage = (event: MessageEvent<unknown>) => {
-        if (Date.now() - this.windowStarted >= 10_000) {
+        if (Date.now() - this.windowStarted >= INBOUND_WINDOW_MS) {
           this.messages = 0;
           this.windowStarted = Date.now();
         }
-        if (++this.messages > 200) {
+        if (++this.messages > MAX_INBOUND_MESSAGES) {
           socket.close(1008, 'Limite de mensagens');
           return;
         }
@@ -73,7 +96,8 @@ export class SignalConnection {
         if (
           typeof event.data !== 'string' ||
           event.data.length > MAX_MESSAGE_BYTES ||
-          new TextEncoder().encode(event.data).byteLength > MAX_MESSAGE_BYTES
+          SignalConnection.encoder.encode(event.data).byteLength >
+            MAX_MESSAGE_BYTES
         ) {
           socket.close(1008, 'Mensagem inválida');
           return;
@@ -84,18 +108,25 @@ export class SignalConnection {
             if (!settled) {
               if (
                 message.type === 'hello' &&
-                message.protocol === ROOM_PROTOCOL_VERSION
+                message.protocol === protocols[offered]
               ) {
                 settled = true;
                 clearTimeout(timer);
                 this.abortOpen = null;
-                resolve();
-              } else {
-                fail(
-                  'Aplicativo e servidor usam versões incompatíveis. Atualize o servidor para 0.7.0 e use clientes compatíveis.',
+                resolve(message.protocol);
+              } else if (
+                message.type === 'error' &&
+                message.code === 'PROTOCOL_MISMATCH' &&
+                offered + 1 < protocols.length
+              ) {
+                // Older servers reject newer protocols; offer the next one.
+                socket.send(
+                  JSON.stringify({
+                    type: 'hello',
+                    protocol: protocols[++offered],
+                  }),
                 );
-                this.disconnect();
-              }
+              } else incompatible();
               return;
             }
             this.onMessage(message);
@@ -137,12 +168,7 @@ export class SignalConnection {
     this.roomHeartbeat = setInterval(() => {
       if (this.socket?.readyState !== WebSocket.OPEN) return;
       try {
-        const healthUrl = new URL(this.url);
-        healthUrl.protocol = healthUrl.protocol === 'wss:' ? 'https:' : 'http:';
-        healthUrl.pathname = '/health';
-        healthUrl.search = '';
-        healthUrl.hash = '';
-        void fetch(healthUrl, {
+        void fetch(healthUrl(this.url), {
           method: 'GET',
           mode: 'no-cors',
           cache: 'no-store',

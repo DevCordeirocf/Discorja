@@ -124,7 +124,7 @@ describe('Compatibilidade da sinalização', () => {
   it('explica a incompatibilidade com servidor antigo e não tenta recuperar uma sessão inexistente', async () => {
     const { value, onDisconnect } = connection();
     const pending = value.connect();
-    const rejected = expect(pending).rejects.toThrow(/Atualize o servidor/);
+    const rejected = expect(pending).rejects.toThrow(/versão incompatível/);
     Socket.current.open();
     Socket.current.message({
       type: 'error',
@@ -134,5 +134,36 @@ describe('Compatibilidade da sinalização', () => {
     await rejected;
     expect(Socket.current.readyState).toBe(3);
     expect(onDisconnect).not.toHaveBeenCalled();
+  });
+});
+
+describe('Negociação de protocolo', () => {
+  it('oferece o próximo protocolo quando o servidor recusa o mais novo', async () => {
+    const { value } = connection();
+    const connected = value.connect({ protocols: [4, 3] });
+    const socket = Socket.current;
+    socket.open();
+    socket.message({
+      type: 'error',
+      code: 'PROTOCOL_MISMATCH',
+      message: 'Protocolo incompatível.',
+    });
+    expect(socket.send).toHaveBeenLastCalledWith(
+      JSON.stringify({ type: 'hello', protocol: 3 }),
+    );
+    socket.message({ type: 'hello', protocol: 3 });
+    await expect(connected).resolves.toBe(3);
+  });
+
+  it('não insiste quando nenhum protocolo é aceito', async () => {
+    const { value } = connection();
+    const connected = value.connect({ protocols: [4] });
+    Socket.current.open();
+    Socket.current.message({
+      type: 'error',
+      code: 'PROTOCOL_MISMATCH',
+      message: 'Protocolo incompatível.',
+    });
+    await expect(connected).rejects.toThrow('versão incompatível');
   });
 });

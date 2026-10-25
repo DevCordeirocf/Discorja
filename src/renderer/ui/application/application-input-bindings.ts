@@ -3,10 +3,17 @@ import { bindFormEvents } from '../actions/form-events';
 import { bindProfileCamera } from '../../features/profile/profile-camera';
 import type { AppPage } from '../../views/design';
 import type { AppModal } from '../../views/modals';
+import { DISPLAY_NAME_MAX } from '../../../shared/validation';
+
+interface ProfileDraft {
+  name: string;
+  photo: string;
+}
 
 export type ApplicationInputUpdate = Partial<{
   displayName: string;
   profilePhoto: string;
+  profileDraft: Partial<ProfileDraft> | null;
   joinCode: string;
   settingUrl: string;
   receiveVolume: number;
@@ -21,7 +28,7 @@ export type ApplicationInputUpdate = Partial<{
 
 export interface ApplicationInputState {
   displayName: string;
-  profilePhoto: string;
+  profileDraft: ProfileDraft;
   joinCode: string;
   room: { role: 'host' | 'viewer'; code: string } | null;
   systemAudioSupported: boolean;
@@ -45,22 +52,29 @@ export function bindApplicationInputEvents(options: {
   notify(
     message: string,
     kind: 'error' | 'success',
-    persistent?: boolean,
+    autoDismiss?: boolean,
   ): void;
   requestRoomSwitch(target: { kind: 'join'; code: string }): void;
   connectRoom(kind: 'create' | 'join', code?: string): Promise<void>;
   saveSettings(): Promise<void>;
   changeQuality(isVideoBitrate: boolean, prefix?: string): void;
   cancelSources(): void;
-}): void {
+}): { afterRender(): void } {
   const state = options.getState;
+  let processingPhoto = false;
+  const invalidName = (name: string, field: string): boolean => {
+    if (name && name.length <= DISPLAY_NAME_MAX) return false;
+    options.notify(
+      `Digite seu nome com até ${DISPLAY_NAME_MAX} caracteres.`,
+      'error',
+    );
+    options.root.querySelector<HTMLInputElement>(field)?.focus();
+    return true;
+  };
   bindFormEvents(options.root, {
     setDisplayName: (value) => options.updateState({ displayName: value }),
-    setJoinCode: (value) => {
-      const joinCode = value.slice(0, 8);
-      options.updateState({ joinCode });
-      return joinCode;
-    },
+    setProfileDraftName: (value) =>
+      options.updateState({ profileDraft: { name: value } }),
     setSettingUrl: (value) => options.updateState({ settingUrl: value }),
     setReceiveVolume: (value) => {
       const muted = value === 0;
@@ -69,33 +83,25 @@ export function bindApplicationInputEvents(options: {
     },
     updatePlayback: options.updatePlayback,
     submitProfile: () => {
-      const name = state().displayName.trim();
-      if (!name || name.length > 32) {
-        options.notify('Digite seu nome com até 32 caracteres.', 'error');
-        (
-          options.root.querySelector<HTMLInputElement>('#profile-name') ??
-          options.root.querySelector<HTMLInputElement>('#display-name')
-        )?.focus();
+      if (processingPhoto) {
+        options.notify('Aguarde a foto terminar de carregar.', 'error');
         return;
       }
+      const draft = state().profileDraft;
+      const name = draft.name.trim();
+      if (invalidName(name, '#profile-name')) return;
       options.saveDisplayName(name);
-      options.updateRoomProfile(name, state().profilePhoto);
-      options.updateState({ editingName: false, modal: null });
+      options.saveProfilePhoto(draft.photo);
+      options.updateRoomProfile(name, draft.photo);
+      options.updateState({
+        displayName: name,
+        profilePhoto: draft.photo,
+        profileDraft: null,
+        editingName: false,
+        modal: null,
+      });
       options.render();
       options.notify('Perfil atualizado.', 'success', true);
-    },
-    submitJoin: () => {
-      if (state().room)
-        options.requestRoomSwitch({ kind: 'join', code: state().joinCode });
-      else void options.connectRoom('join');
-    },
-    submitCreateRoom: () => {
-      const code =
-        options.root.querySelector<HTMLInputElement>('#create-room-code')
-          ?.value ?? '';
-      options.updateState({ modal: null });
-      options.render();
-      void options.connectRoom('create', code);
     },
     submitSettings: () => void options.saveSettings(),
     changeSystemAudio: (enabled) => {
@@ -112,13 +118,18 @@ export function bindApplicationInputEvents(options: {
     changeQuality: options.changeQuality,
   });
 
-  bindProfileCamera({
+  const camera = bindProfileCamera({
     root: options.root,
     onPhoto: (photo) => {
-      options.updateState({ profilePhoto: photo });
-      options.saveProfilePhoto(photo);
-      options.updateRoomProfile(state().displayName.trim(), photo);
+      options.updateState({ profileDraft: { photo } });
       options.render();
+    },
+    onProcessing: (processing) => {
+      processingPhoto = processing;
+      const save = options.root.querySelector<HTMLButtonElement>(
+        '#profile-form button[type="submit"]',
+      );
+      if (save) save.disabled = processing;
     },
   });
 
@@ -153,4 +164,5 @@ export function bindApplicationInputEvents(options: {
         .querySelector<HTMLButtonElement>('[data-action=settings]')
         ?.focus(),
   });
+  return { afterRender: camera.afterRender };
 }

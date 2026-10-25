@@ -9,11 +9,16 @@ export type SignalPayload =
   | { type: 'offer' | 'answer'; sdp: string }
   | { type: 'ice'; candidate: IceCandidate };
 
-export const ROOM_PROTOCOL_VERSION = 4;
+export const ROOM_PROTOCOL_VERSION = 5;
+/** Protocols this app offers, newest first, so older servers still work. */
+export const CLIENT_PROTOCOLS: readonly number[] = [ROOM_PROTOCOL_VERSION, 4];
 export interface RoomParticipant {
   peerId: string;
   name: string;
+  /** Protocol 4: small JPEG inside every snapshot. */
   avatar?: string;
+  /** Protocol 5: content hash; the image is fetched once with get-avatar. */
+  avatarId?: string;
   role: 'owner' | 'moderator' | 'participant';
   connected: boolean;
 }
@@ -51,7 +56,22 @@ export interface MultiRoomStateV3 extends MultiRoomStateFields {
 export interface MultiRoomStateV4 extends MultiRoomStateFields {
   protocol: 4;
 }
-export type MultiRoomState = MultiRoomStateV3 | MultiRoomStateV4;
+export interface MultiRoomStateV5 extends MultiRoomStateFields {
+  protocol: 5;
+}
+export type MultiRoomState =
+  MultiRoomStateV3 | MultiRoomStateV4 | MultiRoomStateV5;
+
+/** A live room listed to the members of its group. */
+export interface GroupRoom {
+  code: string;
+  name: string;
+  ownerName: string;
+  participants: number;
+  maxParticipants: number;
+  publications: number;
+  members: string[];
+}
 export type RoomState = LegacyRoomState | MultiRoomState;
 
 export type ClientMessage =
@@ -83,7 +103,12 @@ export type ClientMessage =
       roomName?: string;
       avatar?: string;
       code?: string;
+      /** Protocol 5: lists the room to holders of this group key. */
+      groupKey?: string;
     }
+  | { type: 'get-avatar'; peerId: string; avatarId: string }
+  | { type: 'subscribe-group'; groupKey: string; name: string }
+  | { type: 'unsubscribe-group'; groupKey: string }
   | { type: 'join-room'; code: string; name: string; avatar?: string }
   | { type: 'update-profile'; name: string; avatar: string }
   | { type: 'signal'; peerId: string; signal: SignalPayload }
@@ -93,7 +118,19 @@ export type ClientMessage =
   | { type: 'leave-room' };
 
 export type ServerMessage =
-  | { type: 'hello'; protocol: 2 | 3 | 4 }
+  | { type: 'hello'; protocol: 2 | 3 | 4 | 5 }
+  | {
+      type: 'participant-avatar';
+      peerId: string;
+      avatarId: string;
+      avatar: string;
+    }
+  | {
+      type: 'group-state';
+      groupKey: string;
+      rooms: GroupRoom[];
+      online: string[];
+    }
   | {
       type: 'stream-signal';
       publicationId: string;
@@ -187,6 +224,7 @@ export interface DiscorjaAPI {
   cancelCapture(): Promise<void>;
   setSharing(sharing: boolean): Promise<void>;
   copyCode(code: string): Promise<void>;
+  copyGroupInvite(invite: string): Promise<void>;
   checkUpdates(): Promise<void>;
   downloadUpdate(): Promise<void>;
   getUpdateState(): Promise<UpdateState>;

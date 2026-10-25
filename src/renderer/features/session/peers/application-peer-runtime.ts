@@ -23,13 +23,10 @@ type PeerRuntimeDependencies = Pick<
   PeerDependencies,
   | 'getCurrent'
   | 'setCurrent'
-  | 'getEpoch'
-  | 'getMultiRoom'
   | 'getPublicationId'
   | 'getRoomRole'
   | 'getRemoteSharing'
   | 'getViewers'
-  | 'setReconnecting'
   | 'setMetrics'
 >;
 
@@ -40,8 +37,7 @@ export type ApplicationPeerRuntimeDependencies = SharedWatcherDependencies &
     setRemoteSharing: WatcherDependencies['setRemoteSharing'];
     waitForVideo: WatcherDependencies['waitForVideo'];
     logFailure: PeerDependencies['logFailure'];
-    patchWatcherMetrics: WatcherDependencies['patchMetrics'];
-    patchPeerMetrics: PeerDependencies['patchMetrics'];
+    patchMetrics: () => void;
   };
 
 export function createApplicationPeerRuntime(
@@ -69,17 +65,17 @@ export function createApplicationPeerRuntime(
     waitForVideo: dependencies.waitForVideo,
     render: dependencies.render,
     logFailure: dependencies.logFailure,
-    patchMetrics: dependencies.patchWatcherMetrics,
+    patchMetrics: dependencies.patchMetrics,
   });
 
   const createPeers = () => {
     createAppRoomPeers({
       getCurrent: dependencies.getCurrent,
       setCurrent: dependencies.setCurrent,
-      getEpoch: dependencies.getEpoch,
+      getEpoch: dependencies.getSessionEpoch,
       getIceServers: dependencies.getIceServers,
       getPreferences: dependencies.getPreferences,
-      getMultiRoom: dependencies.getMultiRoom,
+      getMultiRoom: dependencies.getMultiState,
       getPublicationId: dependencies.getPublicationId,
       send: (message) => {
         dependencies.send(message);
@@ -89,13 +85,13 @@ export function createApplicationPeerRuntime(
       getRemoteStream: dependencies.getRemoteStream,
       setRemoteStream: dependencies.setRemoteStream,
       getViewers: dependencies.getViewers,
-      setReconnecting: dependencies.setReconnecting,
+      setReconnecting: dependencies.setConnectionReconnecting,
       setConnectionIssue: dependencies.setConnectionIssue,
       clearRemoteTimer: dependencies.clearRemoteTimer,
       logFailure: dependencies.logFailure,
       render: dependencies.render,
       setMetrics: dependencies.setMetrics,
-      patchMetrics: dependencies.patchPeerMetrics,
+      patchMetrics: dependencies.patchMetrics,
     });
   };
 

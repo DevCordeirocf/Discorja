@@ -16,13 +16,13 @@ O **Limite total de envio** vai de 4 a 500 Mbps, começa em 100 Mbps e reserva 1
 
 Defina o total dentro do upload disponível no computador, deixando espaço para o Discord e outros programas. A adaptação e o controle de congestionamento continuam ativos quando habilitados. O campo aumenta a permissão de envio; **não força consumo constante**. Uma tela parada ou fácil de comprimir pode usar pouco tráfego mesmo com teto alto, e limitações de CPU, captura, codificador ou receptor podem impedir ganho de qualidade.
 
-No teste local 0.8, o parâmetro de envio de vídeo aceitou 24.000.000 bits/s e o receptor mediu aproximadamente 6,25 Mbps naquela amostra, a cerca de 51,7 FPS e 1920 × 1032. Isso confirma o ajuste de teto, sem prometer 3 MB/s reais ou 1080p/60 sustentado. Detalhes em [validacao-0.8.0.md](validacao-0.8.0.md).
+No teste local 0.8, o parâmetro de envio de vídeo aceitou 24.000.000 bits/s e o receptor mediu aproximadamente 6,25 Mbps naquela amostra, a cerca de 51,7 FPS e 1920 × 1032. Isso confirma o ajuste de teto, sem prometer 3 MB/s reais ou 1080p/60 sustentado. Detalhes em [validacao-0.8.0.md](versões/validacao-0.8.0.md).
 
 ## Prévia local e várias telas — 0.7.0
 
 A prévia da sua tela é pausada a 0 FPS e seu player fica sem `srcObject` quando o Discorja perde o foco, é ocultado ou minimizado. Ao voltar, ele retoma o mesmo stream. As tracks, o perfil de captura, os parâmetros de envio e o áudio autorizado permanecem independentes dessa pausa. Não se aplica `frameRate: 1` à captura compartilhada, pois isso prejudicaria os espectadores.
 
-Essa economia evita reprodução local desnecessária; não libera toda a memória da transmissão. Captura, codificador, drivers e a tela remota escolhida continuam usando recursos. Na amostra local registrada na [validação 0.7](validacao-0.7.0.md), houve continuidade de vídeo com a janela minimizada, mas não uma redução comprovada de RAM. Compare CPU/GPU/RAM na mesma máquina em sessão sustentada antes de anunciar percentuais.
+Essa economia evita reprodução local desnecessária; não libera toda a memória da transmissão. Captura, codificador, drivers e a tela remota escolhida continuam usando recursos. Na amostra local registrada na [validação 0.7](versões/validacao-0.7.0.md), houve continuidade de vídeo com a janela minimizada, mas não uma redução comprovada de RAM. Compare CPU/GPU/RAM na mesma máquina em sessão sustentada antes de anunciar percentuais.
 
 Cada pessoa recebe no máximo uma publicação. Cartões sem vídeo evitam download e decodificação das demais telas. Ao trocar a seleção ou parar de assistir, a recepção anterior é encerrada. O limite de upload configurado continua sendo dividido somente entre os assinantes efetivos da própria publicação. Duas telas são o piloto padrão; ampliar o limite exige testes com a rede do grupo.
 
@@ -32,7 +32,7 @@ Som do computador opcional, com limite solicitado de 128 kbps por espectador e r
 
 Vídeo e áudio usam o mesmo stream e conexão para sincronização pelo WebRTC. Silenciar o envio mantém a captura; encerrar o áudio libera a track sem interromper o vídeo. O diagnóstico inclui bitrate, jitter, perda, amostras ocultadas e buffer médio quando disponíveis. Esses números não certificam sincronização labial ou ausência de cortes.
 
-Veja [áudio e Discord](audio.md) para uso e limitações e [validação da 0.4.0](validacao-0.4.0.md) para os testes locais e ensaios operacionais pendentes.
+Veja [áudio e Discord](audio.md) para uso e limitações e [validação da 0.4.0](versões/validacao-0.4.0.md) para os testes locais e ensaios operacionais pendentes.
 
 ## Recursos da versão 0.3.0
 
@@ -48,11 +48,11 @@ O ensaio automatizado pode comparar preferências VP8/H264 e prolongar a transmi
 node scripts/smoke.mjs --packaged --codec-matrix --network-stress --soak-minutes=30
 ```
 
-Execute depois de gerar o pacote. Ele cria sua própria janela animada e aplicativos de teste; não captura o monitor ou janelas pessoais. O modo prolongado exige máquina disponível e os resultados ficam em `test-results/`, fora do Git. Testar vários apps na mesma máquina acrescenta carga; isso não substitui computadores/redes separados ou quatro espectadores reais. Os resultados da revisão estão em [validação da 0.3.0](validacao-0.3.0.md).
+Execute depois de gerar o pacote. Ele cria sua própria janela animada e aplicativos de teste; não captura o monitor ou janelas pessoais. O modo prolongado exige máquina disponível e os resultados ficam em `test-results/`, fora do Git. Testar vários apps na mesma máquina acrescenta carga; isso não substitui computadores/redes separados ou quatro espectadores reais. Os resultados da revisão estão em [validação da 0.3.0](versões/validacao-0.3.0.md).
 
 O objetivo é manter uma transmissão utilizável quando a rede ou o computador não sustentam a qualidade escolhida. A seleção de 1080p/60 FPS representa um teto solicitado; a qualidade recebida depende da fonte, da codificação, do caminho de rede e do computador de cada espectador.
 
-Os resultados e limites da execução desta versão estão em [validação local da versão 0.2.0](validacao-0.2.0.md), incluindo as medidas recebidas e os cenários ainda pendentes.
+Os resultados e limites da execução desta versão estão em [validação local da versão 0.2.0](versões/validacao-0.2.0.md), incluindo as medidas recebidas e os cenários ainda pendentes.
 
 ## Perfis e orçamento de envio
 

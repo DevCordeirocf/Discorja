@@ -1,15 +1,25 @@
+import { sniffImage } from '../../../shared/image-magic';
+import { processAnimatedFile } from './animated-avatar';
+
 // Match the Aceternity component's default webcam grid: 64 columns × 48 rows.
 const GRID_WIDTH = 64;
 const GRID_HEIGHT = 48;
 const PHOTO_SIZE = 256;
-const MAX_FILE_SIZE = 8 * 1024 * 1024;
+const MAX_FILE_SIZE = 16 * 1024 * 1024;
+const CAMERA_ACTIVE_STATUS = 'Câmera ativa · prévia com grade pixelada.';
 
 export function bindProfileCamera(options: {
   root: HTMLElement;
   onPhoto(photo: string): void;
-}): void {
+  /** True while a GIF is being converted, so saving waits for it. */
+  onProcessing?(processing: boolean): void;
+}): { afterRender(): void } {
   let stream: MediaStream | null = null;
   let frame = 0;
+  // The app re-renders with innerHTML, so the live camera elements are kept
+  // here and moved back into the new markup instead of stopping the camera.
+  let liveVideo: HTMLVideoElement | null = null;
+  let liveCanvas: HTMLCanvasElement | null = null;
 
   const profileImage = (): HTMLImageElement | null =>
     options.root.querySelector<HTMLImageElement>('#profile-photo-image');
@@ -20,37 +30,41 @@ export function bindProfileCamera(options: {
   const status = (): HTMLElement | null =>
     options.root.querySelector<HTMLElement>('#profile-camera-status');
 
-  const stopCamera = (): void => {
-    cancelAnimationFrame(frame);
-    stream?.getTracks().forEach((track) => track.stop());
-    stream = null;
-    const video = options.root.querySelector<HTMLVideoElement>(
-      '#profile-camera-video',
-    );
-    if (video) video.srcObject = null;
-    options.root
-      .querySelector<HTMLCanvasElement>('#profile-camera-canvas')
-      ?.setAttribute('hidden', '');
-    preview()?.classList.remove('camera-active');
+  const showCameraControls = (active: boolean): void => {
+    preview()?.classList.toggle('camera-active', active);
     const image = profileImage();
-    const hasImage = Boolean(image?.getAttribute('src'));
+    const hasImage = !active && Boolean(image?.getAttribute('src'));
     if (image) image.hidden = !hasImage;
-    if (fallback()) fallback()!.hidden = hasImage;
+    if (fallback()) fallback()!.hidden = active || hasImage;
     const capture = options.root.querySelector<HTMLButtonElement>(
       '[data-action="profile-capture"]',
     );
-    if (capture) capture.disabled = true;
+    if (capture) capture.disabled = !active;
     const stop = options.root.querySelector<HTMLButtonElement>(
       '[data-action="profile-stop-camera"]',
     );
-    if (stop) stop.hidden = true;
+    if (stop) stop.hidden = !active;
     const start = options.root.querySelector<HTMLButtonElement>(
       '[data-action="profile-start-camera"]',
     );
     if (start) {
-      start.hidden = false;
+      start.hidden = active;
       start.disabled = false;
     }
+  };
+
+  const stopCamera = (): void => {
+    cancelAnimationFrame(frame);
+    stream?.getTracks().forEach((track) => track.stop());
+    stream = null;
+    if (liveVideo) liveVideo.srcObject = null;
+    liveCanvas?.setAttribute('hidden', '');
+    liveVideo = null;
+    liveCanvas = null;
+    options.root
+      .querySelector<HTMLCanvasElement>('#profile-camera-canvas')
+      ?.setAttribute('hidden', '');
+    showCameraControls(false);
   };
 
   const showPhoto = (photo: string): void => {
@@ -64,10 +78,26 @@ export function bindProfileCamera(options: {
   };
 
   const processImageFile = async (file: File): Promise<string> => {
-    if (!file.type.startsWith('image/'))
-      throw new Error('Escolha um arquivo de imagem.');
     if (file.size > MAX_FILE_SIZE)
-      throw new Error('A imagem precisa ter até 8 MB.');
+      throw new Error('A imagem precisa ter até 16 MB.');
+    // The file's bytes decide the format; names and MIME types can lie.
+    const kind = sniffImage(
+      new Uint8Array(await file.slice(0, 64).arrayBuffer()),
+    );
+    if (!kind)
+      throw new Error(
+        'Formato não suportado. Use JPG, PNG, WebP ou GIF (não MP4).',
+      );
+    if (kind.type === 'gif' || kind.type === 'webp') {
+      const message = status();
+      if (message) message.textContent = 'Processando a animação…';
+      try {
+        return await processAnimatedFile(file, `image/${kind.type}`);
+      } catch (error) {
+        // A WebP that is not animated still works as a still photo.
+        if (kind.type === 'gif') throw error;
+      }
+    }
     const bitmap = await createImageBitmap(file);
     try {
       const canvas = document.createElement('canvas');
@@ -75,6 +105,9 @@ export function bindProfileCamera(options: {
       canvas.height = PHOTO_SIZE;
       const context = canvas.getContext('2d');
       if (!context) throw new Error('Não foi possível processar a imagem.');
+      // JPEG has no transparency; use the app surface instead of black.
+      context.fillStyle = '#22232d';
+      context.fillRect(0, 0, PHOTO_SIZE, PHOTO_SIZE);
       const side = Math.min(bitmap.width, bitmap.height);
       context.drawImage(
         bitmap,
@@ -144,6 +177,8 @@ export function bindProfileCamera(options: {
         return;
       }
       stream = cameraStream;
+      liveVideo = video;
+      liveCanvas = canvas;
       video.srcObject = stream;
       canvas.width = GRID_WIDTH;
       canvas.height = GRID_HEIGHT;
@@ -165,24 +200,15 @@ export function bindProfileCamera(options: {
       const elevations = new Float32Array(GRID_WIDTH * GRID_HEIGHT);
       let hasPreviousFrame = false;
       canvas.hidden = false;
-      if (profileImage()) profileImage()!.hidden = true;
-      if (fallback()) fallback()!.hidden = true;
-      preview()?.classList.add('camera-active');
+      showCameraControls(true);
       await video.play();
-      const capture = options.root.querySelector<HTMLButtonElement>(
-        '[data-action="profile-capture"]',
-      );
-      if (capture) capture.disabled = false;
-      const stop = options.root.querySelector<HTMLButtonElement>(
-        '[data-action="profile-stop-camera"]',
-      );
-      if (stop) stop.hidden = false;
-      if (button) button.hidden = true;
-      if (message)
-        message.textContent = 'Câmera ativa · prévia com grade pixelada.';
+      if (!stream) return;
+      showCameraControls(true);
+      const activeStatus = status();
+      if (activeStatus) activeStatus.textContent = CAMERA_ACTIVE_STATUS;
 
       const drawFrame = (): void => {
-        if (!canvas.isConnected || !stream) {
+        if (!stream) {
           stopCamera();
           return;
         }
@@ -304,9 +330,7 @@ export function bindProfileCamera(options: {
     } else if (action === 'profile-start-camera') {
       void startCamera();
     } else if (action === 'profile-capture') {
-      const canvas = options.root.querySelector<HTMLCanvasElement>(
-        '#profile-camera-canvas',
-      );
+      const canvas = liveCanvas;
       if (!canvas || !stream || button?.disabled) return;
       const image = document.createElement('canvas');
       image.width = PHOTO_SIZE;
@@ -348,9 +372,11 @@ export function bindProfileCamera(options: {
     )
       return;
     const file = input.files[0];
+    options.onProcessing?.(true);
     void processImageFile(file)
       .then((photo) => {
         stopCamera();
+        options.onProcessing?.(false);
         options.onPhoto(photo);
       })
       .catch((error: unknown) => {
@@ -362,7 +388,30 @@ export function bindProfileCamera(options: {
               : 'Não foi possível carregar essa foto.';
       })
       .finally(() => {
+        options.onProcessing?.(false);
         input.value = '';
       });
   });
+
+  return {
+    afterRender: () => {
+      if (!stream || !liveVideo || !liveCanvas) return;
+      if (!preview()) {
+        stopCamera();
+        return;
+      }
+      const video = options.root.querySelector<HTMLVideoElement>(
+        '#profile-camera-video',
+      );
+      const canvas = options.root.querySelector<HTMLCanvasElement>(
+        '#profile-camera-canvas',
+      );
+      if (video && video !== liveVideo) video.replaceWith(liveVideo);
+      if (canvas && canvas !== liveCanvas) canvas.replaceWith(liveCanvas);
+      liveCanvas.hidden = false;
+      showCameraControls(true);
+      const message = status();
+      if (message) message.textContent = CAMERA_ACTIVE_STATUS;
+    },
+  };
 }

@@ -4,6 +4,17 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createSignalingServer } from '../dist/server/server.js';
 import { installQualityProbe } from './quality-probe.mjs';
+import {
+  appReady,
+  copyInvite,
+  createGroup,
+  createRoom,
+  ensureWatching,
+  joinGroup,
+  joinRoom,
+  roomControls,
+  trackRoomSockets,
+} from './group-flow.mjs';
 
 // Real Chromium audio capture/Opus/WebRTC, using only a generated test window.
 // audio-main.cjs substitutes that frame for Windows loopback AFTER production
@@ -17,6 +28,7 @@ if (!Number.isFinite(soakMinutes) || soakMinutes < 0 || soakMinutes > 60)
   throw new Error('Use --soak-minutes=0..60.');
 await mkdir('test-results', { recursive: true });
 const service = createSignalingServer();
+const roomSockets = trackRoomSockets(service.wss);
 await new Promise((done) => service.server.listen(0, '127.0.0.1', done));
 const applications = [];
 const checks = [];
@@ -52,7 +64,7 @@ async function launch(testCapture = false) {
   applications.push(application);
   const page = await application.firstWindow();
   page.on('pageerror', (error) => errors.push(error.message));
-  await expect(page.locator('[data-action=create]')).toBeEnabled();
+  await appReady(page);
   await installQualityProbe(page);
   await page.evaluate(() => {
     const original = navigator.mediaDevices.getDisplayMedia.bind(
@@ -95,11 +107,7 @@ async function start(host, audio = true) {
 }
 
 async function video(page) {
-  if (!(await page.locator('[data-action=stop-watching]').count())) {
-    const watch = page.locator('[data-action=watch-screen]').first();
-    await expect(watch).toBeVisible();
-    await watch.click();
-  }
+  await ensureWatching(page);
   await expect
     .poll(
       () =>
@@ -110,6 +118,12 @@ async function video(page) {
       { timeout: 20000 },
     )
     .toBeGreaterThan(0);
+}
+
+/** The receiver's mute control sits on the player and shows on hover. */
+async function toggleReceiveAudio(page) {
+  await page.locator('.video-stage').hover();
+  await page.locator('[data-action=toggle-receive-audio]').click();
 }
 
 async function audioProbe(page) {
@@ -185,11 +199,9 @@ try {
   }, resolve('scripts/fixtures/audio.html'));
   const fixture = await fixtureReady;
   await fixture.locator('#prepare').click();
-  for (const constraint of [
-    { audio: true },
-    { video: true },
-    { video: true, audio: true },
-  ]) {
+  // Camera-only requests are allowed for the profile photo editor since 0.10.0;
+  // they are not attempted here so the test never opens a real camera.
+  for (const constraint of [{ audio: true }, { video: true, audio: true }]) {
     const result = await host.evaluate(async (options) => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia(options);
@@ -201,7 +213,7 @@ try {
     }, constraint);
     assert.notEqual(result, 'granted');
   }
-  checks.push('Microphone and camera denied');
+  checks.push('Microphone denied, alone or with camera');
   assert.equal(
     await host.evaluate(async () => {
       const sources = await window.discorja.getSources();
@@ -224,19 +236,12 @@ try {
     true,
   );
   checks.push('Pending system-audio consent does not authorize microphone');
-  await host.locator('#display-name').fill('Teste de som');
-  await host.locator('[data-action=create]').click();
-  const code = (await host.locator('.room-code').innerText()).replace(
-    /\s/g,
-    '',
-  );
+  await createGroup(host, { name: 'Teste de som', group: 'Ensaio de áudio' });
+  const invite = await copyInvite(hostApp, host);
+  await createRoom(host);
   const { page: viewer } = await launch();
-  await viewer.locator('#display-name').fill('Receptor');
-  await viewer.locator('#room-code').fill(code);
-  await viewer
-    .getByRole('button', { name: 'Entrar na sala', exact: true })
-    .click();
-  await expect(viewer.locator('.room-code')).toBeVisible();
+  await joinGroup(viewer, { name: 'Receptor', invite });
+  await joinRoom(viewer, 'Sala de Teste de som');
   await start(host);
   await expect(host.locator('[data-action=stop]')).toBeVisible();
   await video(viewer);
@@ -271,9 +276,9 @@ try {
   );
 
   // Exercise playback and muting without a volume slider.
-  await viewer.locator('[data-action=toggle-receive-audio]').click();
+  await toggleReceiveAudio(viewer);
   assert.equal((await sample(viewer)).muted, false);
-  await viewer.locator('[data-action=toggle-receive-audio]').click();
+  await toggleReceiveAudio(viewer);
   checks.push(
     'Receiver can play and mute the transmission while host preview stays muted',
   );
@@ -304,12 +309,13 @@ try {
     navigator.mediaDevices.dispatchEvent(new Event('devicechange')),
   );
   await expect(
-    host.getByText(/Os dispositivos de áudio mudaram/),
+    host.locator('.notice').getByText(/Os dispositivos de áudio mudaram/),
   ).toBeVisible();
   checks.push('Device-change notification does not start a new capture');
 
   await host.locator('[data-action=toggle-send-audio]').click();
-  [...service.wss.clients][0].terminate();
+  const volumeBeforeRecovery = (await sample(viewer)).volume;
+  roomSockets.terminate('Teste de som');
   await expect(host.locator('.notice')).toContainText('recuperada', {
     timeout: 15000,
   });
@@ -318,7 +324,7 @@ try {
   await expect
     .poll(async () => (await sample(viewer)).rms)
     .toBeLessThan(0.0005);
-  assert.equal((await sample(viewer)).volume, 0.37);
+  assert.equal((await sample(viewer)).volume, volumeBeforeRecovery);
   assert.equal(
     await host.evaluate(() =>
       window.__audioTestTracks
@@ -386,7 +392,9 @@ try {
   });
   await start(host);
   await video(viewer);
-  await expect(host.getByText(/O Windows não forneceu som/)).toBeVisible();
+  await expect(
+    host.locator('.notice').getByText(/O Windows não forneceu som/),
+  ).toBeVisible();
   assert.equal((await sample(viewer)).audioTracks, 0);
   checks.push(
     'Missing audio track continues with video and an explicit warning',
@@ -414,7 +422,7 @@ try {
     track.dispatchEvent(new Event('ended'));
   });
   await expect(
-    host.getByText(/A captura de som foi interrompida/),
+    host.locator('.notice').getByText(/A captura de som foi interrompida/),
   ).toBeVisible();
   await video(viewer);
   checks.push(
@@ -424,7 +432,8 @@ try {
   await start(host);
   await video(viewer);
   await host.locator('[data-action=leave]').click();
-  await expect(host.locator('[data-action=create]')).toBeVisible();
+  await expect(host.locator('[data-action=create-group-room]')).toBeVisible();
+  await expect(roomControls(host)).toHaveCount(0);
   assert.equal(
     await host.evaluate(() =>
       window.__audioTestTracks.every((track) => track.readyState === 'ended'),
@@ -434,7 +443,7 @@ try {
   checks.push(
     'Leaving ends all audio and video tracks before returning to the main menu',
   );
-  await expect(viewer.locator('.room-code')).toHaveCount(0);
+  await expect(roomControls(viewer)).toHaveCount(0);
   checks.push(
     'Room closure removes playback and ends all local capture tracks',
   );

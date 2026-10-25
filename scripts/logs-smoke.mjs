@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { createSignalingServer } from '../dist/server/server.js';
+import {
+  appReady,
+  copyInvite,
+  createGroup,
+  createRoom,
+  openSettings,
+  roomControls,
+  trackRoomSockets,
+} from './group-flow.mjs';
 
 await mkdir('test-results', { recursive: true });
 const profile = await mkdtemp(resolve('test-results/logs-profile-'));
@@ -13,6 +22,7 @@ const serverLogs = [],
 const service = createSignalingServer({
   onLog: (entry) => serverLogs.push(entry),
 });
+const roomSockets = trackRoomSockets(service.wss);
 await new Promise((done) => service.server.listen(0, '127.0.0.1', done));
 const endpoint = `ws://127.0.0.1:${service.server.address().port}`;
 const env = {
@@ -37,7 +47,7 @@ async function launch() {
   logDirectory = await application.evaluate(({ app }) =>
     app.getPath('userData'),
   );
-  await expect(page.locator('[data-action=create]')).toBeEnabled();
+  await appReady(page);
   return page;
 }
 async function records() {
@@ -52,20 +62,19 @@ async function records() {
 }
 try {
   let page = await launch();
-  await page.locator('#display-name').fill('SyntheticLogUser');
-  await page.locator('[data-action=create]').click();
-  await expect(page.locator('.room-code')).toBeVisible();
-  const code = (await page.locator('.room-code').innerText()).replace(
-    /\s/g,
-    '',
-  );
+  await createGroup(page, {
+    name: 'SyntheticLogUser',
+    group: 'SyntheticLogGroup',
+  });
+  const invite = await copyInvite(application, page);
+  await createRoom(page);
+  const code = roomSockets.code('SyntheticLogUser');
   await expect
     .poll(async () =>
       (await records()).some((entry) => entry.event === 'room.created'),
     )
     .toBe(true);
-  const originalSocket = [...service.wss.clients][0];
-  originalSocket.terminate();
+  roomSockets.terminate('SyntheticLogUser');
   await expect
     .poll(
       async () =>
@@ -78,7 +87,7 @@ try {
   );
 
   await service.close();
-  await expect(page.locator('.room-code')).toHaveCount(0, { timeout: 25000 });
+  await expect(roomControls(page)).toHaveCount(0, { timeout: 25000 });
   await expect(page.locator('.notice')).toContainText(
     'Não foi possível retomar',
   );
@@ -119,7 +128,7 @@ try {
     powerMonitor.emit('suspend');
     powerMonitor.emit('resume');
   });
-  await page.locator('[data-action=settings]').click();
+  await openSettings(page);
   await application.evaluate(({ dialog }, target) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: target });
   }, exportPath);
@@ -143,13 +152,21 @@ try {
       `Missing event: ${expected}`,
     );
   assert(!report.records.some((entry) => entry.event === 'app.exception'));
-  for (const secret of ['SYNTHETIC_SECRET', 'SyntheticLogUser', endpoint, code])
+  const groupSecrets = [invite, invite.slice(4), 'SyntheticLogGroup'];
+  for (const secret of [
+    'SYNTHETIC_SECRET',
+    'SyntheticLogUser',
+    endpoint,
+    code,
+    ...groupSecrets,
+  ])
     assert(!JSON.stringify(report).includes(secret));
   checks.push(
-    'Settings exports native logs and renderer failures while dropping free text, room codes, names and endpoints',
+    'Settings exports native logs and renderer failures while dropping free text, room codes, group invites, names and endpoints',
   );
   assert(serverLogs.some((entry) => entry.event === 'connection.closed'));
-  assert(!JSON.stringify(serverLogs).includes(code));
+  for (const secret of [code, ...groupSecrets])
+    assert(!JSON.stringify(serverLogs).includes(secret));
   checks.push(
     'Server closure log uses an independent room identifier without exporting the invite',
   );
@@ -157,7 +174,7 @@ try {
   await application.close();
   application = undefined;
   page = await launch();
-  await page.locator('[data-action=settings]').click();
+  await openSettings(page);
   await application.evaluate(({ dialog }, target) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: target });
   }, exportPath);

@@ -1,4 +1,5 @@
 import type { IceCandidate, ServerMessage, SignalPayload } from './protocol.js';
+import { decodeBase64Prefix, sniffImage } from './image-magic.js';
 
 export const MAX_MESSAGE_BYTES = 128 * 1024;
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -21,12 +22,52 @@ export const roomCode = (v: unknown): v is string =>
   text(v, 8, 8) && v.trim().length > 0 && !/[\u0000-\u001f\u007f]/u.test(v);
 export const token = (v: unknown): v is string =>
   text(v, 64, 64) && /^[a-f0-9]{64}$/.test(v);
-const name = (v: unknown) =>
-  text(v, 40) && !!v.trim() && !/[\u0000-\u001f\u007f]/u.test(v);
-const avatar = (v: unknown) =>
+/** Names typed in this app; the protocol keeps accepting 40 for older clients. */
+export const DISPLAY_NAME_MAX = 32;
+export const NAME_MAX = 40;
+export const displayName = (v: unknown): v is string =>
+  text(v, NAME_MAX) && !!v.trim() && !/[\u0000-\u001f\u007f]/u.test(v);
+const name = displayName;
+/** Protocol 4 avatars travel inside every room-state, so they stay small JPEGs. */
+export const LEGACY_AVATAR_MAX = 9_000;
+export const legacyAvatar = (v: unknown): v is string =>
   typeof v === 'string' &&
-  v.length <= 9_000 &&
+  v.length <= LEGACY_AVATAR_MAX &&
   (v === '' || /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/u.test(v));
+const avatar = legacyAvatar;
+
+/** Protocol 5 avatars travel alone (get-avatar), so animated images fit. */
+export const AVATAR_MAX = 98_304;
+export const AVATAR_MAX_SIDE = 256;
+export const avatarId = (v: unknown): v is string =>
+  typeof v === 'string' && /^[a-f0-9]{16}$/.test(v);
+export const groupKey = (v: unknown): v is string =>
+  typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
+
+/**
+ * Checks the data URL shape and that its leading bytes match the declared
+ * type; animated formats must also be small enough to decode safely.
+ */
+export function profileAvatar(v: unknown): v is string {
+  if (typeof v !== 'string' || v.length > AVATAR_MAX) return false;
+  if (v === '') return true;
+  const match =
+    /^data:image\/(jpeg|gif|webp);base64,([A-Za-z0-9+/]+={0,2})$/u.exec(v);
+  if (!match || match[2].length % 4) return false;
+  try {
+    const image = sniffImage(decodeBase64Prefix(match[2]));
+    if (!image || image.type !== match[1]) return false;
+    return (
+      image.type === 'jpeg' ||
+      (!!image.width &&
+        !!image.height &&
+        image.width <= AVATAR_MAX_SIDE &&
+        image.height <= AVATAR_MAX_SIDE)
+    );
+  } catch {
+    return false;
+  }
+}
 export function candidate(v: unknown): v is IceCandidate {
   return (
     object(v) &&
@@ -56,7 +97,53 @@ export function isServerMessage(v: unknown): v is ServerMessage {
     case 'hello':
       return (
         keys(v, ['type', 'protocol']) &&
-        (v.protocol === 2 || v.protocol === 3 || v.protocol === 4)
+        [2, 3, 4, 5].includes(Number(v.protocol))
+      );
+    case 'participant-avatar':
+      return (
+        keys(v, ['type', 'peerId', 'avatarId', 'avatar']) &&
+        peerId(v.peerId) &&
+        avatarId(v.avatarId) &&
+        profileAvatar(v.avatar) &&
+        v.avatar !== ''
+      );
+    case 'group-state':
+      return (
+        keys(v, ['type', 'groupKey', 'rooms', 'online']) &&
+        groupKey(v.groupKey) &&
+        Array.isArray(v.online) &&
+        v.online.length <= 32 &&
+        v.online.every((entry) => name(entry)) &&
+        Array.isArray(v.rooms) &&
+        v.rooms.length <= 20 &&
+        v.rooms.every(
+          (entry) =>
+            object(entry) &&
+            keys(entry, [
+              'code',
+              'name',
+              'ownerName',
+              'participants',
+              'maxParticipants',
+              'publications',
+              'members',
+            ]) &&
+            roomCode(entry.code) &&
+            name(entry.name) &&
+            name(entry.ownerName) &&
+            Number.isInteger(entry.maxParticipants) &&
+            Number(entry.maxParticipants) >= 2 &&
+            Number(entry.maxParticipants) <= 10 &&
+            Number.isInteger(entry.participants) &&
+            Number(entry.participants) >= 1 &&
+            Number(entry.participants) <= Number(entry.maxParticipants) &&
+            Number.isInteger(entry.publications) &&
+            Number(entry.publications) >= 0 &&
+            Number(entry.publications) <= 10 &&
+            Array.isArray(entry.members) &&
+            entry.members.length <= 10 &&
+            entry.members.every((member) => name(member)),
+        )
       );
     case 'room-state': {
       if (
@@ -76,7 +163,7 @@ export function isServerMessage(v: unknown): v is ServerMessage {
             'sharing',
             'resumeToken',
           ],
-          v.protocol === 3 || v.protocol === 4
+          v.protocol === 3 || v.protocol === 4 || v.protocol === 5
             ? [
                 'publications',
                 'maxPublishers',
@@ -86,7 +173,7 @@ export function isServerMessage(v: unknown): v is ServerMessage {
               ]
             : [],
         ) ||
-        (v.protocol !== 2 && v.protocol !== 3 && v.protocol !== 4) ||
+        ![2, 3, 4, 5].includes(Number(v.protocol)) ||
         !['created', 'joined', 'resumed', 'updated'].includes(
           String(v.reason),
         ) ||
@@ -111,11 +198,16 @@ export function isServerMessage(v: unknown): v is ServerMessage {
             keys(
               entry,
               ['peerId', 'name', 'role', 'connected'],
-              v.protocol === 4 ? ['avatar'] : [],
+              v.protocol === 4
+                ? ['avatar']
+                : v.protocol === 5
+                  ? ['avatarId']
+                  : [],
             ) &&
             peerId(entry.peerId) &&
             name(entry.name) &&
             (!Object.hasOwn(entry, 'avatar') || avatar(entry.avatar)) &&
+            (!Object.hasOwn(entry, 'avatarId') || avatarId(entry.avatarId)) &&
             ['owner', 'moderator', 'participant'].includes(
               String(entry.role),
             ) &&
@@ -124,7 +216,7 @@ export function isServerMessage(v: unknown): v is ServerMessage {
       )
         return false;
       const members = v.participants as { peerId: string; role: string }[];
-      if (v.protocol === 3 || v.protocol === 4) {
+      if (v.protocol !== 2) {
         if (
           !Number.isInteger(v.maxPublishers) ||
           Number(v.maxPublishers) < 1 ||

@@ -42,6 +42,7 @@ const api: DiscorjaAPI = {
   cancelCapture: () => ipcRenderer.invoke('capture:cancel'),
   setSharing: (sharing) => ipcRenderer.invoke('capture:sharing', sharing),
   copyCode: (code) => ipcRenderer.invoke('room:copy', code),
+  copyGroupInvite: (invite) => ipcRenderer.invoke('group:copy-invite', invite),
   checkUpdates: () => ipcRenderer.invoke('updates:check'),
   getUpdateState: () => ipcRenderer.invoke('updates:state'),
   downloadUpdate: () => ipcRenderer.invoke('updates:download'),

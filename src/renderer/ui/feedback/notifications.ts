@@ -8,12 +8,12 @@ export function createNotifier(deps: {
   setTimer(value: ReturnType<typeof setTimeout> | undefined): void;
   setNotice(value: Notice | null): void;
   render(): void;
-}): (text: string, kind?: Notice['kind'], temporary?: boolean) => void {
-  return (text, kind = 'info', temporary = false) => {
+}): (text: string, kind?: Notice['kind'], autoDismiss?: boolean) => void {
+  return (text, kind = 'info', autoDismiss = false) => {
     clearTimeout(deps.getTimer());
     deps.setNotice({ text, kind });
     deps.render();
-    if (temporary)
+    if (autoDismiss)
       deps.setTimer(
         setTimeout(() => {
           deps.setNotice(null);

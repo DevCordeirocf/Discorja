@@ -10,10 +10,13 @@ interface SignalRecoveryOptions {
   getSessionEpoch: () => number;
   isCurrentSession: (epoch: number) => boolean;
   signalingUrl: string;
+  getProtocol: () => number | undefined;
   setSocket: (connection: SignalConnection) => void;
   onMessage: (message: ServerMessage) => void;
   onSocketClosed: () => void;
   sendResume: (connection: SignalConnection, token: string) => void;
+  /** Multi-room peers keep their media path while the socket reconnects. */
+  keepMedia: () => boolean;
   disconnectCurrentSocket: () => void;
   stopPeers: () => void;
   clearWatchMedia: () => void;
@@ -36,10 +39,12 @@ export function recoverSignal(options: SignalRecoveryOptions): void {
     getSessionEpoch,
     isCurrentSession,
     signalingUrl,
+    getProtocol,
     setSocket,
     onMessage,
     onSocketClosed,
     sendResume,
+    keepMedia,
     disconnectCurrentSocket,
     stopPeers,
     clearWatchMedia,
@@ -65,9 +70,11 @@ export function recoverSignal(options: SignalRecoveryOptions): void {
   log('signal.recovery-started');
   setConnectionReconnecting(true);
   clearMetrics();
-  stopPeers();
-  clearWatchMedia();
-  stopRemoteMedia();
+  if (!keepMedia()) {
+    stopPeers();
+    clearWatchMedia();
+    stopRemoteMedia();
+  }
   disconnectCurrentSocket();
   const epoch = getSessionEpoch();
   let attempt = 0;
@@ -101,7 +108,11 @@ export function recoverSignal(options: SignalRecoveryOptions): void {
     );
     setSocket(connection);
     try {
-      await connection.connect(4_000);
+      const protocol = getProtocol();
+      await connection.connect({
+        timeoutMs: 4_000,
+        ...(protocol ? { protocols: [protocol] } : {}),
+      });
       opened = true;
       if (!isCurrentSession(epoch) || !isRecovering()) {
         connection.disconnect();

@@ -16,7 +16,7 @@ O resultado esperado é permitir criar e alternar salas, compartilhar áudio do 
 
 **Restrição de orçamento:** nenhuma etapa pode exigir compra, assinatura, servidor alugado, domínio pago ou cobrança por consumo. Usar o computador e a conexão já disponíveis e serviços gratuitos com bloqueio de excedentes confirmado. Ao atingir limites, reduzir capacidade ou suspender o recurso; não fazer upgrade automático. Energia, internet e disponibilidade da máquina continuam sendo recursos necessários. O plano não promete custo operacional absoluto zero nem funcionamento ilimitado.
 
-A revisão de riscos, os controles existentes e as melhorias propostas estão em [Segurança e operação sem serviços pagos](seguranca.md). As implementações e pendências da 0.3.0 estão no registro de progresso e no [relatório de validação](validacao-0.3.0.md); não confundir código implementado com configuração verificada no servidor real.
+A revisão de riscos, os controles existentes e as melhorias propostas estão em [Segurança e operação sem serviços pagos](seguranca.md). As implementações e pendências da 0.3.0 estão no registro de progresso e no [relatório de validação](versões/validacao-0.3.0.md); não confundir código implementado com configuração verificada no servidor real.
 
 ## Referência anterior: código 0.2.4
 
@@ -32,7 +32,7 @@ A revisão de riscos, os controles existentes e as melhorias propostas estão em
 | Monitoramento       | `/health` indica disponibilidade do processo. Ainda não há rota de contagem de participantes.                            |
 | Distribuição        | GitHub Releases, com assinatura opcional.                                                                                |
 
-Os testes locais anteriores estão em [validação da versão 0.2.0](validacao-0.2.0.md). As amostras curtas ali registradas não certificam 1080p/60 sustentado entre computadores diferentes.
+Os testes locais anteriores estão em [validação da versão 0.2.0](versões/validacao-0.2.0.md). As amostras curtas ali registradas não certificam 1080p/60 sustentado entre computadores diferentes.
 
 ## Direção técnica
 
@@ -92,7 +92,7 @@ Configuração externa necessária deve ser listada ao final da subetapa com ins
 
 ### Registro de progresso e retomada
 
-**Estado atual:** implementação local 0.8.0 preparada sobre a base 0.5.0 do commit `cac0121`, incluindo as entregas 0.7-A/B e a consolidação de interface, diagnóstico, bitrate e distribuição. A 0.4 foi enviada separadamente em `cc0c79a`; a SFU 0.6-B continua adiada. Resultados atuais em [validacao-0.8.0.md](validacao-0.8.0.md). A homologação externa da 0.8-A permanece pendente conforme [operacao.md](operacao.md): endpoint real, grupo em redes diferentes, áudio nativo/Discord e atualização entre instalações. Código e pacote locais não certificam as contas ou o host da hospedagem.
+**Estado atual:** implementação local 0.8.0 preparada sobre a base 0.5.0 do commit `cac0121`, incluindo as entregas 0.7-A/B e a consolidação de interface, diagnóstico, bitrate e distribuição. A 0.4 foi enviada separadamente em `cc0c79a`; a SFU 0.6-B continua adiada. Resultados atuais em [validacao-0.8.0.md](versões/validacao-0.8.0.md). A homologação externa da 0.8-A permanece pendente conforme [operacao.md](operacao.md): endpoint real, grupo em redes diferentes, áudio nativo/Discord e atualização entre instalações. Código e pacote locais não certificam as contas ou o host da hospedagem.
 
 Ao terminar ou interromper uma subetapa, atualizar este registro no próprio arquivo. Manter uma entrada por subetapa trabalhada; não sobrescrever o histórico de entregas anteriores.
 
@@ -137,7 +137,7 @@ Ao terminar ou interromper uma subetapa, atualizar este registro no próprio arq
 | 0.3-G1 | Concluída localmente: credenciais de retomada em memória, rotação, prazo limitado e renegociação sem nova captura.                      | Testes de expiração/reutilização/expulsão e retomada do anfitrião no app real aprovados. O ensaio também cobre retomada do espectador. Reinício do backend continua encerrando salas.                                                                                                    |
 | 0.3-G2 | Adiada, opcional.                                                                                                                       | Nenhum TURN contratado ou publicado. Sem infraestrutura própria validada, permanece P2P com limitações conhecidas entre certas redes.                                                                                                                                                    |
 
-**Verificações da entrega:** 85 testes em oito arquivos, tipos, build e formatação aprovados; instalador Windows 0.3.0 sem assinatura gerado com publicação desabilitada. Primeiro ensaio empacotado: 21 cenários com codec/rede e um minuto adicional local; ensaio do updater real: quatro cenários, sem instalação. Relatório e limites em [validacao-0.3.0.md](validacao-0.3.0.md).
+**Verificações da entrega:** 85 testes em oito arquivos, tipos, build e formatação aprovados; instalador Windows 0.3.0 sem assinatura gerado com publicação desabilitada. Primeiro ensaio empacotado: 21 cenários com codec/rede e um minuto adicional local; ensaio do updater real: quatro cenários, sem instalação. Relatório e limites em [validacao-0.3.0.md](versões/validacao-0.3.0.md).
 
 **Fechamento da rodada:** o código final passou em 20 cenários reais no modo de desenvolvimento após corrigir o timer de avisos. A política Device Guard deste Windows bloqueou a última cópia do executável empacotado, portanto sua execução final não foi comprovada. Os ensaios empacotados anteriores não substituem essa verificação. Não foi alterada a política do sistema.
 
@@ -148,7 +148,7 @@ Ao terminar ou interromper uma subetapa, atualizar este registro no próprio arq
 **Data:** 15 de outubro de 2026. **Estado:** implementação concluída; aguardando validação operacional.
 
 - **Escopo:** consentimento por captura; loopback Windows; negação de microfone/câmera; envio de áudio com vídeo; mute, encerramento independente e volume recebido; reserva de banda; métricas; falhas de fonte/dispositivo e reconexão. Pacote 0.4.0, sem novas dependências ou serviços pagos.
-- **Verificações:** 93 testes em nove arquivos, tipos e build aprovados. Vinte cenários integrados de vídeo e quinze de áudio aprovados; dois minutos adicionais de áudio/vídeo contínuos. O áudio integrado usa somente um frame de teste gerado, em substituição ao loopback nativo, para não capturar som pessoal. Limites em [validacao-0.4.0.md](validacao-0.4.0.md).
+- **Verificações:** 93 testes em nove arquivos, tipos e build aprovados. Vinte cenários integrados de vídeo e quinze de áudio aprovados; dois minutos adicionais de áudio/vídeo contínuos. O áudio integrado usa somente um frame de teste gerado, em substituição ao loopback nativo, para não capturar som pessoal. Limites em [validacao-0.4.0.md](versões/validacao-0.4.0.md).
 - **Configuração externa:** nenhuma variável nova no servidor. Mesma sinalização e ICE. Usar cliente 0.4.0 nos dois lados, saída de áudio disponível e opção de som marcada por captura. Publicação da release permanece uma ação separada.
 - **Pendências:** loopback em Windows 10/11, troca física de saída, chamada real do Discord, sincronização por trinta minutos e carga em redes distintas. Não há captura exclusiva de processo ou exclusão automática do Discord. Durante a chamada, manter somente vídeo se o isolamento não foi comprovado.
 - **Retomada:** seguir a matriz de validação e o [guia de áudio](audio.md). Não iniciar 0.5 automaticamente. Código local sem commit ou publicação automática nesta entrega.
@@ -161,13 +161,13 @@ Ao terminar ou interromper uma subetapa, atualizar este registro no próprio arq
 - **Verificações:** 101 testes em onze arquivos, tipos e build aprovados; vinte cenários integrados de vídeo, dezesseis de áudio e dez de salas aprovados. Troca com áudio, mudança de transmissor, retirada de moderação, captura sempre explícita, isolamento de salas/protocolos e destino inexistente cobertos.
 - **Configuração externa:** implantar servidor 0.5.0 primeiro, conferir WSS/origens/limites e distribuir cliente 0.5.0; nenhuma variável ou contratação nova. Clientes antigos continuam somente em salas do protocolo anterior. Reiniciar o servidor encerra salas em memória.
 - **Pendências:** instalação/atualização real e testes com máquinas/redes diferentes; continuam os ensaios de áudio nativo/Discord das entregas anteriores. Não houve publicação da 0.5.0 nesta rodada.
-- **Retomada:** seguir [salas.md](salas.md) e [validacao-0.5.0.md](validacao-0.5.0.md). As alterações 0.5.0 estão locais, separadas do commit publicado da 0.4.0. Não iniciar a etapa seguinte automaticamente.
+- **Retomada:** seguir [salas.md](salas.md) e [validacao-0.5.0.md](versões/validacao-0.5.0.md). As alterações 0.5.0 estão locais, separadas do commit publicado da 0.4.0. Não iniciar a etapa seguinte automaticamente.
 
 #### Avaliação 0.6-A — Viabilidade de SFU própria
 
 **Data:** 16 de outubro de 2026. **Estado:** avaliação encerrada; SFU adiada por decisão do responsável. Não há hospedagem disponível e o uso ocasional pelo grupo pequeno não justifica a estrutura.
 
-- **Entregue:** análise da topologia, orçamento ilustrativo de banda, inventário básico do PC de desenvolvimento e conferência da documentação oficial do LiveKit/Render. Registro em [viabilidade-0.6.0.md](viabilidade-0.6.0.md).
+- **Entregue:** análise da topologia, orçamento ilustrativo de banda, inventário básico do PC de desenvolvimento e conferência da documentação oficial do LiveKit/Render. Registro em [viabilidade-0.6.0.md](versões/viabilidade-0.6.0.md).
 - **Constatação:** SFU precisa estar disponível durante suas sessões. Na mesma conexão do transmissor, a distribuição continua consumindo o upload daquela conexão. Render Free permanece apenas como sinalização nesta proposta.
 - **Decisão:** manter P2P e não implementar 0.6-B no escopo atual. Não há definição de host pendente; a análise de infraestrutura fica como referência para eventual reconsideração.
 - **Limites:** sem instalação, contratação, abertura de portas, serviço persistente ou nova dependência. Pacote permanece 0.5.0. A próxima implementação, quando solicitada, é a 0.7-A em P2P limitado.
@@ -178,7 +178,7 @@ Ao terminar ou interromper uma subetapa, atualizar este registro no próprio arq
 
 - **Escopo:** protocolo 3, até duas publicações no piloto, uma tela própria e uma recepção escolhida por pessoa; cartões sem vídeo oculto; captura e recepção em controladores separados; parada e moderação individuais. Áudio recebido bloqueado durante captura de som próprio, sem microfone/câmera. Prévia própria pausada e desconectada do player em segundo plano, sem reconfigurar a captura enviada.
 - **Estabilidade e segurança:** autorização por sala/publicação/assinatura; IDs e limites validados nos dois lados; confirmação da seleção antes de aceitar ofertas; repetição da mesma seleção renova a conexão; limpeza de tracks, peers e contadores. Enumeração de fontes serializada com fila limitada para evitar lista antiga ao cancelar/reabrir rapidamente.
-- **Verificações:** resultados dos testes automatizados e ensaios integrados registrados em [validacao-0.7.0.md](validacao-0.7.0.md), com limitações de memória, áudio nativo e ambiente descritas.
+- **Verificações:** resultados dos testes automatizados e ensaios integrados registrados em [validacao-0.7.0.md](versões/validacao-0.7.0.md), com limitações de memória, áudio nativo e ambiente descritas.
 - **Configuração externa:** implantar o servidor primeiro, manter `MAX_PUBLISHERS=2`, conferir limites e WSS e distribuir clientes compatíveis. Não há contratação, SFU ou nova dependência. Assinatura opcional e fluxo de GitHub Releases preservados.
 - **Referência:** versão do pacote 0.7.0; alterações locais sem commit ou publicação por esta entrega.
 
@@ -197,7 +197,7 @@ Ao terminar ou interromper uma subetapa, atualizar este registro no próprio arq
 - **Interface e acessibilidade:** preservação de foco/caret e menus em snapshots; Tab/Shift+Tab nos controles visíveis de diálogos; Escape e retorno de foco; atalho para o conteúdo; anunciador persistente sem repetições por renderização; estados de conexão/recuperação claros e atualização explícita da lista de janelas.
 - **Qualidade:** teto de vídeo personalizado de 1 a 30 Mbps por espectador, conversão para MB/s, retorno ao padrão do perfil e alteração durante a captura. O orçamento total, áudio e adaptação continuam limitando o envio. Não há bitrate mínimo nem tráfego artificial para consumir toda a banda.
 - **Operação e segurança:** relatório de suporte schema 2 com contexto validado e runtime fornecido pelo processo principal, sem identificadores/segredos/conteúdo. Diagnóstico do servidor mantido. Validador de manifesto/tamanho/SHA-512/blockmap no workflow, que seleciona somente os artefatos da versão atual. Assinatura continua opcional.
-- **Verificação e distribuição:** testes automatizados e integrados, ensaio contínuo local e pacote NSIS registrados em [validacao-0.8.0.md](validacao-0.8.0.md). Executável empacotado e atualizador real exercitados em perfis/cache de teste; nenhuma instalação existente foi substituída.
+- **Verificação e distribuição:** testes automatizados e integrados, ensaio contínuo local e pacote NSIS registrados em [validacao-0.8.0.md](versões/validacao-0.8.0.md). Executável empacotado e atualizador real exercitados em perfis/cache de teste; nenhuma instalação existente foi substituída.
 - **Configuração externa:** nenhum serviço pago ou variável de servidor nova. Confirmar endpoint WSS, protocolo 3, limites gratuitos e implantação; publicar a release somente pelo procedimento revisado em [releases.md](releases.md).
 - **Referência:** versão 0.8.0 local, sem commit/push ou release publicados por esta entrega. Não iniciar a 1.0 automaticamente.
 
@@ -403,7 +403,7 @@ flowchart LR
 
 **Regra operacional:** limites gratuitos devem resultar em redução, suspensão ou adiamento de funcionalidade, nunca contratação automática. Alertas de orçamento sozinhos não impedem cobranças. Não depender de períodos de teste, créditos promocionais ou gratuidade futura não garantida.
 
-O [Render informa](https://render.com/docs/free) que excedentes de banda podem ser cobrados quando há forma de pagamento; sem ela, os serviços gratuitos são suspensos. Também há limites de horas e builds. Verificar a conta antes da implantação: este documento não confirma sua configuração de cobrança. Não usar pings artificiais para contornar a suspensão por inatividade.
+O [Render informa](https://render.com/docs/free) que excedentes de banda podem ser cobrados quando há forma de pagamento; sem ela, os serviços gratuitos são suspensos. Também há limites de horas e builds. Verificar a conta antes da implantação: este documento não confirma sua configuração de cobrança. Não usar pings artificiais para contornar a suspensão por inatividade. Exceção deliberada: enquanto uma sala está ativa, o app consulta `/health` a cada cinco minutos para não interromper uma sessão em uso; sem sala aberta (inclusive no Início) nada é enviado e o servidor pode dormir. Na primeira conexão o app espera até 60 s o servidor acordar e avisa "Acordando o servidor…".
 
 Os [runners padrão do GitHub Actions são gratuitos para repositórios públicos](https://docs.github.com/en/billing/concepts/product-billing/github-actions), mas armazenamento/cache têm limites e runners maiores são cobrados. Manter retenção curta para resultados temporários e não ampliar limites pagos. Não usar Actions para hospedar o servidor.
 

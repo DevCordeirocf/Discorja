@@ -4,6 +4,16 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createSignalingServer } from '../dist/server/server.js';
 import { installQualityProbe } from './quality-probe.mjs';
+import {
+  appReady,
+  copyInvite,
+  createGroup,
+  createRoom,
+  joinGroup,
+  joinRoom,
+  openSettings,
+  roomControls,
+} from './group-flow.mjs';
 
 await mkdir('test-results', { recursive: true });
 // Keep the smoke run focused on a deliberately constrained capacity profile.
@@ -33,7 +43,7 @@ const deadline = setTimeout(
   () => applications.forEach((application) => application.process().kill()),
   300000 + soakMinutes * 60000,
 );
-async function launch(name) {
+async function launch() {
   const profile = await mkdtemp(resolve('test-results/multi-profile-'));
   const application = await electron.launch({
     args: ['.', `--user-data-dir=${profile}`],
@@ -45,8 +55,7 @@ async function launch(name) {
   const page = await application.firstWindow();
   pages.push(page);
   page.on('pageerror', (error) => errors.push(error.message));
-  await expect(page.locator('[data-action=create]')).toBeEnabled();
-  await expect(page.locator('#startup-splash')).toHaveCount(0);
+  await appReady(page);
   await installQualityProbe(page);
   await page.evaluate(() => {
     window.__captureStreams = [];
@@ -59,15 +68,13 @@ async function launch(name) {
       return stream;
     };
   });
-  await page.locator('#display-name').fill(name);
   return { application, page };
 }
-async function join(page, code) {
-  await page.locator('#room-code').fill(code);
-  await page
-    .getByRole('button', { name: 'Entrar na sala', exact: true })
-    .click();
-  await expect(page.locator('.room-code')).toBeVisible();
+async function join(name, invite) {
+  const { page } = await launch();
+  await joinGroup(page, { name, invite });
+  await joinRoom(page, 'Sala de Ana');
+  return page;
 }
 async function capture(page) {
   await page.locator('[data-action=choose-source]').click();
@@ -140,9 +147,10 @@ async function rendererMemory(application, page) {
 }
 
 try {
-  const { application: appA, page: a } = await launch('Ana');
-  await a.locator('[data-action=create]').click();
-  const code = (await a.locator('.room-code').innerText()).replace(/\s/g, '');
+  const { application: appA, page: a } = await launch();
+  await createGroup(a, { name: 'Ana', group: 'Piloto simultâneo' });
+  const invite = await copyInvite(appA, a);
+  await createRoom(a);
   const fixtureReady = appA.waitForEvent('window');
   await appA.evaluate(({ BrowserWindow }, fixturePath) => {
     const fixture = new BrowserWindow({
@@ -163,20 +171,16 @@ try {
   await fixture.evaluate(() => {
     document.title = 'Discorja - piloto simultâneo';
   });
-  const { page: b } = await launch('Bruno');
-  await join(b, code);
-  const { page: c } = await launch('Carla');
-  await join(c, code);
-  const { page: d } = await launch('Davi');
-  await join(d, code);
-  await a.locator('[data-action=settings]').click();
-  await a.locator('#settings-quality-preset').selectOption('1080p60');
+  const b = await join('Bruno', invite);
+  const c = await join('Carla', invite);
+  const d = await join('Davi', invite);
+  await openSettings(a);
+  await a.locator('#settings-quality-preset').selectOption('1080p30');
+  await a.locator('#settings-fps').selectOption('60');
   await a.locator('[data-action=close-settings]').click();
   await capture(a);
   await capture(b);
-  await expect(
-    c.locator('.person-stream-choice[data-action=watch-screen]'),
-  ).toHaveCount(2);
+  await expect(c.locator('.live-stream-person')).toHaveCount(2);
   assert.equal(await active(c), 0);
   assert.equal(await active(a, 'send'), 0);
   await expect(c.locator('#stream-video')).toHaveCount(0);
@@ -216,22 +220,42 @@ try {
   await watch(b, 'Ana');
   assert.equal(await active(a, 'receive'), 1);
   assert.equal(await active(b, 'receive'), 1);
-  await expect(a.locator('#local-preview')).toHaveCount(1);
+  assert.equal(
+    await a
+      .locator('#stream-video')
+      .evaluate((element) => element.srcObject !== window.__captureStreams[0]),
+    true,
+  );
   checks.push(
     'Two publishers can watch each other through independent send and receive connections',
   );
 
+  // The local preview uses the main player while Ana watches no one.
+  const mainWindow = await appA.browserWindow(a);
+  await a
+    .getByRole('button', { name: 'Assistir transmissão de Bruno', exact: true })
+    .click();
+  await mainWindow.evaluate((window) => window.emit('focus'));
+  await expect
+    .poll(() =>
+      a
+        .locator('#stream-video')
+        .evaluate(
+          (element) =>
+            element.srcObject === window.__captureStreams[0] && !element.paused,
+        ),
+    )
+    .toBe(true);
   measurements.memoryBeforeMinimize = await rendererMemory(appA, a);
   const framesBefore = await receivedFrames(d);
   const constraintsBefore = await a.evaluate(() =>
     window.__captureStreams[0].getVideoTracks()[0].getConstraints(),
   );
-  const mainWindow = await appA.browserWindow(a);
   await mainWindow.evaluate((window) => window.minimize());
   await expect
     .poll(() =>
       a
-        .locator('#local-preview')
+        .locator('#stream-video')
         .evaluate((element) => element.srcObject === null && element.paused),
     )
     .toBe(true);
@@ -268,7 +292,7 @@ try {
     .poll(
       () =>
         a
-          .locator('#local-preview')
+          .locator('#stream-video')
           .evaluate(
             (element) =>
               element.srcObject === window.__captureStreams[0] &&
@@ -283,7 +307,7 @@ try {
   await expect
     .poll(() =>
       a
-        .locator('#local-preview')
+        .locator('#stream-video')
         .evaluate((element) => element.srcObject === null && element.paused),
     )
     .toBe(true);
@@ -291,7 +315,7 @@ try {
   await expect
     .poll(() =>
       a
-        .locator('#local-preview')
+        .locator('#stream-video')
         .evaluate(
           (element) =>
             element.srcObject === window.__captureStreams[0] && !element.paused,
@@ -301,6 +325,7 @@ try {
   checks.push(
     'Minimizing detaches and pauses only local preview; remote frames keep arriving with the same live 60fps capture constraints; foreground reuses the stream',
   );
+  await watch(a, 'Bruno');
   await a.screenshot({ path: 'test-results/multistream-room.png' });
   await c.screenshot({ path: 'test-results/multistream-viewer.png' });
   if (soakMinutes) {
@@ -340,9 +365,7 @@ try {
   }
   await b.locator('[data-action=stop]').click();
   await expect(c.locator('#stream-video')).toHaveCount(0);
-  await expect(
-    d.locator('.person-stream-choice[data-action=watch-screen]'),
-  ).toHaveCount(1);
+  await expect(d.locator('.live-stream-person')).toHaveCount(1);
   const surviving = await receivedFrames(d);
   await d.waitForTimeout(1200);
   assert.ok((await receivedFrames(d)) > surviving);
@@ -357,9 +380,7 @@ try {
       if (count) await a.locator('[data-action=stop-watching]').click();
     });
   await capture(c);
-  await expect(
-    a.locator('.person-stream-choice[data-action=watch-screen]'),
-  ).toHaveCount(2);
+  await expect(a.locator('.live-stream-person')).toHaveCount(2);
   await a.locator('summary[aria-label="Ações de Carla"]').click();
   await a
     .getByRole('button', { name: 'Encerrar tela de Carla', exact: true })
@@ -369,12 +390,19 @@ try {
   checks.push(
     'Moderator interruption of a publication does not end the other publication or the room',
   );
-  await d.locator('[data-action=stop-watching]').click();
+  // Pressing the watched card again stops watching it.
+  await d
+    .getByRole('button', { name: 'Assistir transmissão de Ana', exact: true })
+    .click();
+  await expect(
+    d
+      .locator('#room-view')
+      .getByRole('heading', { name: 'Nenhuma transmissão selecionada' }),
+  ).toBeVisible();
   await expect.poll(() => active(d)).toBe(0);
   checks.push('Stop watching releases reception without affecting membership');
   await a.locator('[data-action=leave]').click();
-  for (const page of [b, c, d])
-    await expect(page.locator('.room-code')).toHaveCount(0);
+  for (const page of [b, c, d]) await expect(roomControls(page)).toHaveCount(0);
   assert.equal(
     await a.evaluate(() =>
       window.__captureStreams.every((stream) =>

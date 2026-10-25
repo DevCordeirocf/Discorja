@@ -53,3 +53,19 @@ describe('configuração do servidor de sinalização', () => {
     );
   });
 });
+
+describe('confiança no proxy', () => {
+  it('aceita somente 0 ou 1 salto de proxy', () => {
+    expect(resolveSignalingConfig().trustProxyHops).toBe(0);
+    expect(resolveSignalingConfig({ trustProxyHops: 1 }).trustProxyHops).toBe(
+      1,
+    );
+    expect(() => resolveSignalingConfig({ trustProxyHops: 2 })).toThrow(
+      'trustProxyHops',
+    );
+  });
+
+  it('deriva o limite de publicadores dos espectadores quando omitido', () => {
+    expect(resolveSignalingConfig({ maxViewers: 4 }).maxPublishers).toBe(5);
+  });
+});

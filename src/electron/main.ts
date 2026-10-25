@@ -17,7 +17,13 @@ import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { authorizedFrame, rendererFile, trustedAppUrl } from './security';
+import {
+  allowedExternalUrl,
+  authorizedFrame,
+  pasteOnContextMenu,
+  rendererFile,
+  trustedAppUrl,
+} from './security';
 import { CaptureAuthorization, displayMediaPermission } from './capture';
 import { DesktopLogs } from './logs';
 import { errorFields, rendererLogEvent } from '../shared/logs';
@@ -28,6 +34,7 @@ import {
   validateSignalingUrl,
 } from './config';
 import { roomCode } from '../shared/validation';
+import { GROUP_INVITE } from '../shared/groups';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -458,6 +465,11 @@ function registerIpc() {
     if (!roomCode(code)) throw new Error('Código inválido.');
     clipboard.writeText(code);
   });
+  handle('group:copy-invite', (invite: unknown) => {
+    if (typeof invite !== 'string' || !GROUP_INVITE.test(invite))
+      throw new Error('Convite inválido.');
+    clipboard.writeText(invite);
+  });
   handle('updates:check', checkUpdates);
   handle('updates:state', () => updateState);
   handle('updates:download', async () => {
@@ -529,7 +541,13 @@ async function main() {
   }
   if (process.env.DISCORJA_SIGNALING_URL)
     signalingUrl = validateSignalingUrl(process.env.DISCORJA_SIGNALING_URL);
-  iceServers = parseIceServers(process.env.DISCORJA_ICE_SERVERS);
+  try {
+    iceServers = parseIceServers(process.env.DISCORJA_ICE_SERVERS);
+  } catch {
+    // A bad override must not stop the app; the value itself is never logged.
+    iceServers = parseIceServers(undefined);
+    logs?.write({ event: 'app.exception', details: { reason: 'rejected' } });
+  }
   try {
     release = JSON.parse(
       await readFile(path.join(__dirname, 'release.json'), 'utf8'),
@@ -666,21 +684,17 @@ async function main() {
   window.on('hide', () => publishForeground(false));
   window.removeMenu();
   window.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      const externalUrl = new URL(url);
-      if (
-        externalUrl.protocol === 'https:' &&
-        externalUrl.hostname === 'github.com' &&
-        externalUrl.pathname.replace(/\/+$/u, '') === '/DevCordeiroCf'
-      )
-        void shell.openExternal(externalUrl.href).catch(() => undefined);
-    } catch {
-      // Invalid and untrusted URLs remain blocked.
-    }
+    // Only exact allowlisted pages open, and always in the system browser.
+    const externalUrl = allowedExternalUrl(url);
+    if (externalUrl)
+      void shell.openExternal(externalUrl).catch(() => undefined);
     return { action: 'deny' };
   });
   window.webContents.on('will-navigate', (event) => {
     event.preventDefault();
+  });
+  window.webContents.on('context-menu', (_event, params) => {
+    if (pasteOnContextMenu(params)) window?.webContents.paste();
   });
   window.webContents.on('will-frame-navigate', (event) =>
     event.preventDefault(),

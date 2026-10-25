@@ -69,8 +69,12 @@ async function start(options: SignalingOptions = {}) {
   };
 }
 
-async function connect(url: string, origin = 'app://discorja') {
-  const socket = new WebSocket(url, { origin });
+async function connect(
+  url: string,
+  origin = 'app://discorja',
+  headers: Record<string, string> = {},
+) {
+  const socket = new WebSocket(url, { origin, headers });
   sockets.push(socket);
   const peer = new Peer(socket);
   await new Promise<void>((resolve, reject) => {
@@ -90,7 +94,7 @@ async function join(viewer: Peer, code: string, name = 'Amigo') {
   return viewer.next('room-joined');
 }
 
-async function modern(url: string, protocol: 2 | 3 = 2) {
+async function modern(url: string, protocol: 2 | 3 | 4 | 5 = 2) {
   const peer = await connect(url);
   peer.send({ type: 'hello', protocol });
   expect(await peer.next('hello')).toEqual({ type: 'hello', protocol });
@@ -357,7 +361,8 @@ describe('Publicações e seleção única no protocolo 3', () => {
         (entry) => entry.publicationId === 'screen-member' && !entry.connected,
       ),
     );
-    expect(disconnected.subscribers).toEqual([]);
+    // A watcher inside the resume grace keeps its WebRTC link to the publisher.
+    expect(disconnected.subscribers).toEqual([joined.selfId]);
     owner.send({ type: 'stop-publication', peerId: joined.selfId });
     expect(
       (await multiSnapshot(viewer, (value) => value.publications.length === 1))
@@ -1230,5 +1235,383 @@ describe('sinalização Discorja', () => {
     await join(viewer, room.code);
     host.send({ type: 'close-room' });
     expect((await viewer.next('room-closed')).reason).toBe('host-closed');
+  });
+});
+
+describe('Perfil no protocolo 4', () => {
+  const avatar = `data:image/jpeg;base64,${'A'.repeat(64)}`;
+
+  it('envia o perfil novo a todos e ignora atualizações sem mudança', async () => {
+    const { url } = await start();
+    const owner = await modern(url, 4);
+    const created = await modernRoom(owner);
+    const friend = await modern(url, 4);
+    await modernJoin(friend, created.code);
+    await state(owner);
+
+    friend.send({ type: 'update-profile', name: 'Amigo', avatar: '' });
+    friend.send({ type: 'update-profile', name: 'Bia', avatar });
+    const updated = await state(owner);
+    const entry = updated.participants.find(
+      (person) => person.peerId !== updated.selfId,
+    ) as { name: string; avatar?: string };
+    // The no-op update produced no snapshot, so the first one is already Bia.
+    expect(entry).toMatchObject({ name: 'Bia', avatar });
+  });
+
+  it('limita alterações de perfil por conexão', async () => {
+    const { url } = await start({
+      rateLimits: { socketProfiles: { max: 2, windowMs: 60_000 } },
+    });
+    const owner = await modern(url, 4);
+    await modernRoom(owner);
+    for (const name of ['Um', 'Dois'])
+      owner.send({ type: 'update-profile', name, avatar: '' });
+    owner.send({ type: 'update-profile', name: 'Três', avatar: '' });
+    expect(await owner.next('error')).toMatchObject({ code: 'RATE_LIMITED' });
+  });
+
+  it('recusa avatares que não são JPEG pequenos', async () => {
+    const { url } = await start();
+    const owner = await modern(url, 4);
+    await modernRoom(owner);
+    owner.send({
+      type: 'update-profile',
+      name: 'Dono',
+      avatar: `data:image/png;base64,${'A'.repeat(64)}`,
+    });
+    expect(await owner.next('error')).toMatchObject({
+      code: 'INVALID_MESSAGE',
+    });
+    owner.send({
+      type: 'update-profile',
+      name: 'Dono',
+      avatar: `data:image/jpeg;base64,${'A'.repeat(9_001)}`,
+    });
+    expect(await owner.next('error')).toMatchObject({
+      code: 'INVALID_MESSAGE',
+    });
+  });
+
+  it('pede para atualizar o app ao entrar em sala de versão mais nova', async () => {
+    const { url } = await start();
+    const owner = await modern(url, 4);
+    const created = await modernRoom(owner);
+    const old = await modern(url, 3);
+    old.send({ type: 'join-room', code: created.code, name: 'Antigo' });
+    const failure = await old.next('error');
+    expect(failure.code).toBe('PROTOCOL_MISMATCH');
+    expect(failure.message).toContain('versão mais nova');
+  });
+});
+
+describe('Endereço do cliente atrás de proxy', () => {
+  const limited = { ipConnections: { max: 1, windowMs: 60_000 } };
+
+  it('usa a última entrada de X-Forwarded-For quando o proxy é confiável', async () => {
+    const { url } = await start({ trustProxyHops: 1, rateLimits: limited });
+    await connect(url, undefined, { 'X-Forwarded-For': '1.1.1.1, 10.0.0.1' });
+    await connect(url, undefined, { 'X-Forwarded-For': '1.1.1.1, 10.0.0.2' });
+    await expect(
+      connect(url, undefined, { 'X-Forwarded-For': '10.0.0.2' }),
+    ).rejects.toThrow('429');
+  });
+
+  it('ignora X-Forwarded-For sem proxy configurado', async () => {
+    const { url } = await start({ rateLimits: limited });
+    await connect(url, undefined, { 'X-Forwarded-For': '10.0.0.1' });
+    await expect(
+      connect(url, undefined, { 'X-Forwarded-For': '10.0.0.2' }),
+    ).rejects.toThrow('429');
+  });
+});
+
+function gifAvatar(width = 64, height = 64) {
+  const bytes = new Uint8Array(40);
+  bytes.set([...'GIF89a'].map((char) => char.charCodeAt(0)));
+  bytes.set([width & 255, width >> 8, height & 255, height >> 8], 6);
+  return `data:image/gif;base64,${Buffer.from(bytes).toString('base64')}`;
+}
+
+describe('Avatares no protocolo 5', () => {
+  it('envia só o identificador na sala e a imagem sob pedido', async () => {
+    const { url } = await start();
+    const owner = await modern(url, 5);
+    const avatar = gifAvatar();
+    owner.send({ type: 'create-room', name: 'Dono', avatar });
+    const created = await state(owner, (value) => value.reason === 'created');
+    expect(created.protocol).toBe(5);
+    const self = created.participants[0] as {
+      avatar?: string;
+      avatarId?: string;
+    };
+    expect(self.avatar).toBeUndefined();
+    expect(self.avatarId).toMatch(/^[a-f0-9]{16}$/);
+
+    const friend = await modern(url, 5);
+    await modernJoin(friend, created.code);
+    friend.send({
+      type: 'get-avatar',
+      peerId: created.selfId,
+      avatarId: self.avatarId!,
+    });
+    expect(await friend.next('participant-avatar')).toEqual({
+      type: 'participant-avatar',
+      peerId: created.selfId,
+      avatarId: self.avatarId,
+      avatar,
+    });
+  });
+
+  it('ignora pedidos de foto com identificador errado ou de outra sala', async () => {
+    const { url } = await start();
+    const owner = await modern(url, 5);
+    owner.send({ type: 'create-room', name: 'Dono', avatar: gifAvatar() });
+    const created = await state(owner, (value) => value.reason === 'created');
+    const outsider = await modern(url, 5);
+    await modernRoom(outsider);
+    outsider.send({
+      type: 'get-avatar',
+      peerId: created.selfId,
+      avatarId: (created.participants[0] as { avatarId: string }).avatarId,
+    });
+    owner.send({
+      type: 'get-avatar',
+      peerId: created.selfId,
+      avatarId: '0'.repeat(16),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(
+      [...outsider.inbox, ...owner.inbox].some(
+        (message) => message.type === 'participant-avatar',
+      ),
+    ).toBe(false);
+  });
+
+  it('recusa GIFs grandes e imagens disfarçadas', async () => {
+    const { url } = await start();
+    const owner = await modern(url, 5);
+    await modernRoom(owner);
+    for (const avatar of [
+      gifAvatar(300, 300),
+      gifAvatar().replace('image/gif', 'image/webp'),
+    ]) {
+      owner.send({ type: 'update-profile', name: 'Dono', avatar });
+      expect(await owner.next('error')).toMatchObject({
+        code: 'INVALID_MESSAGE',
+      });
+    }
+  });
+
+  it('um app novo entra em sala antiga falando o protocolo dela', async () => {
+    const { url } = await start();
+    const old = await modern(url, 4);
+    const created = await modernRoom(old);
+    const fresh = await modern(url, 5);
+    fresh.send({
+      type: 'join-room',
+      code: created.code,
+      name: 'Nova',
+      avatar: gifAvatar(),
+    });
+    const joined = await state(fresh, (value) => value.reason === 'joined');
+    expect(joined.protocol).toBe(4);
+    // The GIF cannot travel inside a protocol 4 snapshot.
+    expect(
+      joined.participants.find((person) => person.peerId === joined.selfId),
+    ).not.toHaveProperty('avatar');
+  });
+
+  it('um app antigo não entra em sala nova', async () => {
+    const { url } = await start();
+    const fresh = await modern(url, 5);
+    const created = await modernRoom(fresh);
+    const old = await modern(url, 4);
+    old.send({ type: 'join-room', code: created.code, name: 'Antigo' });
+    expect((await old.next('error')).message).toContain('versão mais nova');
+  });
+});
+
+describe('Grupos no protocolo 5', () => {
+  const groupKey = 'c'.repeat(64);
+  const wait = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  it('lista as salas do grupo só para quem tem a chave', async () => {
+    const { url } = await start();
+    const friend = await modern(url, 5);
+    friend.send({ type: 'subscribe-group', groupKey, name: 'Bia' });
+    expect(await friend.next('group-state')).toEqual({
+      type: 'group-state',
+      groupKey,
+      rooms: [],
+      online: ['Bia'],
+    });
+    const stranger = await modern(url, 5);
+    stranger.send({
+      type: 'subscribe-group',
+      groupKey: 'd'.repeat(64),
+      name: 'X',
+    });
+    await stranger.next('group-state');
+    await wait(250);
+    stranger.inbox.length = 0;
+    friend.inbox.length = 0;
+
+    const owner = await modern(url, 5);
+    owner.send({ type: 'create-room', name: 'Ana', groupKey });
+    const created = await state(owner, (value) => value.reason === 'created');
+    const listing = await friend.next('group-state');
+    expect(listing.rooms[0]).toMatchObject({
+      code: created.code,
+      ownerName: 'Ana',
+      participants: 1,
+      members: ['Ana'],
+    });
+    await wait(250);
+    expect(
+      stranger.inbox.some((message) => message.type === 'group-state'),
+    ).toBe(false);
+
+    owner.send({ type: 'close-room' });
+    let closed = await friend.next('group-state');
+    while (closed.rooms.length) closed = await friend.next('group-state');
+    expect(closed.rooms).toEqual([]);
+  });
+
+  it('agrupa mudanças rápidas em uma só listagem', async () => {
+    const { url } = await start();
+    const friend = await modern(url, 5);
+    friend.send({ type: 'subscribe-group', groupKey, name: 'Bia' });
+    await friend.next('group-state');
+    await wait(250);
+    friend.inbox.length = 0;
+    const owner = await modern(url, 5);
+    owner.send({ type: 'create-room', name: 'Ana', groupKey });
+    const created = await state(owner, (value) => value.reason === 'created');
+    const guest = await modern(url, 5);
+    await modernJoin(guest, created.code, 'Caio');
+    await wait(400);
+    const listings = friend.inbox.filter(
+      (message) => message.type === 'group-state',
+    );
+    expect(listings.length).toBeGreaterThan(0);
+    expect(listings.length).toBeLessThanOrEqual(2);
+  });
+
+  it('valida chaves, limita grupos e exige protocolo 5', async () => {
+    const { url } = await start();
+    const old = await modern(url, 4);
+    old.send({ type: 'subscribe-group', groupKey, name: 'Bia' });
+    expect(await old.next('error')).toMatchObject({
+      code: 'PROTOCOL_MISMATCH',
+    });
+    old.send({ type: 'create-room', name: 'Ana', groupKey });
+    expect(await old.next('error')).toMatchObject({
+      code: 'PROTOCOL_MISMATCH',
+    });
+
+    const fresh = await modern(url, 5);
+    fresh.send({ type: 'subscribe-group', groupKey: 'XYZ', name: 'Bia' });
+    expect(await fresh.next('error')).toMatchObject({
+      code: 'INVALID_MESSAGE',
+    });
+    for (let index = 0; index < 8; index++)
+      fresh.send({
+        type: 'subscribe-group',
+        groupKey: index.toString(16).repeat(64),
+        name: 'Bia',
+      });
+    fresh.send({
+      type: 'subscribe-group',
+      groupKey: 'e'.repeat(64),
+      name: 'Bia',
+    });
+    expect(await fresh.next('error')).toMatchObject({ code: 'GROUP_LIMIT' });
+  });
+
+  it('remove a presença quando a conexão fecha', async () => {
+    const { url } = await start();
+    const first = await modern(url, 5);
+    first.send({ type: 'subscribe-group', groupKey, name: 'Bia' });
+    await first.next('group-state');
+    const second = await modern(url, 5);
+    second.send({ type: 'subscribe-group', groupKey, name: 'Caio' });
+    await second.next('group-state');
+    first.socket.terminate();
+    let listing = await second.next('group-state');
+    while (listing.online.includes('Bia'))
+      listing = await second.next('group-state');
+    expect(listing.online).toEqual(['Caio']);
+  });
+
+  it('conta como online quem está nas salas do grupo, e só do grupo', async () => {
+    const { url } = await start();
+    const friend = await modern(url, 5);
+    friend.send({ type: 'subscribe-group', groupKey, name: 'Bia' });
+    await friend.next('group-state');
+    const owner = await modern(url, 5);
+    owner.send({ type: 'create-room', name: 'Ana', groupKey });
+    const created = await state(owner, (value) => value.reason === 'created');
+    const guest = await modern(url, 5);
+    await modernJoin(guest, created.code, 'Caio');
+    const outsider = await modern(url, 5);
+    outsider.send({ type: 'create-room', name: 'Fora' });
+    await state(outsider, (value) => value.reason === 'created');
+
+    let listing = await friend.next('group-state');
+    while (!listing.online.includes('Caio'))
+      listing = await friend.next('group-state');
+    expect([...listing.online].sort()).toEqual(['Ana', 'Bia', 'Caio']);
+
+    owner.send({ type: 'close-room' });
+    while (listing.rooms.length) listing = await friend.next('group-state');
+    expect(listing.online).toEqual(['Bia']);
+  });
+});
+
+describe('Painel administrativo', () => {
+  const statsToken = 's'.repeat(40);
+
+  it('exige o token e não expõe segredos', async () => {
+    const { url, httpUrl } = await start({ statsToken });
+    const owner = await modern(url, 5);
+    owner.send({ type: 'create-room', name: 'Ana', groupKey: 'f'.repeat(64) });
+    const created = await state(owner, (value) => value.reason === 'created');
+
+    expect((await fetch(`${httpUrl}/api/admin`)).status).toBe(401);
+    const response = await fetch(`${httpUrl}/api/admin`, {
+      headers: { Authorization: `Bearer ${statsToken}` },
+    });
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    const data = JSON.parse(text);
+    expect(data.rooms[0]).toMatchObject({
+      name: 'Sala de Ana',
+      protocol: 5,
+      inGroup: true,
+      participants: [{ name: 'Ana', role: 'owner', connected: true }],
+    });
+    expect(text).not.toContain(created.code);
+    expect(text).not.toContain(created.resumeToken);
+    expect(text).not.toContain('f'.repeat(64));
+    expect(data.totals.roomsCreated).toBe(1);
+  });
+
+  it('serve a página com política de conteúdo estrita', async () => {
+    const { httpUrl } = await start({ statsToken });
+    const response = await fetch(`${httpUrl}/admin`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-security-policy')).toContain(
+      "default-src 'none'",
+    );
+    expect(response.headers.get('x-frame-options')).toBe('DENY');
+    expect(await response.text()).not.toContain(statsToken);
+  });
+
+  it('não existe sem token configurado', async () => {
+    const { httpUrl } = await start();
+    expect((await fetch(`${httpUrl}/admin`)).status).toBe(404);
+    expect((await fetch(`${httpUrl}/api/admin`)).status).toBe(404);
   });
 });

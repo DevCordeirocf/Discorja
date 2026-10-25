@@ -39,12 +39,52 @@ export function rendererFile(root: string, value: string): string | undefined {
         '.svg',
         '.png',
         '.ico',
+        '.woff',
         '.woff2',
+        '.ttf',
+        '.gif',
+        '.webp',
         '.wav',
       ].includes(path.extname(target))
     )
       return;
     return target;
+  } catch {
+    return;
+  }
+}
+
+/** Exact external pages the app may open in the browser. */
+const EXTERNAL_PAGES = new Set([
+  'https://github.com/DevCordeiroCf',
+  'https://giphy.com/',
+]);
+
+/**
+ * Right-click pastes like Ctrl+V, but only into an editable field that can
+ * take the clipboard; the text never passes through the renderer.
+ */
+export function pasteOnContextMenu(params: {
+  isEditable: boolean;
+  editFlags: { canPaste: boolean };
+  inputFieldType?: string;
+}): boolean {
+  return (
+    params.isEditable &&
+    params.editFlags.canPaste &&
+    params.inputFieldType !== 'password'
+  );
+}
+
+export function allowedExternalUrl(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    if (url.username || url.password || url.search || url.hash) return;
+    const normalized =
+      url.pathname === '/'
+        ? url.href
+        : `${url.origin}${url.pathname.replace(/\/+$/u, '')}`;
+    return EXTERNAL_PAGES.has(normalized) ? normalized : undefined;
   } catch {
     return;
   }

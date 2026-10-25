@@ -1,53 +1,97 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_STREAM_PREFERENCES } from '../src/shared/quality';
-import { renderHome } from '../src/renderer/views/home';
 import { renderQualityPanel } from '../src/renderer/views/quality';
 import { renderDiagnostics } from '../src/renderer/views/diagnostics';
 import { renderSingleRoom } from '../src/renderer/views/single-room';
-import { renderSidebar } from '../src/renderer/views/design';
+import { renderSidebar, type RailGroup } from '../src/renderer/views/design';
+import { renderAppShell } from '../src/renderer/views/app-shell';
+
+const rail = (
+  overrides: Partial<Parameters<typeof renderSidebar>[0]> = {},
+): string =>
+  renderSidebar({
+    page: 'home',
+    hasRoom: false,
+    groups: [],
+    canAddGroup: true,
+    displayName: 'Ana',
+    profilePhoto: '',
+    version: '0.10.0',
+    profileMenuOpen: false,
+    ...overrides,
+  });
 
 describe('templates da interface', () => {
-  it('mostra navegação para a sala apenas durante uma sessão ativa', () => {
-    const home = renderSidebar('home', false, false, 'Ana', '0.9.0');
-    const room = renderSidebar('room', true, false, 'Ana', '0.9.0');
-    const collapsed = renderSidebar('home', false, true, 'Ana', '0.9.0');
-
-    expect(home).not.toContain('data-action="room"');
+  it('mostra o atalho da sala apenas durante uma sessão ativa', () => {
+    expect(rail()).not.toContain('data-action="room"');
+    const room = rail({ page: 'room', hasRoom: true });
     expect(room).toContain('data-action="room"');
-    expect(room).toContain('>Sala</span>');
-    expect(collapsed).toContain('class="profile-button"');
-    expect(collapsed).toContain('aria-label="Alterar seu perfil"');
-    expect(collapsed).toContain('>A</span>');
+    expect(room).toContain('aria-label="Voltar para a sala"');
+    expect(room).toContain('aria-current="page"');
   });
 
-  it('escapa nomes e códigos inseridos na tela inicial', () => {
-    const html = renderHome({
-      enabled: true,
-      busy: false,
-      connecting: false,
-      displayName: '<Luís>',
-      editingName: true,
-      joinCode: 'AB<&1234',
-    });
-
-    expect(html).toContain('value="&lt;Luís&gt;"');
-    expect(html).toContain('value="AB&lt;&amp;1234"');
-    expect(html).not.toContain('value="<Luís>"');
+  it('lista os grupos na lateral e marca o grupo aberto', () => {
+    const groups: RailGroup[] = [
+      {
+        secret: 'a',
+        name: '<Turma>',
+        initials: 'TU',
+        selected: true,
+        live: true,
+      },
+      {
+        secret: 'b',
+        name: 'Família',
+        initials: 'FA',
+        selected: false,
+        live: false,
+      },
+    ];
+    const html = rail({ groups });
+    expect(html).toContain('class="rail-logo"');
+    expect(html).toContain('title="&lt;Turma&gt;"');
+    expect(html).toContain('aria-label="&lt;Turma&gt;, com tela ao vivo"');
+    expect(html).not.toContain('<Turma>');
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+    expect(html).toContain('data-action="add-group"');
+    expect(rail({ groups, page: 'settings' })).not.toContain(
+      'aria-current="page"',
+    );
+    expect(rail({ canAddGroup: false })).not.toContain(
+      'data-action="add-group"',
+    );
   });
 
-  it('reflete o estado de conexão e desabilita os controles enquanto ocupado', () => {
-    const html = renderHome({
-      enabled: true,
-      busy: true,
-      connecting: true,
-      displayName: 'Ana',
-      editingName: false,
-      joinCode: '',
-    });
+  it('abre perfil e configurações pelo menu da foto', () => {
+    const closed = rail();
+    expect(closed).toContain('data-action="toggle-profile-menu"');
+    expect(closed).toContain('aria-expanded="false"');
+    expect(closed).toContain('aria-label="Perfil de Ana"');
+    expect(closed).not.toContain('data-action="settings"');
+    const open = rail({ profileMenuOpen: true, displayName: '<Luís>' });
+    expect(open).toContain('aria-expanded="true"');
+    expect(open).toContain('data-action="edit-name"');
+    expect(open).toContain('data-action="settings"');
+    expect(open).toContain('&lt;Luís&gt;');
+    expect(open).toContain('v0.10.0');
+    expect(open).not.toContain('<Luís>');
+  });
 
-    expect(html).toContain('Conectando…');
-    expect(html).toContain('data-action="use-last-room-code"');
-    expect(html.match(/disabled/g)).toHaveLength(4);
+  it('mostra o título só em Configurações', () => {
+    const shell = (page: 'home' | 'settings') =>
+      renderAppShell({
+        page,
+        hasDesktopApi: true,
+        notice: null,
+        sidebar: '<aside class="rail"></aside>',
+        home: '<p>início</p>',
+        settings: () => '<p>configurações</p>',
+        room: '',
+        modal: '',
+      });
+    expect(shell('home')).not.toContain('class="page-heading"');
+    expect(shell('settings')).toContain('<h1>Configurações</h1>');
+    expect(shell('home')).toContain('class="app-shell has-rail"');
   });
 
   it('mostra os perfis disponíveis e escapa a mensagem de estado', () => {

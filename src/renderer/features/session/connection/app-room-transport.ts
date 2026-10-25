@@ -14,9 +14,12 @@ export function createAppRoomTransport(options: {
   setRemoteTimer: (timer: ReturnType<typeof setTimeout>) => void;
   setConnectionIssue: (issue: string) => void;
   sendFailure: () => void;
+  /** While resuming, peer messages are dropped and redone after the resume. */
+  isRecovering: () => boolean;
   render: () => void;
 }) {
   const send = (message: RoomMessage): boolean => {
+    if (options.isRecovering()) return false;
     try {
       options.getSocket()?.send(message);
       return !!options.getSocket();

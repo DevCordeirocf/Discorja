@@ -34,14 +34,14 @@ type Effects = Pick<
     SessionOutcomeContext,
     | 'removePeer'
     | 'log'
-    | 'leaveRoomClosed'
-    | 'leaveRoomError'
     | 'stopSharing'
     | 'clearWatchMedia'
     | 'clearWatchSelection'
     | 'notifyError'
   > &
   Pick<ServerMessageControllerContext, 'applyRoomState'> & {
+    leaveRoom: SessionOutcomeContext['leaveRoomClosed'] &
+      SessionOutcomeContext['leaveRoomError'];
     stopRemotePlayback: (stream: MediaStream | null) => void;
   };
 
@@ -149,8 +149,8 @@ export function createApplicationMessages(
       dependencies.effects.waitForVideo();
     },
     log: dependencies.effects.log,
-    leaveRoomClosed: dependencies.effects.leaveRoomClosed,
-    leaveRoomError: dependencies.effects.leaveRoomError,
+    leaveRoomClosed: dependencies.effects.leaveRoom,
+    leaveRoomError: dependencies.effects.leaveRoom,
     isMultiRoom: () => state.multiRoom,
     hasPendingRequest: () => state.hasPendingRequest,
     hasRoom: () => state.hasRoom,

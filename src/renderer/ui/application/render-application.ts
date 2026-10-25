@@ -7,13 +7,10 @@ import {
   restoreInteraction,
 } from '../components/accessibility';
 import { dismissStartupSplash } from '../components/startup-splash';
+import { pickAutoModal } from './auto-modal';
 
 export interface ApplicationRenderState {
   page: 'home' | 'settings' | 'room';
-  sidebarCollapsed: boolean;
-  displayName: string;
-  profilePhoto: string;
-  version: string;
   hasRoom: boolean;
   recovering: boolean;
   hasDesktopApi: boolean;
@@ -24,6 +21,7 @@ export interface ApplicationRenderState {
   update: UpdateState;
   updateDismissed: boolean;
   updatePrompted: boolean;
+  whatsNewPending: boolean;
   multiRoom: boolean;
   watchingRemote: boolean;
   localStream: MediaStream | null;
@@ -46,12 +44,14 @@ export function renderApplication(options: {
   root: HTMLDivElement;
   announcements: HTMLElement;
   state: ApplicationRenderState;
-  setModal(value: 'update'): void;
+  setModal(value: 'update' | 'whats-new'): void;
   setUpdatePrompted(value: boolean): void;
+  setWhatsNewShown(): void;
   setDeferredRender(value: boolean): void;
   renderHome(): string;
   renderSettings(): string;
   renderRoom(): string;
+  renderSidebar(): string;
   renderModal(): string;
   renderDiagnosticsTrigger(): string;
   renderReceiveAudioControls(): string;
@@ -60,18 +60,17 @@ export function renderApplication(options: {
   syncPreviews(): void;
   patchMetrics(): void;
 }): void {
-  const { root, state } = options;
-  if (
-    state.loaded &&
-    !state.modal &&
-    !state.busy &&
-    !state.updateDismissed &&
-    !state.updatePrompted &&
-    ['available', 'downloaded'].includes(state.update.status)
-  ) {
-    options.setModal('update');
-    options.setUpdatePrompted(true);
+  const { root } = options;
+  const autoModal = pickAutoModal(options.state);
+  if (autoModal) {
+    options.setModal(autoModal);
+    if (autoModal === 'update') options.setUpdatePrompted(true);
+    else options.setWhatsNewShown();
   }
+  // The snapshot was taken before the automatic modal was opened.
+  const state = autoModal
+    ? { ...options.state, modal: autoModal }
+    : options.state;
   const oldVideo = root.querySelector<HTMLVideoElement>('#stream-video');
   const oldPreview = root.querySelector<HTMLVideoElement>('#local-preview');
   const nextStream = state.multiRoom
@@ -102,14 +101,9 @@ export function renderApplication(options: {
   const page = state.page === 'room' && !state.hasRoom ? 'home' : state.page;
   root.innerHTML = renderAppShell({
     page,
-    sidebarCollapsed: state.sidebarCollapsed,
-    displayName: state.displayName,
-    profilePhoto: state.profilePhoto,
-    version: state.version,
-    hasRoom: state.hasRoom,
-    recovering: state.recovering,
     hasDesktopApi: state.hasDesktopApi,
     notice: state.notice,
+    sidebar: options.renderSidebar(),
     home: options.renderHome(),
     settings: options.renderSettings,
     room: state.hasRoom ? options.renderRoom() : '',
@@ -167,7 +161,9 @@ export function renderApplication(options: {
     root.querySelector('.source-audio-slot')?.replaceWith(optionsElement);
   }
   const shell = root.querySelector<HTMLElement>('.app-shell');
-  if (shell) shell.inert = !!state.modal;
+  if (shell)
+    shell.inert =
+      !!state.modal || !!document.querySelector('.participant-photo-overlay');
   const placeholder = root.querySelector<HTMLVideoElement>('#stream-video');
   if (keepVideo && oldVideo && placeholder) placeholder.replaceWith(oldVideo);
   else if (placeholder && nextStream) {

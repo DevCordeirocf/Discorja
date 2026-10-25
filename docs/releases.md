@@ -16,7 +16,7 @@ Todos os downloads de atualização passam pela conferência de integridade do `
 
 O fluxo usa o mesmo repositório que contém o código, atualmente `DevCordeirocf/Discorja`. Confirme que ele está público: os aplicativos baixam versões sem token de acesso. `private: false` no builder não muda a visibilidade de um repositório privado. Distribuir por outro repositório exige adaptar destino, permissões e workflow.
 
-Envie o código e os workflows para `main` e habilite GitHub Actions. O workflow manual precisa existir na branch padrão para aparecer em **Run workflow**. O job declara `contents: write`; políticas do repositório/organização precisam permitir a escrita de Releases. Os procedimentos de commit e primeiro envio estão no [guia de desenvolvimento](desenvolvimento.md#preparar-e-enviar-ao-github).
+Envie o código e os workflows para `main` e habilite GitHub Actions. O workflow manual precisa existir na branch padrão para aparecer em **Run workflow**. O job declara `contents: write`; políticas do repositório/organização precisam permitir a escrita de Releases. Faça o commit e o envio pelo fluxo habitual do repositório antes de disparar o workflow.
 
 `GITHUB_REPOSITORY` e `secrets.GITHUB_TOKEN` são fornecidos pelo GitHub automaticamente. O token é usado somente para enviar os artefatos no Actions; não o inclua no aplicativo.
 
@@ -45,15 +45,15 @@ O workflow pode ser iniciado manualmente em **Run workflow**, informando uma tag
 Exemplo para preparar a 1.0.0, depois de revisar e validar as alterações:
 
 ```powershell
-npm version  0.9.12 --no-git-tag-version
+npm version  0.10.0 --no-git-tag-version
 npm run typecheck
 npm run format:check
 npm test
 git add .
 git commit -m "feat(validação): melhora a validação do código da sala e atualiza referências"
 git push origin main
-git tag  v0.9.12
-git push origin v0.9.12
+git tag  v0.10.0
+git push origin v0.10.0
 ```
 
 Revise os arquivos antes de adicioná-los. `npm version` sincroniza pacote e lockfile. Mantenha `appId`, repositório e nome do produto estáveis para preservar o caminho de instalação e atualização.

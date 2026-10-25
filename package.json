@@ -1,6 +1,6 @@
 {
   "name": "discorja",
-  "version": "0.9.12",
+  "version": "0.10.0",
   "private": true,
   "description": "Compartilhe uma janela ou tela com seus amigos.",
   "author": "Discorja",
@@ -44,8 +44,9 @@
     "@types/ws": "8.18.2",
     "electron": "44.9.2",
     "electron-builder": "26.15.3",
-    "js-yaml": "4.3.2",
     "esbuild": "0.28.2",
+    "gifenc": "1.0.3",
+    "js-yaml": "4.3.2",
     "prettier": "3.9.10",
     "tsx": "4.23.15",
     "typescript": "7.0.2",

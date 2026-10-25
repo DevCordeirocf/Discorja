@@ -1,9 +1,22 @@
-const GESTURE_TIP_KEY = 'discorja-participant-gesture-tip-seen';
+import { trapDialogTab } from '../components/accessibility';
+
+const GESTURE_TIP_KEY = 'discorja.participant-gesture-tip-seen';
+const LEGACY_GESTURE_TIP_KEY = 'discorja-participant-gesture-tip-seen';
+
+let closeOpenPhoto: (() => void) | null = null;
+
+/** Closes the enlarged photo, for example when the room ends. */
+export function closeParticipantPhoto(): void {
+  closeOpenPhoto?.();
+}
 
 function showGestureTipOnce(): void {
   let seen = false;
   try {
-    seen = localStorage.getItem(GESTURE_TIP_KEY) === 'true';
+    seen =
+      localStorage.getItem(GESTURE_TIP_KEY) === 'true' ||
+      localStorage.getItem(LEGACY_GESTURE_TIP_KEY) === 'true';
+    localStorage.removeItem(LEGACY_GESTURE_TIP_KEY);
   } catch {
     // The hint still works when storage is unavailable.
   }
@@ -30,8 +43,12 @@ function showGestureTipOnce(): void {
   }
 }
 
-function openParticipantPhoto(media: HTMLElement): void {
-  document.querySelector('.participant-photo-overlay')?.remove();
+function openParticipantPhoto(root: HTMLElement, media: HTMLElement): void {
+  closeParticipantPhoto();
+  const opener =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
   const card = media.closest<HTMLElement>('.participant-card');
   const name =
     media.querySelector('strong')?.textContent?.trim() ?? 'Participante';
@@ -75,19 +92,32 @@ function openParticipantPhoto(media: HTMLElement): void {
   dialog.append(close, portrait, caption);
   overlay.append(dialog);
   document.body.append(overlay);
+  // The overlay lives outside #app, so the app must stop taking focus.
+  const shell = root.querySelector<HTMLElement>('.app-shell');
+  if (shell) shell.inert = true;
 
   const dismiss = () => {
+    closeOpenPhoto = null;
     overlay.remove();
-    document.removeEventListener('keydown', onKeyDown);
+    document.removeEventListener('keydown', onKeyDown, true);
+    // Renders may have replaced the shell while the photo was open.
+    const current = root.querySelector<HTMLElement>('.app-shell');
+    if (current) current.inert = !!root.querySelector('.modal-overlay');
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
   };
   const onKeyDown = (keyEvent: KeyboardEvent) => {
-    if (keyEvent.key === 'Escape') dismiss();
+    if (keyEvent.key === 'Escape') {
+      keyEvent.preventDefault();
+      keyEvent.stopPropagation();
+      dismiss();
+    } else if (keyEvent.key === 'Tab') trapDialogTab(keyEvent, dialog);
   };
+  closeOpenPhoto = dismiss;
   close.addEventListener('click', dismiss);
   overlay.addEventListener('click', (clickEvent) => {
     if (clickEvent.target === overlay) dismiss();
   });
-  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keydown', onKeyDown, true);
   close.focus();
 }
 
@@ -103,7 +133,7 @@ export function bindParticipantPhotoPreview(root: HTMLElement): void {
     const media = photoButton?.querySelector<HTMLElement>(
       '.participant-card-media',
     );
-    if (media) openParticipantPhoto(media);
+    if (media) openParticipantPhoto(root, media);
   });
 
   root.addEventListener('contextmenu', (event) => {
@@ -114,6 +144,6 @@ export function bindParticipantPhotoPreview(root: HTMLElement): void {
 
     event.preventDefault();
     showGestureTipOnce();
-    openParticipantPhoto(media);
+    openParticipantPhoto(root, media);
   });
 }

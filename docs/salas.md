@@ -1,5 +1,32 @@
 # Salas, participantes e permissões
 
+## Versão 0.10.0: protocolo 5, grupos e fotos animadas
+
+O aplicativo oferece o protocolo 5 e, se o servidor for antigo, negocia o 4 na mesma conexão (`hello 5` → `PROTOCOL_MISMATCH` → `hello 4`). A retomada sempre usa o protocolo da sala.
+
+**Fotos de perfil.** No protocolo 5 o `room-state` traz só `avatarId` (16 caracteres hexadecimais do SHA-256 da imagem, calculado pelo servidor). Cada app pede a imagem uma vez com `get-avatar {peerId, avatarId}` e recebe `participant-avatar {peerId, avatarId, avatar}`; o app confere o hash antes de usar. Aceita `data:image/jpeg|gif|webp;base64` com até 98.304 caracteres e, para GIF/WebP, no máximo 256 × 256 px. O tipo é conferido pelos bytes iniciais nos dois lados. GIFs maiores são reduzidos no app para até 128 px, 48 quadros e 6 segundos. Com `prefers-reduced-motion`, a interface mostra o primeiro quadro. Pedidos inválidos de foto são ignorados em silêncio e limitados a 40 por minuto por conexão; `update-profile` tem limite de 6 por minuto e não é reenviado quando nada mudou.
+
+**Grupos.** Um grupo é um convite `DJG1.<segredo>.<nome>` salvo somente nos aplicativos (até oito). O servidor recebe apenas `groupKey = SHA-256("discorja-group-v1|" + segredo)`:
+
+| Mensagem                                    | Direção              | Regras                                                                                                        |
+| ------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `subscribe-group {groupKey, name}`          | app → servidor       | Protocolo 5; até 8 grupos por conexão, 500 grupos no servidor, 20 inscrições/min por conexão e 60/min por IP. |
+| `unsubscribe-group {groupKey}`              | app → servidor       | Também ocorre ao fechar a conexão.                                                                            |
+| `create-room {..., groupKey}`               | app → servidor       | Opcional; lista a sala para quem tem a chave.                                                                 |
+| `group-state {groupKey, rooms[], online[]}` | servidor → inscritos | Até 20 salas (código, nome, dono, contagens, até 10 nomes) e 32 nomes online; mudanças agrupadas em 150 ms.   |
+
+"Online agora" (`online[]`) junta quem está com o Início aberto no grupo e quem está nas salas do grupo, sem repetir nomes e sem incluir pessoas de outros grupos ou de salas fora dele. Assim, quem entra numa sala continua aparecendo, marcado como "na sala". Quem tem o convite vê as salas e os códigos do grupo; para revogar, crie um novo grupo e distribua o novo convite. Reiniciar o servidor não apaga grupos, apenas as salas abertas. O Início abre uma conexão leve somente enquanto está na tela e não envia keep-alive, então um app parado não mantém o servidor gratuito acordado.
+
+**Compatibilidade:**
+
+| App ↔ servidor         | Resultado                                                                                                                                       |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.9.x ↔ servidor 0.10  | Protocolo 4 como antes. Entrar em sala criada por 0.10 mostra "Atualize o aplicativo".                                                          |
+| 0.10 ↔ servidor antigo | Negocia o 4: fotos em JPEG pequeno; o Início avisa que o servidor não suporta grupos e não é possível entrar em salas até atualizar o servidor. |
+| 0.10 ↔ servidor 0.10   | Protocolo 5, fotos animadas e grupos. Ao entrar em sala do protocolo 4, o app fala o 4 e envia a foto em JPEG.                                  |
+
+Implante o servidor antes de distribuir o app. Espectadores que perdem a sinalização por menos que `RESUME_GRACE_MS` continuam na lista de inscritos da transmissão, e o vídeo P2P segue enquanto a conexão é retomada.
+
 ## Versão 0.7.0: várias telas, uma recepção por pessoa
 
 Qualquer participante pode selecionar uma janela e iniciar sua própria captura. A configuração padrão aceita **até dez telas simultâneas** em uma sala de **dez participantes**. Entrar na sala não recebe vídeo automaticamente: escolha **Assistir** no cartão da pessoa desejada. Cada pessoa assiste a uma tela por vez; os cartões contêm somente informações, sem vídeos ou recepções ocultas.
@@ -22,7 +49,7 @@ O dono concede moderação pelo menu **···** de cada pessoa. Dono e moderador
 
 O tráfego de mídia continua P2P: cada publicador envia somente para quem escolheu sua tela. As publicações não obrigam cada pessoa a baixar todas as telas. Quando várias pessoas assistem à mesma publicação, o computador que publica envia uma cópia para cada espectador; upload, codificação e rede podem limitar a qualidade real. Os limites de upload e a adaptação por espectador continuam independentes em cada computador. A SFU segue adiada, sem infraestrutura adicional paga.
 
-Os testes atuais incluem `npm run test:multistream`, além dos ensaios de vídeo, áudio e salas. Resultados e limitações em [validacao-0.7.0.md](validacao-0.7.0.md).
+Os testes atuais incluem `npm run test:multistream`, além dos ensaios de vídeo, áudio e salas. Resultados e limitações em [validacao-0.7.0.md](versões/validacao-0.7.0.md).
 
 ## Referência histórica: versão 0.5.0, protocolo 2
 
@@ -30,10 +57,14 @@ As regras abaixo descrevem o modelo anterior, mantido apenas para clientes antig
 
 ## Como usar
 
-1. Configure o mesmo servidor nos aplicativos e informe seu nome na página inicial.
-2. Crie uma sala ou informe o código de convite na página **Início**.
-3. Para entrar em outra sala, use **Sair da sala** ou **Encerrar sala**. O aplicativo encerra a sessão atual e volta ao início.
-4. No início, crie uma sala ou informe o novo código. O aplicativo não mantém convites recentes.
+A partir da 0.10.0, as salas ficam dentro dos grupos: o aplicativo não tem mais entrada por código nem sala fora de grupo.
+
+1. Configure o mesmo servidor nos aplicativos. Na primeira vez, o **Início** mostra as boas-vindas: informe seu nome e crie um grupo ou cole o convite (`DJG1…`) que recebeu.
+2. A lateral mostra a logo, os seus grupos, o botão **+** (criar ou entrar em outro grupo) e, embaixo, a sua foto. A foto abre **Editar perfil** e **Configurações**.
+3. No **Início**, o grupo escolhido mostra **Ao vivo agora** (salas abertas, com quem está nelas) e **Online agora**. Use **+ Criar sala** para abrir uma sala no grupo e **Entrar** para entrar em uma sala com um clique. **Convidar** copia o convite do grupo; **⋯ › Sair do grupo** remove o grupo do aplicativo.
+4. Durante uma sala, o botão de tela na lateral volta para ela, e o cartão da sala atual mostra **Você está aqui**. Para trocar de sala, entre em outra pelo grupo: o Discorja pede confirmação e encerra a sessão anterior antes de conectar.
+
+O servidor continua aceitando `join-room` com código para manter compatibilidade com aplicativos 0.9.x; o código só deixou de ser digitado e exibido no aplicativo 0.10.
 
 O servidor pode manter **várias salas ativas ao mesmo tempo**, para grupos diferentes. Cada cliente participa de uma sala por vez. A saída encerra as tracks de áudio/vídeo, fecha as conexões WebRTC e a sinalização antes de retornar ao início. Se alguém tentar criar ou entrar em outra sala sem sair primeiro, o Discorja pede confirmação e encerra a sessão anterior antes de tentar conectar.
 
@@ -96,4 +127,4 @@ npm run test:rooms
 
 O ensaio de salas abre quatro instâncias locais e captura somente uma janela de teste própria. Confere saída pelo controle da sala, entrada pelo início, encerramento das tracks, permanência dos outros espectadores, mudança de transmissor, moderação e falha na sala de destino. Relatórios em `test-results/`, fora do Git.
 
-Não é uma medição de banda na interface física da rede nem uma certificação de carga em computadores diferentes. O ensaio usa estados e conexões WebRTC reais para verificar a liberação de recursos. Resultados e pendências em [validacao-0.5.0.md](validacao-0.5.0.md).
+Não é uma medição de banda na interface física da rede nem uma certificação de carga em computadores diferentes. O ensaio usa estados e conexões WebRTC reais para verificar a liberação de recursos. Resultados e pendências em [validacao-0.5.0.md](versões/validacao-0.5.0.md).

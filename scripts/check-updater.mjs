@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import yaml from 'js-yaml';
+import { appReady } from './group-flow.mjs';
 
 // Exercises the actual updater and packaged UI against a local fixture provider.
 // Never executes an installer or changes a user's existing installation.
@@ -69,7 +70,7 @@ try {
     });
     applications.push(application);
     const page = await application.firstWindow();
-    await expect(page.locator('[data-action=create]')).toBeEnabled();
+    await appReady(page);
     await application.evaluate(
       ({ app }, { url, profile }) => {
         const updater =
@@ -95,7 +96,7 @@ try {
           { timeout: 30000 },
         )
         .toBe('error');
-      await expect(page.locator('[data-action=create]')).toBeEnabled();
+      await appReady(page);
       checks.push('Provider connection failure leaves the application usable');
     } else if (scenario === 'current') {
       await expect
@@ -153,7 +154,7 @@ try {
         }
       }
       await page.locator('[data-action=defer-update]').click();
-      await expect(page.locator('[data-action=create]')).toBeEnabled();
+      await appReady(page);
       checks.push(
         scenario === 'invalid'
           ? 'Incorrect SHA-512 refuses package and app remains usable'

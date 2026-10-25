@@ -4,7 +4,7 @@ import { SignalConnection } from '../../../transport/signal';
 import { connectRoomSignal } from './room-connection';
 import { recoverSignal } from '../lifecycle/signal-recovery';
 import { compactProfileAvatar } from '../../profile/profile-avatar';
-import { roomCode } from '../../../../shared/validation';
+import { DISPLAY_NAME_MAX, roomCode } from '../../../../shared/validation';
 
 interface ConnectionState {
   api: DiscorjaAPI | undefined;
@@ -18,6 +18,8 @@ interface ConnectionState {
   sessionEpoch: number;
   resumeToken: string;
   signalRecovering: boolean;
+  /** Protocol of the current room; resume must reuse it. */
+  roomProtocol: number | undefined;
 }
 
 interface ConnectionEffects {
@@ -63,6 +65,8 @@ export function createConnectionController(effects: ConnectionEffects) {
       getSessionEpoch: () => effects.getState().sessionEpoch,
       isCurrentSession: effects.isCurrentSession,
       signalingUrl: state.signalingUrl,
+      getProtocol: () => effects.getState().roomProtocol,
+      keepMedia: () => (effects.getState().roomProtocol ?? 0) >= 3,
       setSocket: effects.setSocket,
       onMessage: effects.onMessage,
       onSocketClosed: recoverSignaling,
@@ -86,12 +90,13 @@ export function createConnectionController(effects: ConnectionEffects) {
   async function connectRoom(
     kind: 'create' | 'join',
     requestedCode = '',
+    groupKey?: string,
   ): Promise<void> {
     const state = effects.getState();
     if (!state.api || !state.loaded || state.busy || state.hasRoom) return;
     const name = state.displayName.trim();
-    if (!name || name.length > 32) {
-      effects.notify('Digite seu nome com até 32 caracteres.');
+    if (!name || name.length > DISPLAY_NAME_MAX) {
+      effects.notify(`Digite seu nome com até ${DISPLAY_NAME_MAX} caracteres.`);
       effects.focusDisplayName();
       return;
     }
@@ -115,13 +120,13 @@ export function createConnectionController(effects: ConnectionEffects) {
     effects.setBusy('room');
     const epoch = effects.beginSession();
     effects.recordLog('signal.connecting');
-    const avatar = await compactProfileAvatar(state.profilePhoto);
-    if (!effects.isCurrentSession(epoch)) return;
     await connectRoomSignal({
       kind,
       name,
-      avatar,
+      prepareAvatar: (protocol) =>
+        compactProfileAvatar(state.profilePhoto, protocol),
       code: kind === 'create' ? createCode : state.joinCode,
+      groupKey: kind === 'create' ? groupKey : undefined,
       signalingUrl: state.signalingUrl,
       epoch,
       isCurrent: effects.isCurrentSession,
@@ -135,6 +140,12 @@ export function createConnectionController(effects: ConnectionEffects) {
           'error',
           false,
         ),
+      onWaking: () =>
+        effects.notify(
+          'Acordando o servidor… isso pode levar até 1 minuto.',
+          'info',
+        ),
+      onConnected: () => effects.setNotice(null),
       render: effects.render,
       log: effects.recordLog,
       onFailure: (message) => effects.leaveRoom(message, 'error', false),

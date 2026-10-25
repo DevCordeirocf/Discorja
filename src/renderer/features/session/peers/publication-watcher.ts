@@ -115,6 +115,8 @@ export class PublicationWatcher {
         this.onConnectionState(state, details ?? {}, current, publication),
       {
         preferences: this.dependencies.getPreferences(),
+        onQueueOverflow: () =>
+          this.dependencies.logFailure({ reason: 'rejected' }),
         onMetrics: (metrics) => {
           if (!current()) return;
           this.metrics = metrics;

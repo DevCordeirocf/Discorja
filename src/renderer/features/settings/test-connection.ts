@@ -1,5 +1,7 @@
 import type { DiscorjaAPI } from '../../../shared/protocol';
 import { SignalConnection } from '../../transport/signal';
+import { warmUpServer } from '../../transport/server-warmup';
+import { ROOM_PROTOCOL_VERSION } from '../../../shared/protocol';
 
 export async function testSignalingConnection(options: {
   api: DiscorjaAPI | undefined;
@@ -55,9 +57,20 @@ export async function testSignalingConnection(options: {
     () => undefined,
   );
   try {
-    await probe.connect(5_000);
+    await warmUpServer(candidate.toString(), {
+      onWaking: () => {
+        if (getSettingUrl() !== testedUrl) return;
+        setConnectionCheck('Acordando o servidor…');
+        render();
+      },
+    });
+    const protocol = await probe.connect({ timeoutMs: 10_000 });
     if (getSettingUrl() === testedUrl)
-      setConnectionCheck('Servidor disponível');
+      setConnectionCheck(
+        protocol < ROOM_PROTOCOL_VERSION
+          ? 'Servidor disponível (versão antiga: sem grupos e GIFs)'
+          : 'Servidor disponível',
+      );
   } catch {
     if (getSettingUrl() === testedUrl) setConnectionCheck('Conexão falhou');
   } finally {

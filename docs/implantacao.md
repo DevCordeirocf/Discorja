@@ -124,18 +124,19 @@ Configure o health check HTTP em `/health` e confirme suporte a WebSocket, ausê
 
 ## Variáveis do servidor
 
-| Variável          | Função                                                                                                                                                              |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HOST`            | Interface de escuta; no container, `0.0.0.0`. Use `127.0.0.1` para um processo restrito à máquina local.                                                            |
-| `PORT`            | Porta HTTP/WebSocket; padrão `8787`.                                                                                                                                |
-| `ALLOWED_ORIGINS` | Lista de origens permitidas separadas por vírgula. Padrão: `app://discorja,http://127.0.0.1:5173,http://localhost:5173`. Em produção, restrinja a `app://discorja`. |
-| `MAX_VIEWERS`     | Número máximo de espectadores além do criador; padrão e máximo `9` (10 participantes totais).                                                                       |
-| `MAX_PUBLISHERS`  | Telas simultâneas no protocolo 3; padrão e máximo `10`, sem ultrapassar `MAX_VIEWERS + 1`.                                                                          |
-| `ROOM_TTL_MS`     | Duração máxima de uma sala em milissegundos; padrão `14400000` (quatro horas).                                                                                      |
-| `MAX_ROOMS`       | Limite de salas simultâneas no processo; padrão `5`.                                                                                                                |
-| `MAX_CLIENTS`     | Limite de conexões simultâneas no processo; padrão `20`.                                                                                                            |
-| `RESUME_GRACE_MS` | Prazo de retomada: padrão `20000`, entre 0 e 60000; zero desabilita.                                                                                                |
-| `STATS_TOKEN`     | Credencial administrativa de `/api/stats`; vazio desabilita a rota. Nunca distribuir no app.                                                                        |
+| Variável           | Função                                                                                                                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HOST`             | Interface de escuta; no container, `0.0.0.0`. Use `127.0.0.1` para um processo restrito à máquina local.                                                                                        |
+| `PORT`             | Porta HTTP/WebSocket; padrão `8787`.                                                                                                                                                            |
+| `ALLOWED_ORIGINS`  | Lista de origens permitidas separadas por vírgula. Padrão: `app://discorja,http://127.0.0.1:5173,http://localhost:5173`. Em produção, restrinja a `app://discorja`.                             |
+| `MAX_VIEWERS`      | Número máximo de espectadores além do criador; padrão e máximo `9` (10 participantes totais).                                                                                                   |
+| `MAX_PUBLISHERS`   | Telas simultâneas no protocolo 3; padrão e máximo `10`, sem ultrapassar `MAX_VIEWERS + 1`.                                                                                                      |
+| `ROOM_TTL_MS`      | Duração máxima de uma sala em milissegundos; padrão `14400000` (quatro horas).                                                                                                                  |
+| `MAX_ROOMS`        | Limite de salas simultâneas no processo; padrão `5`.                                                                                                                                            |
+| `MAX_CLIENTS`      | Limite de conexões simultâneas no processo; padrão `20`.                                                                                                                                        |
+| `RESUME_GRACE_MS`  | Prazo de retomada: padrão `20000`, entre 0 e 60000; zero desabilita.                                                                                                                            |
+| `STATS_TOKEN`      | Credencial administrativa de `/api/stats`, `/api/admin` e do painel `/admin`; vazio desabilita as rotas. Nunca distribuir no app.                                                               |
+| `TRUST_PROXY_HOPS` | `0` (padrão) usa o IP da conexão TCP. `1` usa a última entrada de `X-Forwarded-For`, adicionada pelo proxy da plataforma (ex.: Render). Use `1` somente atrás de exatamente um proxy confiável. |
 
 Configure limites de acordo com a capacidade do host. No protocolo 3, `MAX_VIEWERS + 1` é o total de participantes, independentemente de quem publica; cada um assiste a uma tela por vez. Aumentar esse limite não resolve o upload dos publicadores. `MAX_PUBLISHERS` é configuração do servidor e não exige incluir segredos no aplicativo. A checagem de `Origin` reduz o uso por páginas de terceiros, mas não substitui autenticação nem impede clientes WebSocket próprios de enviar a mesma origem. Após implantar, use o diagnóstico e o roteiro de [operação](operacao.md).
 
@@ -143,11 +144,15 @@ O padrão permite que os dez participantes publiquem simultaneamente. O vídeo c
 
 `HOST` tem padrão `127.0.0.1` fora do container. Os limites numéricos precisam ser inteiros positivos. `PORT` aceita inteiros de 0 a 65535; 0 escolhe uma porta livre e é útil para testes, mas dificulta o encaminhamento de um serviço público. Configurações inválidas interrompem a inicialização em vez de serem silenciosamente ignoradas.
 
-O limite de tentativas usa o IP da conexão TCP e ignora `X-Forwarded-For`. Atrás de um proxy, os participantes podem compartilhar o mesmo IP para esse controle. Os padrões por IP são 60 novas conexões por minuto, 40 tentativas de entrada em salas por minuto e 1000 mensagens a cada dez segundos; tentativas inválidas também contam. Esses limites são compartilhados pelos clientes que chegam pelo mesmo IP do proxy e atualmente não têm variáveis de ambiente próprias.
+Por padrão, o limite de tentativas usa o IP da conexão TCP e ignora `X-Forwarded-For`. Atrás de um proxy, os participantes compartilham o IP do proxy; no Render, defina `TRUST_PROXY_HOPS=1` para que cada pessoa tenha seus próprios limites. Os padrões por IP são 60 novas conexões por minuto, 40 tentativas de entrada em salas por minuto e 1000 mensagens a cada dez segundos; tentativas inválidas também contam. Esses limites são compartilhados pelos clientes que chegam pelo mesmo IP do proxy e atualmente não têm variáveis de ambiente próprias.
 
-Há ainda limites por conexão: 200 mensagens a cada dez segundos e 12 tentativas de criar/entrar em salas por minuto. Mensagens têm limite de 64 KiB. Esses valores são definidos no servidor; não invente variáveis de ambiente para alterá-los.
+Há ainda limites por conexão: 200 mensagens a cada dez segundos, 12 tentativas de criar/entrar em salas por minuto, 6 alterações de perfil por minuto, 40 pedidos de foto por minuto e 20 inscrições em grupos por minuto (60 por IP). Mensagens têm limite de 128 KiB. Esses valores são definidos no servidor; não invente variáveis de ambiente para alterá-los.
 
-Valide o ritmo de conexões e reconexões esperado pelo grupo no proxy escolhido e configure também sua proteção de tráfego. Não passe a confiar em `X-Forwarded-For` enviado pelo cliente para contornar o limite; uma futura identificação do IP original exigirá uma configuração explícita de proxies confiáveis.
+Valide o ritmo de conexões e reconexões esperado pelo grupo no proxy escolhido e configure também sua proteção de tráfego. A entrada mais à esquerda de `X-Forwarded-For` pode ser forjada pelo cliente; por isso, com `TRUST_PROXY_HOPS=1`, só a última entrada é usada.
+
+## Painel administrativo
+
+Com `STATS_TOKEN` configurado, abra `https://seu-servidor/admin`. A página não contém dados: ela pede o token, guarda-o somente na aba (`sessionStorage`) e lê `GET /api/admin` com `Authorization: Bearer`. O painel mostra conexões atuais e pico, salas ativas (nome, código mascarado, protocolo, idade e participantes com papel, conexão e transmissão), pessoas fora de sala, grupos ativos (contagens, sem chave) e totais desde o início do processo. Tokens de retomada, chaves de grupo, SDP, candidatos ICE e imagens nunca aparecem. A rota segue o limite de 30 consultas por minuto por IP de `/api/stats` e não registra os dados nos logs. Sem `STATS_TOKEN`, `/admin` e `/api/admin` retornam 404.
 
 Não execute várias réplicas como se compartilhassem o mesmo estado: as salas existem apenas em uma instância. Um reinício encerra as salas ativas. Para este MVP, use uma única instância e monitore memória, conexões, reinícios e disponibilidade de `/health`. Evite registrar códigos de sala, descrições SDP e candidatos ICE, que podem conter dados de conexão dos participantes.
 

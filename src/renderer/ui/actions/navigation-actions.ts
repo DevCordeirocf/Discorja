@@ -1,13 +1,5 @@
 import type { AppPage } from '../../views/design';
-
-type Modal =
-  | 'settings'
-  | 'sources'
-  | 'update'
-  | 'switch'
-  | 'diagnostics'
-  | 'profile'
-  | null;
+import type { AppModal } from '../../views/modals';
 
 export function handleNavigationAction(options: {
   action?: string;
@@ -18,7 +10,7 @@ export function handleNavigationAction(options: {
   configUrl: string;
   setActivePage: (page: AppPage) => void;
   setPreviousPage: (page: AppPage) => void;
-  setModal: (modal: Modal) => void;
+  setModal: (modal: AppModal) => void;
   clearSwitchTarget: () => void;
   setReturnFocusAction: (action: string) => void;
   setEditingName: (editing: boolean) => void;

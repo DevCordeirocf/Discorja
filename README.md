@@ -21,13 +21,13 @@
 
 ## Sobre
 
-O Discorja é um aplicativo desktop para compartilhar uma janela ou monitor com amigos. Crie uma sala, envie o código de convite e escolha uma transmissão para assistir.
+O Discorja é um aplicativo desktop para compartilhar uma janela ou monitor com amigos. Crie um grupo para a turma, mande o convite e entre nas salas do grupo com um clique.
 
 A sinalização coordena salas e conexões, mas não recebe o vídeo. O áudio e o vídeo são enviados por WebRTC entre os participantes; redes que bloqueiam uma conexão direta podem exigir um servidor TURN.
 
 ## Recursos
 
-- Salas por convite, com até **10 participantes** por sala por padrão.
+- Grupos por convite: as salas abertas pela turma aparecem no Início, com até **10 participantes** por sala por padrão.
 - Compartilhamento de janela ou tela inteira, com prévia e controles para iniciar e parar.
 - Todos os **10 participantes** podem transmitir ao mesmo tempo; cada pessoa assiste a uma transmissão por vez.
 - Perfis de **720p/30 FPS**, **1080p/30 FPS**, **1080p/60 FPS** e **1080p/120 FPS**. A qualidade real depende da captura, do computador e da rede.

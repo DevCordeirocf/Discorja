@@ -1,7 +1,8 @@
-/* Keep imports in cascade order: shell, room frame, home, room, settings, overlays and responsive rules. */
+/* Keep imports in cascade order: shell, room frame, home, room, settings, features, overlays and responsive rules. */
 @import url('./app-shell.css');
 @import url('./app-room-frame.css');
 @import url('./app-home.css');
 @import url('./app-room.css');
 @import url('./app-settings.css');
+@import url('./app-features.css');
 @import url('./app-overlays-responsive.css');

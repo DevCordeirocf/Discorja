@@ -8,11 +8,27 @@ import {
   qualitySnapshot,
   collectQuality,
 } from './quality-probe.mjs';
+import {
+  appReady,
+  copyInvite,
+  createGroup,
+  createRoom,
+  ensureWatching,
+  joinByCodeError,
+  joinGroup,
+  joinRoom,
+  openSettings,
+  roomCard,
+  roomControls,
+  showGroup,
+  trackRoomSockets,
+} from './group-flow.mjs';
 
 // Uses real Electron, desktop capture of a purpose-built test window and real local WebRTC.
 // No capture of a monitor or unrelated user window is requested.
 await mkdir('test-results', { recursive: true });
 const service = createSignalingServer();
+const roomSockets = trackRoomSockets(service.wss);
 await new Promise((done, reject) => {
   service.server.once('error', reject);
   service.server.listen(0, '127.0.0.1', done);
@@ -103,18 +119,15 @@ async function launch() {
     if (message.type() === 'error' || message.type() === 'warning')
       console.error(message.text());
   });
-  await expect(page.locator('[data-action=create]')).toBeEnabled();
+  await appReady(page);
   await installQualityProbe(page);
   return { application, page };
 }
 
-async function join(page, code, name) {
-  await page.locator('#display-name').fill(name);
-  await page.locator('#room-code').fill(code);
-  await page
-    .getByRole('button', { name: 'Entrar na sala', exact: true })
-    .click();
-  await expect(page.locator('.room-code')).toBeVisible();
+const hostRoom = 'Sala de Anfitrião';
+async function join(page, invite, name) {
+  await joinGroup(page, { name, invite });
+  await joinRoom(page, hostRoom);
 }
 
 async function startCapture(page) {
@@ -196,13 +209,7 @@ async function startCapture(page) {
 }
 
 async function expectVideo(page) {
-  const watch = page
-    .locator('[data-action=watch-screen][aria-pressed=false]')
-    .first();
-  if (!(await page.locator('[data-action=stop-watching]').count())) {
-    await expect(watch).toBeVisible();
-    await watch.click();
-  }
+  await ensureWatching(page);
   await page.waitForFunction(
     () => {
       const video = document.querySelector('#stream-video');
@@ -223,12 +230,24 @@ async function expectVideo(page) {
   );
 }
 
+// Settings choose the resolution and the frame rate separately; the default
+// per-viewer video ceiling follows the resolution.
+const QUALITY = {
+  '1080p120': { resolution: '1080p30', fps: '120', cap: 8_000_000 },
+  '1080p60': { resolution: '1080p30', fps: '60', cap: 8_000_000 },
+  '1080p30': { resolution: '1080p30', fps: '30', cap: 8_000_000 },
+  '720p30': { resolution: '720p30', fps: '30', cap: 4_000_000 },
+};
+
 async function chooseQuality(page, preset) {
-  if (!(await page.locator('#settings-quality-preset').count())) {
-    await page.locator('[data-action=settings]').click();
-  }
+  if (!(await page.locator('#settings-quality-preset').count()))
+    await openSettings(page);
+  const { resolution, fps } = QUALITY[preset];
   await expect(page.locator('#settings-quality-preset')).toBeEnabled();
-  await page.locator('#settings-quality-preset').selectOption(preset);
+  await page.locator('#settings-quality-preset').selectOption(resolution);
+  await expect(page.locator('#settings-fps')).toBeEnabled();
+  await page.locator('#settings-fps').selectOption(fps);
+  await expect(page.locator('#settings-fps')).toHaveValue(fps);
   await page.locator('[data-action=close-settings]').click();
 }
 
@@ -348,7 +367,7 @@ try {
     }),
   );
   await expect(host.getByRole('dialog')).toHaveCount(0);
-  await host.locator('[data-action=settings]').click();
+  await openSettings(host);
   await host.locator('[data-action=install-update]').click();
   await expect(
     host.getByRole('heading', { name: 'Atualização pronta' }),
@@ -359,14 +378,17 @@ try {
       status: 'disabled',
     }),
   );
+  await host.locator('[data-action=close-settings]').click();
   checks.push(
     'Update popup shows a new version, can be deferred and reopened without installing',
   );
-  const camera = await bounded(
+  // Camera-only requests are allowed for the profile photo editor since
+  // 0.10.0; they are not attempted here so the test never opens a real camera.
+  const microphone = await bounded(
     host.evaluate(async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
+          audio: true,
         });
         stream.getTracks().forEach((track) => track.stop());
         return 'granted';
@@ -374,27 +396,25 @@ try {
         return error.name;
       }
     }),
-    'camera permission denial',
+    'microphone permission denial',
   );
-  assert.notEqual(camera, 'granted');
-  checks.push('Camera access denied');
+  assert.notEqual(microphone, 'granted');
+  checks.push('Microphone access denied');
   console.log('Permission and isolation checks passed');
 
-  await host.locator('#display-name').fill('Anfitrião');
-  await host.locator('[data-action=create]').click();
-  await expect(host.locator('.room-code')).toBeVisible();
-  const code = (await host.locator('.room-code').innerText()).replace(
-    /\s/g,
-    '',
-  );
+  await createGroup(host, { name: 'Anfitrião', group: 'Turma do teste' });
+  const invite = await copyInvite(hostApp, host);
+  checks.push('A group is created and its invite copied through the app');
+  await createRoom(host);
+  const code = roomSockets.code('Anfitrião');
   assert.match(code, /^[A-Z2-9]{8}$/);
   console.log('Room created');
-  await host.locator('[data-action=settings]').click();
+  await openSettings(host);
   await expect(host.locator('#settings-adaptive-quality')).toBeChecked();
   await host.locator('#settings-adaptive-quality').uncheck();
   await host.locator('[data-action=close-settings]').click();
   await chooseQuality(host, '1080p60');
-  await host.locator('[data-action=settings]').click();
+  await openSettings(host);
   await host.locator('#settings-content-mode').selectOption('motion');
   await host.locator('[data-action=close-settings]').click();
   await host.locator('[data-action=choose-source]').click();
@@ -435,7 +455,7 @@ try {
   );
   console.log('Fixture window ready');
   const { page: viewer } = await launch();
-  await join(viewer, code, 'Amigo');
+  await join(viewer, invite, 'Amigo');
   await startCapture(host);
   await expectVideo(viewer);
   console.log('First viewer decoded frames');
@@ -468,7 +488,8 @@ try {
       'streams',
       'version',
     ]);
-    assert.equal(JSON.stringify(exported).includes(code), false);
+    for (const secret of [code, invite, invite.slice(4)])
+      assert.equal(JSON.stringify(exported).includes(secret), false);
     await host.getByRole('button', { name: 'Fechar diagnóstico' }).click();
   } finally {
     await hostApp.evaluate(({ dialog }) => {
@@ -486,7 +507,7 @@ try {
     width: 1920,
     height: 1080,
     fps: 60,
-    cap: 12_000_000,
+    cap: QUALITY['1080p60'].cap,
   });
   await viewer.evaluate(() => {
     window.testVideoElement = document.querySelector('#stream-video');
@@ -512,9 +533,9 @@ try {
   );
 
   for (const [preset, width, height, fps, cap] of [
-    ['1080p120', 1920, 1080, 120, 30_000_000],
-    ['1080p30', 1920, 1080, 30, 8_000_000],
-    ['720p30', 1280, 720, 30, 4_000_000],
+    ['1080p120', 1920, 1080, 120, QUALITY['1080p120'].cap],
+    ['1080p30', 1920, 1080, 30, QUALITY['1080p30'].cap],
+    ['720p30', 1280, 720, 30, QUALITY['720p30'].cap],
   ]) {
     await chooseQuality(host, preset);
     await expectSenderProfile(host, { width, height, fps, cap });
@@ -537,7 +558,7 @@ try {
       receiver: await collectQuality(viewer),
     });
     if (preset === '1080p30') {
-      await host.locator('[data-action=settings]').click();
+      await openSettings(host);
       await host.locator('#settings-content-mode').selectOption('detail');
       await expect(host.locator('#settings-content-mode')).toBeEnabled();
       await host.locator('[data-action=close-settings]').click();
@@ -546,7 +567,7 @@ try {
         host: await qualitySnapshot(host),
         receiver: await collectQuality(viewer),
       });
-      await host.locator('[data-action=settings]').click();
+      await openSettings(host);
       await host.locator('#settings-content-mode').selectOption('motion');
       await expect(host.locator('#settings-content-mode')).toBeEnabled();
       await host.locator('[data-action=close-settings]').click();
@@ -563,7 +584,7 @@ try {
     'Live 1080p30 and 720p30 changes preserve the stream, room and video element',
   );
   await chooseQuality(host, '1080p60');
-  await host.locator('[data-action=settings]').click();
+  await openSettings(host);
   await host.locator('#settings-video-bitrate').fill('24');
   await host.locator('#settings-video-bitrate').press('Tab');
   await expect
@@ -585,13 +606,13 @@ try {
     host: await qualitySnapshot(host),
     receiver: await collectQuality(viewer, 2500),
   });
-  await host.locator('#video-bitrate').fill('12');
-  await host.locator('#video-bitrate').press('Tab');
+  await host.locator('#settings-video-bitrate').fill('8');
+  await host.locator('#settings-video-bitrate').press('Tab');
   await expectSenderProfile(host, {
     width: 1920,
     height: 1080,
     fps: 60,
-    cap: 12_000_000,
+    cap: QUALITY['1080p60'].cap,
   });
   checks.push(
     'A 24Mbps per-viewer video ceiling applies to real RTP parameters and returns to the profile default without restarting capture',
@@ -610,7 +631,7 @@ try {
     width: 1920,
     height: 1080,
     fps: 60,
-    cap: 12_000_000,
+    cap: QUALITY['1080p60'].cap,
   });
   await hostApp.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
@@ -649,7 +670,7 @@ try {
 
   await host.locator('[data-action=stop]').click();
   await expect(viewer.locator('#stream-video')).toHaveCount(0);
-  await expect(host.locator('.room-code')).toBeVisible();
+  await expect(roomControls(host)).toBeVisible();
   assert.equal(
     await hostApp.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
@@ -667,12 +688,11 @@ try {
   console.log('Stop and restart passed');
 
   const { page: lateViewer } = await launch();
-  await join(lateViewer, code, '<b>Amiga</b>');
+  await join(lateViewer, invite, '<b>Amiga</b>');
   await expectVideo(lateViewer);
   // Drop the actual signaling transport; media must recover without selecting
   // another source or trusting a client-supplied role.
-  const hostSocket = [...service.wss.clients][0];
-  hostSocket.terminate();
+  roomSockets.terminate('Anfitrião');
   await expect(host.locator('.notice')).toContainText('recuperada', {
     timeout: 15000,
   });
@@ -681,8 +701,7 @@ try {
   checks.push(
     'Host signaling resumes with its original capture and viewers recover video',
   );
-  const viewerSocket = [...service.wss.clients][0];
-  viewerSocket.terminate();
+  roomSockets.terminate('Amigo');
   await expect(viewer.locator('.notice')).toContainText('recuperada', {
     timeout: 15000,
   });
@@ -691,11 +710,16 @@ try {
     'Viewer signaling resumes without duplicating membership or restarting capture',
   );
   await expect(
-    host.locator('.person strong').filter({ hasText: '<b>Amiga</b>' }),
+    host
+      .locator('.participant-card-caption strong')
+      .filter({ hasText: '<b>Amiga</b>' }),
   ).toBeVisible();
-  assert.equal(await host.locator('.person strong b').count(), 0);
+  assert.equal(
+    await host.locator('.participant-card-caption strong b').count(),
+    0,
+  );
   checks.push('Late viewer receives video; participant names render as text');
-  await host.locator('[data-action=settings]').click();
+  await openSettings(host);
   await host.locator('#settings-adaptive-quality').check();
   await expect(host.locator('#settings-upload-budget')).toBeEnabled();
   await host.locator('#settings-upload-budget').fill('4');
@@ -777,7 +801,7 @@ try {
       )
         continue;
       await host.locator('[data-action=stop]').click();
-      await host.locator('[data-action=settings]').click();
+      await openSettings(host);
       await expect(host.locator('#settings-preferred-codec')).toBeEnabled();
       await host.locator('#settings-preferred-codec').selectOption(codec);
       await expect(host.locator('#settings-preferred-codec')).toBeEnabled();
@@ -823,11 +847,16 @@ try {
   checks.push(
     'Closing the room stops capture and disconnects remaining viewers',
   );
-  await join(viewer, code, 'Amigo').catch(async () => {
-    await expect(viewer.locator('.notice')).toContainText('não encontrada');
-  });
-  await expect(viewer.locator('.room-code')).toHaveCount(0);
-  checks.push('Closed room code no longer grants access');
+  await expect(roomControls(viewer)).toHaveCount(0);
+  await showGroup(viewer);
+  await expect(roomCard(viewer, hostRoom)).toHaveCount(0);
+  assert.equal(
+    await joinByCodeError(`ws://127.0.0.1:${port}`, code),
+    'ROOM_NOT_FOUND',
+  );
+  checks.push(
+    'A closed room leaves the group listing and its code no longer grants access',
+  );
   assert.deepEqual(errors, []);
   await writeFile(
     packaged

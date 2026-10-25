@@ -1,5 +1,14 @@
 # Segurança e operação sem serviços pagos
 
+## Protocolo 5, grupos e painel — 0.10.0
+
+- **Fotos:** o tipo é conferido pelos bytes iniciais (JPEG, GIF, WebP) no app e no servidor, e GIF/WebP acima de 256 × 256 px são recusados, limitando o custo de decodificação. O servidor calcula o `avatarId`; o app só usa a imagem se o hash conferir. A CSP do renderer passou a aceitar `img-src blob:` para exibir as fotos guardadas em memória; scripts continuam restritos a `'self'`. A conversão de GIF usa `gifenc` (MIT, sem dependências), empacotado no renderer.
+- **Grupos:** o convite contém um segredo de 128 bits que nunca sai do app; o servidor recebe apenas o SHA-256 dele e só envia a listagem a quem apresentar a mesma chave. Quem tiver o convite vê salas e códigos do grupo; não há revogação além de criar um novo grupo. Chaves, convites e nomes não entram nos logs. Copiar o convite usa o IPC estreito `group:copy-invite`, que valida o formato antes de escrever na área de transferência.
+- **Links externos:** a janela abre no navegador somente páginas exatas da lista (`https://github.com/DevCordeiroCf` e `https://giphy.com/`), sem parâmetros.
+- **Painel `/admin`:** página estática com CSP `default-src 'none'` e nonce, `X-Frame-Options: DENY` e `no-store`; os dados vêm de `/api/admin`, autenticada com o mesmo `STATS_TOKEN` (hash + comparação em tempo constante e 30 consultas/min por IP). Códigos de sala são mascarados e nenhum token é exposto. Proteja o token como uma senha.
+- **Proxy:** `TRUST_PROXY_HOPS=1` usa somente a última entrada de `X-Forwarded-For`.
+- **Colar com o botão direito:** o processo principal trata o evento `context-menu` e chama `webContents.paste()` somente quando o ponto clicado é um campo editável, há algo para colar e o campo não é de senha. O texto vai direto da área de transferência para o campo, sem IPC novo e sem passar pelo código do renderer.
+
 ## Consolidação 0.8.0
 
 O diagnóstico schema 2 permite apenas estados, contagens, métricas numéricas e versões previstas. O processo principal fornece o runtime; nomes, tokens, endpoint, dados brutos de ICE/SDP e conteúdo não são exportados. Testes tentam inserir esses campos e verificam seu descarte. O teto de vídeo é limitado de 1 a 100 Mbps por espectador e continua sujeito ao orçamento total; não altera permissões de captura ou papéis.
@@ -25,7 +34,7 @@ O protocolo de salas é confirmado antes da sessão. O servidor mantém dono, mo
 Trocar de sala fecha a mídia e a sinalização anteriores. O histórico guarda somente até doze convites/nome/endpoint, sem token de retomada. Abrir o painel não se conecta aos outros convites. Ser autorizado a transmitir nunca inicia captura remota. A saída do dono fecha a sala; publicação e moderação não transferem propriedade automaticamente. Procedimento de migração em [salas.md](salas.md).
 
 **Referência:** revisão inicial da versão 0.2.4 e implementação local da 0.3.0, em 15 de outubro de 2026.  
-**Escopo:** componentes Electron, sinalização, configuração e distribuição; consulta de avisos de dependências e testes locais. Não foi realizado teste de invasão, varredura do servidor publicado ou inspeção da conta de hospedagem. Os controles implementados e as verificações operacionais pendentes estão discriminados na [validação da 0.3.0](validacao-0.3.0.md).
+**Escopo:** componentes Electron, sinalização, configuração e distribuição; consulta de avisos de dependências e testes locais. Não foi realizado teste de invasão, varredura do servidor publicado ou inspeção da conta de hospedagem. Os controles implementados e as verificações operacionais pendentes estão discriminados na [validação da 0.3.0](versões/validacao-0.3.0.md).
 
 ## Objetivo e limites
 
@@ -49,7 +58,7 @@ Na implementação 0.4.0, áudio do computador exige escolha e confirmação em 
 | Navegação e arquivos   | Novas janelas, webviews e downloads comuns bloqueados; protocolo local limita arquivos ao diretório da interface.         | Preservar os bloqueios e testar caminhos malformados em futuras alterações.                                                |
 | Política de conteúdo   | `src/renderer/index.html` define CSP, sem scripts remotos e sem objetos incorporados.                                     | A política permite conexões WSS a diferentes servidores; endereço configurável deve ser tratado como decisão de confiança. |
 | Transporte             | Configuração permite WSS remoto; WS simples somente em localhost/127.0.0.1.                                               | Servidor HTTP local precisa de terminação TLS para publicação. Não desabilitar verificação de certificados.                |
-| Sinalização            | Mensagens têm formato e campos validados, payload limitado a 64 KiB e autorização por sala/papel.                         | O aplicativo precisa endurecer também a validação das respostas recebidas.                                                 |
+| Sinalização            | Mensagens têm formato e campos validados, payload limitado a 128 KiB e autorização por sala/papel.                        | O aplicativo também valida as respostas recebidas antes de usá-las.                                                        |
 | Abuso                  | Limites por socket/IP, salas/clientes limitados, heartbeat e proteção contra fila de envio crescente.                     | Não impedem ataque distribuído ou saturação do link; proxy pode alterar a visão de IP.                                     |
 | Convites               | Código de oito caracteres gerado com aleatoriedade criptográfica; sala expira, por padrão, após quatro horas.             | Conhecer o código permite solicitar entrada sem comprovar identidade.                                                      |
 | Releases               | Workflow publica rascunho; token de escrita restrito ao job de release; hash de atualização é verificado pelo updater.    | Sem assinatura independente, comprometimento do canal de publicação continua sendo risco relevante.                        |

@@ -12,7 +12,7 @@ export async function createFilteredAudioPipeline(
   const context = new AudioContext({ sampleRate: 48_000 });
   let source: AudioWorkletNode | null = null;
   let destination: MediaStreamAudioDestinationNode | null = null;
-  let started = false;
+  let starting: Promise<number> | null = null;
   let disposed = false;
 
   try {
@@ -43,8 +43,10 @@ export async function createFilteredAudioPipeline(
       track,
       start: async () => {
         if (disposed) throw new Error('A captura de áudio foi cancelada.');
-        const processId = await api.startDiscordAudioCapture();
-        started = true;
+        starting ??= api.startDiscordAudioCapture();
+        const processId = await starting;
+        // dispose() may have run while the native helper was starting.
+        if (disposed) throw new Error('A captura de áudio foi cancelada.');
         return processId;
       },
       dispose: async () => {
@@ -53,8 +55,15 @@ export async function createFilteredAudioPipeline(
         removeAudioListener();
         source?.disconnect();
         destination?.stream.getTracks().forEach((item) => item.stop());
-        if (started) await api.stopDiscordAudioCapture();
-        if (context.state !== 'closed') await context.close();
+        try {
+          if (starting) {
+            // Stop the helper even when dispose() raced a pending start.
+            await starting.catch(() => undefined);
+            await api.stopDiscordAudioCapture();
+          }
+        } finally {
+          if (context.state !== 'closed') await context.close();
+        }
       },
     };
   } catch (error) {

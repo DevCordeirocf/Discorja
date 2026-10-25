@@ -18,6 +18,7 @@ interface Peer {
   retiredUfrags: Set<string>;
   operations: Promise<void>;
   queued: number;
+  overflowed?: boolean;
   controller: AdaptiveQuality;
   telemetry: PeerTelemetry;
   metrics?: PeerMetrics;
@@ -39,7 +40,11 @@ interface Peer {
 export interface RoomPeerOptions {
   preferences: StreamPreferences;
   onMetrics?: (metrics: PeerMetrics[]) => void;
+  /** Called once per peer when its operation queue is full and work is dropped. */
+  onQueueOverflow?: (peerId: string) => void;
 }
+
+const MAX_QUEUED_OPERATIONS = 128;
 
 const ufrags = (sdp: string): Set<string> =>
   new Set(
@@ -185,7 +190,13 @@ export class RoomPeers {
     peer: Peer,
     operation: () => Promise<void>,
   ): Promise<void> {
-    if (peer.queued >= 128) return Promise.resolve();
+    if (peer.queued >= MAX_QUEUED_OPERATIONS) {
+      if (!peer.overflowed) {
+        peer.overflowed = true;
+        this.options?.onQueueOverflow?.(peerId);
+      }
+      return Promise.resolve();
+    }
     peer.queued++;
     const result = peer.operations
       .then(async () => {
@@ -222,6 +233,22 @@ export class RoomPeers {
     );
   }
 
+  /** Upload share for one outgoing peer, minus the audio reserve when it sends audio. */
+  private fairBitrate(peer: Peer): number {
+    const sendsAudio = peer.connection
+      .getSenders()
+      .some(
+        (sender) =>
+          sender.track?.kind === 'audio' && sender.track.readyState !== 'ended',
+      );
+    return Math.max(
+      1,
+      (this.preferences.maxUploadMbps * 850_000) /
+        Math.max(1, this.outgoingCount()) -
+        (sendsAudio ? AUDIO_UPLOAD_RESERVE : 0),
+    );
+  }
+
   private async applyParameters(peerId: string, peer: Peer): Promise<void> {
     if (
       !this.current(peerId, peer) ||
@@ -237,13 +264,7 @@ export class RoomPeers {
         (sender) =>
           sender.track?.kind === 'audio' && sender.track.readyState !== 'ended',
       );
-    const fairBitrate = Math.max(
-      1,
-      (this.preferences.maxUploadMbps * 850_000) /
-        Math.max(1, this.outgoingCount()) -
-        (audioSenders.length ? AUDIO_UPLOAD_RESERVE : 0),
-    );
-    const target = peer.controller.target(fairBitrate);
+    const target = peer.controller.target(this.fairBitrate(peer));
     const senders = peer.connection
       .getSenders()
       .filter(
@@ -613,9 +634,6 @@ export class RoomPeers {
               direction,
               Date.now(),
             );
-            const fair =
-              (this.preferences.maxUploadMbps * 850_000) /
-              Math.max(1, this.outgoingCount());
             if (
               peer.role === 'host' &&
               !peer.recovering &&
@@ -635,7 +653,7 @@ export class RoomPeers {
               parameterError: peer.parameterError,
               levelLabel:
                 peer.role === 'host'
-                  ? peer.controller.target(fair).label
+                  ? peer.controller.target(this.fairBitrate(peer)).label
                   : undefined,
             };
             void this.run(id, peer, () => this.applyParameters(id, peer));
@@ -665,6 +683,18 @@ export class RoomPeers {
         recovering: peer.recovering,
         parameterError: peer.parameterError,
       })),
+    );
+  }
+
+  /** Peers whose media path is up, independent of the signaling socket. */
+  connectedPeers(): Set<string> {
+    return new Set(
+      [...this.peers]
+        .filter(
+          ([, peer]) =>
+            !peer.failed && peer.connection.connectionState === 'connected',
+        )
+        .map(([id]) => id),
     );
   }
 

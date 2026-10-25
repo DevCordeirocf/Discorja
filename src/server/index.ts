@@ -1,5 +1,6 @@
 import { createSignalingServer } from './server.js';
 import { randomUUID } from 'node:crypto';
+import { ROOM_PROTOCOL_VERSION } from '../shared/protocol.js';
 import { readFileSync } from 'node:fs';
 import {
   errorFields,
@@ -52,10 +53,15 @@ const service = createSignalingServer({
   statsToken: process.env.STATS_TOKEN || undefined,
   resumeGraceMs,
   maxViewers: integerEnv('MAX_VIEWERS', 9),
-  maxPublishers: integerEnv('MAX_PUBLISHERS', 10),
+  // Without an explicit value the config derives it from MAX_VIEWERS.
+  maxPublishers:
+    process.env.MAX_PUBLISHERS === undefined
+      ? undefined
+      : integerEnv('MAX_PUBLISHERS', 10),
   roomTtlMs,
   maxRooms: integerEnv('MAX_ROOMS', 5),
   maxClients: integerEnv('MAX_CLIENTS', 20),
+  trustProxyHops: integerEnv('TRUST_PROXY_HOPS', 0, 0),
 });
 service.server.on('error', (error: Error) => {
   log({ event: 'server.error', details: errorFields(error) });
@@ -65,7 +71,7 @@ service.server.on('error', (error: Error) => {
 service.server.listen(port, host, () => {
   log({
     event: 'server.started',
-    details: { roomTtlMs, resumeGraceMs, protocol: 4 },
+    details: { roomTtlMs, resumeGraceMs, protocol: ROOM_PROTOCOL_VERSION },
   });
   const address = service.server.address();
   console.info(

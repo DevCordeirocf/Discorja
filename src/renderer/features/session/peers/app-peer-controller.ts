@@ -115,6 +115,7 @@ export function createAppRoomPeers(options: {
         }
         options.render();
       },
+      onQueueOverflow: () => options.logFailure({ reason: 'rejected' }),
       onMetrics: (metrics) => {
         if (epoch !== options.getEpoch()) return;
         options.setMetrics(metrics);

@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createSignalingServer } from '../dist/server/server.js';
+import {
+  appReady,
+  copyInvite,
+  createGroup,
+  createRoom,
+  joinGroup,
+  joinRoom,
+  openSettings,
+} from './group-flow.mjs';
 
 await mkdir('test-results', { recursive: true });
 const service = createSignalingServer();
@@ -22,7 +31,7 @@ const deadline = setTimeout(
   () => applications.forEach((app) => app.process().kill()),
   180000,
 );
-async function launch(name) {
+async function launch() {
   const profile = await mkdtemp(resolve('test-results/accessibility-profile-'));
   const app = await electron.launch({
     args: ['.', `--user-data-dir=${profile}`],
@@ -32,18 +41,15 @@ async function launch(name) {
   applications.push(app);
   const page = await app.firstWindow();
   page.on('pageerror', (error) => errors.push(error.message));
-  await expect(page.locator('[data-action=create]')).toBeEnabled();
+  await appReady(page);
   await expect(page.locator('#startup-splash')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Alterar seu nome' }).click();
-  await page.locator('#display-name').fill(name);
   return { app, page };
 }
-async function join(page, code) {
-  await page.locator('#room-code').fill(code);
-  await page
-    .getByRole('button', { name: 'Entrar na sala', exact: true })
-    .click();
-  await expect(page.locator('.room-code')).toBeVisible();
+async function join(name, invite) {
+  const { page } = await launch();
+  await joinGroup(page, { name, invite });
+  await joinRoom(page, 'Sala de Ana');
+  return page;
 }
 async function redraw(app, page) {
   await app.evaluate(({ BrowserWindow }) =>
@@ -51,42 +57,41 @@ async function redraw(app, page) {
       status: 'disabled',
     }),
   );
-  await expect(page.locator('[data-action=settings]')).toBeVisible();
+  await expect(page.locator('[data-action=toggle-profile-menu]')).toBeVisible();
 }
 try {
-  const { app, page } = await launch('Ana');
+  const { app, page } = await launch();
   await page.locator('.skip-link').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#main-content')).toBeFocused();
   checks.push('Keyboard skip link reaches the main landmark');
-  await page.locator('#display-name').focus();
-  await page
-    .locator('#display-name')
-    .evaluate((input) => input.setSelectionRange(1, 2));
+  const groupName = page.locator(
+    '[data-group-form=create] [data-group-field=name]',
+  );
+  await groupName.fill('Turma');
+  await groupName.focus();
+  await groupName.evaluate((input) => input.setSelectionRange(1, 2));
   await redraw(app, page);
-  await expect(page.locator('#display-name')).toBeFocused();
+  await expect(groupName).toBeFocused();
   assert.deepEqual(
-    await page
-      .locator('#display-name')
-      .evaluate((input) => [input.selectionStart, input.selectionEnd]),
+    await groupName.evaluate((input) => [
+      input.selectionStart,
+      input.selectionEnd,
+    ]),
     [1, 2],
   );
   checks.push('Structural updates preserve input focus and caret selection');
-  await page.locator('[data-action=create]').click();
-  const code = (await page.locator('.room-code').innerText()).replace(
-    /\s/g,
-    '',
-  );
-  const { page: friend } = await launch('Bruno');
-  await join(friend, code);
+  await createGroup(page, { name: 'Ana', group: 'Turma' });
+  const invite = await copyInvite(app, page);
+  await createRoom(page);
+  await join('Bruno', invite);
   const menu = page.locator('summary[aria-label="Ações de Bruno"]');
   await menu.focus();
   await page.keyboard.press('Enter');
   await page
     .getByRole('button', { name: 'Tornar moderador Bruno', exact: true })
     .focus();
-  const { page: third } = await launch('Carla');
-  await join(third, code);
+  await join('Carla', invite);
   await expect(
     page.getByRole('button', { name: 'Tornar moderador Bruno', exact: true }),
   ).toBeFocused();
@@ -100,7 +105,7 @@ try {
   checks.push(
     'Escape closes participant controls and returns focus to their summary',
   );
-  await page.locator('[data-action=settings]').click();
+  await openSettings(page);
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setSize(940, 700),
   );
@@ -130,8 +135,14 @@ try {
   checks.push(
     'Transmission quality is shown once, without a collapsed advanced section',
   );
-  await page.locator('#settings-quality-preset').selectOption('1080p120');
-  await expect(page.locator('#settings-video-bitrate')).toHaveValue('30');
+  // Resolution and frame rate are separate controls; the per-viewer default
+  // follows the resolution profile.
+  await page.locator('#settings-quality-preset').selectOption('720p30');
+  await expect(page.locator('#settings-video-bitrate')).toHaveValue('4');
+  await page.locator('#settings-quality-preset').selectOption('1080p30');
+  await page.locator('#settings-fps').selectOption('120');
+  await expect(page.locator('#settings-fps')).toHaveValue('120');
+  await expect(page.locator('#settings-video-bitrate')).toHaveValue('8');
   await expect(page.locator('#settings-upload-budget')).toHaveAttribute(
     'max',
     '500',
@@ -140,10 +151,11 @@ try {
     'max',
     '100',
   );
-  await page.locator('#settings-quality-preset').selectOption('1080p60');
-  await page.locator('#settings-quality-preset').focus();
-  await page.locator('#settings-quality-preset').selectOption('1080p60');
-  await expect(page.locator('#settings-video-bitrate')).toHaveValue('12');
+  await page.locator('#settings-fps').selectOption('60');
+  await page.locator('#settings-fps').focus();
+  await page.locator('#settings-fps').selectOption('60');
+  await expect(page.locator('#settings-fps')).toHaveValue('60');
+  await expect(page.locator('#settings-video-bitrate')).toHaveValue('8');
   await page.locator('#settings-video-bitrate').fill('24');
   await page.locator('#settings-video-bitrate').press('Tab');
   await expect(page.locator('#settings-video-bitrate-help')).toContainText(
@@ -152,16 +164,16 @@ try {
   await expect(page.locator('#settings-video-bitrate-help')).toContainText(
     'Personalizado',
   );
-  await page.locator('#settings-video-bitrate').fill('12');
+  await page.locator('#settings-video-bitrate').fill('8');
   await page.locator('#settings-video-bitrate').press('Tab');
-  await expect(page.locator('#settings-video-bitrate')).toHaveValue('12');
+  await expect(page.locator('#settings-video-bitrate')).toHaveValue('8');
   await expect(page.locator('#settings-video-bitrate-help')).toContainText(
     'Padrão do perfil',
   );
   checks.push(
     'Per-viewer bitrate and MB/s hint can be changed and returned to the profile default',
   );
-  await page.locator('[data-action=room]').click();
+  await page.locator('.rail [data-action=room]').click();
   await page.locator('.video-stage').hover();
   await page.locator('[data-action=show-diagnostics]').focus();
   await page.locator('[data-action=show-diagnostics]').click();

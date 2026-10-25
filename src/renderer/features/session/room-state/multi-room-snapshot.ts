@@ -13,6 +13,10 @@ export interface MultiRoomSnapshotContext {
   watchRequest: string | null;
   watching: Publication | null;
   hasPeers: boolean;
+  /** Subscribers whose WebRTC connection survived a signaling drop. */
+  connectedSubscribers: Set<string>;
+  /** The selected stream is still playing over WebRTC. */
+  watchHealthy: boolean;
 }
 
 export interface MultiRoomSnapshotEffects {
@@ -85,14 +89,19 @@ export function applyMultiRoomSnapshot(
   const previousSubscribers = effects.syncSubscribers(
     message.subscribers.map((id) => ({ id, name: participantNames.get(id)! })),
   );
-  if (initial || resumed || !context.hasPeers) effects.createPeers();
+  // Peers survive a signaling drop; only links that broke are renegotiated.
+  if (initial || !context.hasPeers) effects.createPeers();
   if (
     context.sharing &&
     context.hasLocalStream &&
     ownPublication?.publicationId === context.localPublicationId
   )
     for (const id of message.subscribers)
-      if (resumed || !previousSubscribers.has(id)) effects.offerSubscriber(id);
+      if (
+        !previousSubscribers.has(id) ||
+        (resumed && !context.connectedSubscribers.has(id))
+      )
+        effects.offerSubscriber(id);
 
   if (
     !context.watchRequest ||
@@ -103,10 +112,12 @@ export function applyMultiRoomSnapshot(
       message.publications.find(
         (publication) => publication.publicationId === message.watching,
       ) ?? null;
+    // A publisher's brief signaling drop flips `connected` without touching
+    // the media path, so a healthy stream is kept.
     const changed =
       selected?.publicationId !== context.watching?.publicationId ||
-      selected?.connected !== context.watching?.connected ||
-      resumed;
+      (!context.watchHealthy &&
+        (selected?.connected !== context.watching?.connected || resumed));
     if (changed) {
       effects.clearWatchMedia();
       effects.setWatching(selected);
@@ -118,9 +129,11 @@ export function applyMultiRoomSnapshot(
         (publication) =>
           publication.publicationId === context.watching?.publicationId,
       ) ?? null;
-    effects.clearWatchMedia();
-    effects.setWatching(selected);
-    effects.createWatchPeers();
+    if (!context.watchHealthy || !selected) {
+      effects.clearWatchMedia();
+      effects.setWatching(selected);
+      effects.createWatchPeers();
+    } else effects.setWatching(selected);
     effects.requestPublication(
       selected?.publicationId ?? null,
       context.watchRequest,

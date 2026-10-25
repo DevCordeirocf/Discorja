@@ -23,8 +23,6 @@ import { handleNavigationAction } from './navigation-actions';
 import { enterRoomFullscreen } from '../media/media-playback';
 import type { AppPage } from '../../views/design';
 import type { AppModal } from '../../views/modals';
-import { ROOM_CODE_ALPHABET } from '../../../shared/validation';
-import { getLastRoomCode } from '../../features/session/last-room-code';
 
 export interface ActionRouterState {
   api: DiscorjaAPI | undefined;
@@ -236,57 +234,6 @@ export function bindActionRouter(
       case 'confirm-install-update':
         void installUpdate(state.api, actions.leaveRoom, actions.notify);
         break;
-      case 'create':
-        if (state.room) actions.confirmCreate();
-        else {
-          actions.setModal('create');
-          actions.render();
-        }
-        break;
-      case 'generate-room-code': {
-        const field = root.querySelector<HTMLInputElement>('#create-room-code');
-        if (field) {
-          const limit =
-            Math.floor(256 / ROOM_CODE_ALPHABET.length) *
-            ROOM_CODE_ALPHABET.length;
-          let code = '';
-          while (code.length < 8) {
-            const bytes = crypto.getRandomValues(new Uint8Array(16));
-            for (const byte of bytes) {
-              if (byte < limit)
-                code += ROOM_CODE_ALPHABET[byte % ROOM_CODE_ALPHABET.length];
-              if (code.length === 8) break;
-            }
-          }
-          field.value = code;
-          field.focus();
-          field.select();
-        }
-        break;
-      }
-      case 'use-last-room-code': {
-        const code = getLastRoomCode();
-        if (code) {
-          actions.setJoinCode(code);
-          actions.render();
-          root.querySelector<HTMLInputElement>('#room-code')?.focus();
-        } else {
-          actions.notify('Ainda não há um código de sala salvo.', 'info');
-        }
-        break;
-      }
-      case 'use-last-created-room-code': {
-        const field = root.querySelector<HTMLInputElement>('#create-room-code');
-        const code = getLastRoomCode();
-        if (field && code) {
-          field.value = code;
-          field.focus();
-          field.select();
-        } else {
-          actions.notify('Ainda não há um código de sala salvo.', 'info');
-        }
-        break;
-      }
       case 'toggle-sidebar':
         actions.toggleSidebar();
         break;

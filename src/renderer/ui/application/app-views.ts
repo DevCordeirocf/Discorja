@@ -2,18 +2,19 @@ import type {
   AppConfig,
   CaptureSource,
   MultiRoomState,
+  RoomParticipant,
   RoomState,
   UpdateState,
 } from '../../../shared/protocol';
 import type { PeerMetrics, StreamPreferences } from '../../../shared/quality';
 import { renderDiagnostics } from '../../views/diagnostics';
-import { renderHome } from '../../views/home';
 import { renderModal, type AppModal } from '../../views/modals';
 import { renderQualityPanel } from '../../views/quality';
 import { renderSettingsView } from '../../views/settings-view';
 import { renderSingleRoom } from '../../views/single-room';
 import { renderStage } from '../../views/stage';
 import { patchMetrics } from '../../features/quality';
+import type { ChangelogEntry } from '../../features/whats-new/changelog';
 
 export interface AppViewState {
   preferences: StreamPreferences;
@@ -32,6 +33,7 @@ export interface AppViewState {
   } | null;
   roomState: RoomState | null;
   multi: MultiRoomState | null;
+  resolveAvatar: (person: RoomParticipant) => string | undefined;
   viewers: Map<
     string,
     { name: string; connected: boolean; failed: boolean; reconnecting: boolean }
@@ -58,14 +60,13 @@ export interface AppViewState {
   saving: boolean;
   testing: boolean;
   connectionStatus: string;
-  qualityControls: string;
   enabled: boolean;
   connecting: boolean;
   displayName: string;
   profilePhoto: string;
-  editingName: boolean;
-  joinCode: string;
+  profileDraft: { name: string; photo: string };
   modal: AppModal;
+  whatsNew: ChangelogEntry[];
   isRoomOwner: boolean;
   sources: CaptureSource[];
   selectedSource: string;
@@ -87,16 +88,32 @@ export function createAppViews(deps: {
   root: HTMLElement;
   renderReceiveAudioControls(): string;
   renderAudioToggleButton(): string;
+  renderFeatureModal?(modal: AppModal): string;
 }): {
   renderQualityPanel(): string;
   renderDiagnostics(): string;
   patchMetrics(): void;
-  renderHome(): string;
   renderSettingsPage(): string;
   renderRoom(): string;
   renderModal(): string;
 } {
   const state = deps.getState;
+  const diagnostics = (s: AppViewState): string => {
+    if (!s.room) return '';
+    return renderDiagnostics({
+      room: {
+        role: s.room.role,
+        hostId: s.room.hostId,
+        hostName: s.room.hostName,
+      },
+      multi: s.multi,
+      viewers: [...s.viewers].map(([id, person]) => ({
+        id,
+        name: person.name,
+      })),
+      watchingPublisherId: s.watchingPublisherId,
+    });
+  };
   return {
     renderQualityPanel: () => {
       const s = state();
@@ -109,23 +126,7 @@ export function createAppViews(deps: {
         status: s.qualityStatus,
       });
     },
-    renderDiagnostics: () => {
-      const s = state();
-      if (!s.room) return '';
-      return renderDiagnostics({
-        room: {
-          role: s.room.role,
-          hostId: s.room.hostId,
-          hostName: s.room.hostName,
-        },
-        multi: s.multi,
-        viewers: [...s.viewers].map(([id, person]) => ({
-          id,
-          name: person.name,
-        })),
-        watchingPublisherId: s.watchingPublisherId,
-      });
-    },
+    renderDiagnostics: () => diagnostics(state()),
     patchMetrics: () => {
       const s = state();
       patchMetrics(deps.root, {
@@ -141,17 +142,6 @@ export function createAppViews(deps: {
         connectionIssue: s.connectionIssue,
         metricsStartedAt: s.metricsStartedAt,
         incomingMetricsStartedAt: s.incomingMetricsStartedAt,
-      });
-    },
-    renderHome: () => {
-      const s = state();
-      return renderHome({
-        enabled: s.enabled,
-        busy: s.disabled,
-        connecting: s.connecting,
-        displayName: s.displayName,
-        editingName: s.editingName,
-        joinCode: s.joinCode,
       });
     },
     renderSettingsPage: () => {
@@ -185,6 +175,7 @@ export function createAppViews(deps: {
       if (s.multi)
         return renderStage({
           state: s.multi,
+          avatarUrl: s.resolveAvatar,
           watching: s.watchingPublisherId ?? null,
           sharing: s.sharing,
           hasRemote: !!s.remoteStream,
@@ -213,28 +204,15 @@ export function createAppViews(deps: {
       const s = state();
       return renderModal({
         modal: s.modal,
-        displayName: s.displayName,
-        profilePhoto: s.profilePhoto,
+        displayName: s.profileDraft.name,
+        profilePhoto: s.profileDraft.photo,
         isRoomOwner: s.isRoomOwner,
         update: s.update,
         version: s.config.version,
         hasRoom: s.hasRoom,
-        renderDiagnostics: () => {
-          if (!s.room) return '';
-          return renderDiagnostics({
-            room: {
-              role: s.room.role,
-              hostId: s.room.hostId,
-              hostName: s.room.hostName,
-            },
-            multi: s.multi,
-            viewers: [...s.viewers].map(([id, person]) => ({
-              id,
-              name: person.name,
-            })),
-            watchingPublisherId: s.watchingPublisherId,
-          });
-        },
+        renderDiagnostics: () => diagnostics(s),
+        whatsNew: s.whatsNew,
+        renderFeatureModal: deps.renderFeatureModal,
         sources: s.sources,
         selectedSource: s.selectedSource,
         busy: s.busyKind,

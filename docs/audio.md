@@ -79,7 +79,7 @@ npm run test:audio -- --soak-minutes=30
 
 O ensaio integrado abre aplicativos Electron e uma janela própria com som gerado. Usa a autorização real do aplicativo e substitui o retorno de loopback pelo áudio dessa janela **somente no processo de teste**. Não captura o som pessoal do computador e não inclui esse mecanismo no instalador. Resultados ficam em `test-results/audio-smoke.json`, fora do Git.
 
-Esse ensaio valida a negociação, codificação, recepção, controles e limpeza. Não comprova o loopback WASAPI nativo, a troca física de saída nem o uso junto a uma chamada real. A matriz e o procedimento de liberação estão em [validação da 0.4.0](validacao-0.4.0.md).
+Esse ensaio valida a negociação, codificação, recepção, controles e limpeza. Não comprova o loopback WASAPI nativo, a troca física de saída nem o uso junto a uma chamada real. A matriz e o procedimento de liberação estão em [validação da 0.4.0](versões/validacao-0.4.0.md).
 
 ## Referências
 

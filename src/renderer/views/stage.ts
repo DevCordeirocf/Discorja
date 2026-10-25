@@ -1,4 +1,4 @@
-import type { MultiRoomState } from '../../shared/protocol';
+import type { MultiRoomState, RoomParticipant } from '../../shared/protocol';
 import { escapeHtml as escape } from '../ui/components/html';
 import { designIcon } from './design';
 
@@ -13,6 +13,8 @@ export interface StageView {
   recovering: boolean;
   audioControl?: string;
   playerAudioControl?: string;
+  /** Resolves a participant's photo URL (inline JPEG or cached blob). */
+  avatarUrl?: (person: RoomParticipant) => string | undefined;
 }
 
 /** The participant list is the only place to choose a live publication. */
@@ -21,8 +23,10 @@ export function renderStage(view: StageView): string {
   const avatarFor = (
     person: (typeof state.participants)[number],
     className = '',
-  ) =>
-    `<span class="avatar ${className}">${person.avatar ? `<img src="${escape(person.avatar)}" alt="">` : escape(person.name.charAt(0).toLocaleUpperCase('pt-BR'))}</span>`;
+  ) => {
+    const url = view.avatarUrl ? view.avatarUrl(person) : person.avatar;
+    return `<span class="avatar ${className}">${url ? `<img src="${escape(url)}" alt="">` : escape(person.name.charAt(0).toLocaleUpperCase('pt-BR'))}</span>`;
+  };
   const self = state.participants.find(
     (person) => person.peerId === state.selfId,
   )!;
@@ -93,6 +97,6 @@ export function renderStage(view: StageView): string {
     )
     .join('');
 
-  return `<section class="room-header multi-room-header"><div><h1>${escape(state.name)}</h1><div class="room-meta"><p>Código: <span class="room-code" aria-label="Código da sala">${escape(state.code)}</span></p></div></div><div class="room-header-actions"><button class="button secondary" data-action="copy">Copiar convite</button><button class="button subtle danger-text" data-action="leave">${owner ? 'Encerrar sala' : 'Sair da sala'}</button></div></section>
+  return `<section class="room-header multi-room-header"><div><h1>${escape(state.name)}</h1></div><div class="room-header-actions"><button class="button subtle danger-text" data-action="leave">${owner ? 'Encerrar sala' : 'Sair da sala'}</button></div></section>
   <div class="room-grid multi-room-grid"><div class="screen-workspace"><section class="broadcast-panel" aria-label="Transmissão em destaque"><div class="video-stage ${showingVideo ? 'has-video' : ''}">${view.watching && view.recovering && view.hasRemote ? '<div class="video-reconnecting">Reconectando à transmissão…</div>' : ''}${showingVideo ? '<video id="stream-video" autoplay playsinline muted aria-label="Transmissão em destaque"></video>' : `<div class="empty-stream">${designIcon('screenInactive')}<h2>${view.issue ? 'Conexão interrompida' : view.watching ? 'Conectando à transmissão…' : 'Nenhuma transmissão selecionada'}</h2><p>${view.watching ? 'Aguardando o vídeo da transmissão.' : 'Compartilhe sua tela ou escolha uma tela ao vivo.'}</p></div>`}<button class="diagnostics-trigger" data-action="show-diagnostics" aria-label="Abrir diagnóstico da conexão" title="Diagnóstico">${designIcon('network')}</button>${view.playerAudioControl ?? ''}</div><div class="broadcast-controls stage-toolbar"><div class="stage-stream-info"><small>${escape(receptionStatus)}</small></div><div class="stage-toolbar-actions">${view.audioControl ?? ''}${view.sharing ? '<button class="button stop-button" data-action="stop">Parar transmissão</button>' : `<button class="button primary" data-action="choose-source" ${view.busy || slotsFull ? 'disabled' : ''}>Compartilhar tela</button>`}${showingVideo ? `<button class="button subtle icon-button" data-action="fullscreen" aria-label="Tela cheia" title="Tela cheia">${designIcon('expand')}</button>` : ''}</div></div></section>${view.issue ? `<div class="connection-alert" role="alert"><p>${escape(view.issue)}</p><button class="button subtle" data-action="retry-watching">Tentar novamente</button></div>` : ''}</div><aside class="room-sidebar"><section class="people-card" aria-label="Pessoas na sala"><div class="section-heading"><h2>Participantes · ${state.participants.length}</h2><span class="sr-only">Limite de ${state.maxParticipants} participantes</span></div>${state.publications.length ? `<div class="people-group"><h3>Telas ao vivo · ${state.publications.length}</h3><div class="participant-grid">${livePeople}</div></div>` : ''}${otherPeople ? `<div class="people-group"><h3>Na sala</h3><div class="participant-grid">${otherPeople}</div></div>` : ''}</section></aside></div>`;
 }

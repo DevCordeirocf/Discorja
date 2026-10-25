@@ -11,6 +11,7 @@ import {
   type StreamPreferences,
 } from '../../../shared/quality';
 import type { AppModal } from '../../views/modals';
+import type { ChangelogEntry } from '../../features/whats-new/changelog';
 import type { AppPage } from '../../views/design';
 import type { AppViewState } from './app-views';
 import { createAppViews } from './app-views';
@@ -28,6 +29,7 @@ export interface ApplicationViewReadContext {
   room: AppViewState['room'];
   roomState: RoomState | null;
   multi: MultiRoomState | null;
+  resolveAvatar: AppViewState['resolveAvatar'];
   viewers: AppViewState['viewers'];
   watchingPublisherId?: string;
   watchingRemote: boolean;
@@ -52,17 +54,17 @@ export interface ApplicationViewReadContext {
   connectionCheck: string;
   displayName: string;
   profilePhoto: string;
-  editingName: boolean;
-  joinCode: string;
+  profileDraft: { name: string; photo: string };
   modal: AppModal;
   sources: CaptureSource[];
   selectedSource: string;
   sourcePage: 'screen' | 'window';
   page: AppPage;
-  sidebarCollapsed: boolean;
   notice: ApplicationRenderState['notice'];
   updateDismissed: boolean;
   updatePrompted: boolean;
+  whatsNewPending: boolean;
+  whatsNew: ChangelogEntry[];
   includeSystemAudio: boolean;
   excludeDiscordAudio: boolean;
   returnFocusAction: string;
@@ -80,6 +82,7 @@ function toAppViewState(state: ApplicationViewReadContext): AppViewState {
     room: state.room,
     roomState: state.roomState,
     multi: state.multi,
+    resolveAvatar: state.resolveAvatar,
     viewers: state.viewers,
     watchingPublisherId: state.watchingPublisherId,
     remoteStream: state.remoteStream,
@@ -112,14 +115,13 @@ function toAppViewState(state: ApplicationViewReadContext): AppViewState {
         ? 'Reconectando'
         : 'Conectado à sala'
       : state.connectionCheck || 'Não testado',
-    qualityControls: '',
     enabled: state.apiAvailable && state.loaded,
     connecting: state.busy === 'room',
     displayName: state.displayName,
     profilePhoto: state.profilePhoto,
-    editingName: state.editingName,
-    joinCode: state.joinCode,
+    profileDraft: state.profileDraft,
     modal: state.modal,
+    whatsNew: state.whatsNew,
     isRoomOwner: state.roomState?.ownerId === state.room?.selfId,
     sources: state.sources,
     selectedSource: state.selectedSource,
@@ -139,10 +141,6 @@ function toApplicationRenderState(
 ): ApplicationRenderState {
   return {
     page: state.page,
-    sidebarCollapsed: state.sidebarCollapsed,
-    displayName: state.displayName,
-    profilePhoto: state.profilePhoto,
-    version: state.config.version,
     hasRoom: !!state.room,
     recovering: state.signalRecovering,
     hasDesktopApi: state.apiAvailable,
@@ -153,6 +151,7 @@ function toApplicationRenderState(
     update: state.update,
     updateDismissed: state.updateDismissed,
     updatePrompted: state.updatePrompted,
+    whatsNewPending: state.whatsNewPending,
     multiRoom: !!state.multi,
     watchingRemote: state.watchingRemote,
     localStream: state.localStream,
@@ -181,10 +180,14 @@ export function createApplicationViewBindings(options: {
   getState(): ApplicationViewReadContext;
   renderReceiveAudioControls(): string;
   renderAudioToggleButton(): string;
-  setModal(value: 'update'): void;
+  setModal(value: 'update' | 'whats-new'): void;
   setUpdatePrompted(value: boolean): void;
+  setWhatsNewShown(): void;
   setDeferredRender(value: boolean): void;
   renderDiagnosticsTrigger(): string;
+  renderHome(): string;
+  renderSidebar(): string;
+  renderFeatureModal(modal: AppModal): string;
   updatePlayback(): void;
   syncPreviews(): void;
 }): {
@@ -204,6 +207,7 @@ export function createApplicationViewBindings(options: {
     },
     renderReceiveAudioControls: options.renderReceiveAudioControls,
     renderAudioToggleButton: options.renderAudioToggleButton,
+    renderFeatureModal: options.renderFeatureModal,
   });
 
   return {
@@ -215,10 +219,12 @@ export function createApplicationViewBindings(options: {
         state: toApplicationRenderState(getState()),
         setModal: options.setModal,
         setUpdatePrompted: options.setUpdatePrompted,
+        setWhatsNewShown: options.setWhatsNewShown,
         setDeferredRender: options.setDeferredRender,
-        renderHome: views.renderHome,
+        renderHome: options.renderHome,
         renderSettings: views.renderSettingsPage,
         renderRoom: views.renderRoom,
+        renderSidebar: options.renderSidebar,
         renderModal: views.renderModal,
         renderDiagnosticsTrigger: options.renderDiagnosticsTrigger,
         renderReceiveAudioControls: options.renderReceiveAudioControls,

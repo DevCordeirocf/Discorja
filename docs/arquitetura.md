@@ -1,5 +1,9 @@
 # Arquitetura e privacidade
 
+## Protocolo 5 na 0.10.0
+
+Fotos de perfil deixam de viajar dentro de cada `room-state`: o snapshot leva só `avatarId` e a imagem é buscada uma vez (`get-avatar`) e guardada como `blob:` no renderer. Grupos usam uma conexão de "lobby" separada, aberta apenas enquanto o Início está na tela; o servidor indexa salas por `groupKey` em memória e nunca recebe o segredo do convite. Quedas curtas da sinalização não fecham conexões WebRTC saudáveis em salas multi-tela: só os links quebrados são renegociados após a retomada. Antes de abrir o WebSocket, o app consulta `/health` por até 60 s para acordar servidores gratuitos suspensos. Detalhes e matriz de compatibilidade em [salas.md](salas.md).
+
 ## Consolidação na 0.8.0
 
 O protocolo de salas permanece 3. A interface preserva foco, seleção de texto e menus abertos usando identificadores estáveis de ação/participante/publicação; a remoção do controle leva o foco a um ponto visível da sala. Diálogos limitam Tab aos controles visíveis e habilitados, incluindo selects. Um anunciador persistente informa mudanças de estado sem repetir a mesma mensagem a cada renderização.
@@ -140,7 +144,7 @@ Não há conta, histórico de salas ou gravação automática. As salas são man
 | Quadros da tela                           | Captura e caminho de mídia WebRTC, direto ou via TURN; sem gravação automática pelo sistema.                    |
 | Destino de atualização e publicador       | Metadados públicos no pacote gerado. Chave privada, senha e token pertencem ao ambiente do build.               |
 
-Variáveis de ambiente de endpoint prevalecem sobre o valor salvo ao iniciar. `.env` só é carregado automaticamente pelos comandos de desenvolvimento. O [guia de desenvolvimento](desenvolvimento.md) separa os ambientes de cliente, servidor e build para evitar supor que uma configuração seja distribuída a todos.
+Variáveis de ambiente de endpoint prevalecem sobre o valor salvo ao iniciar. `.env` só é carregado automaticamente pelos comandos de desenvolvimento. Mantenha separados os ambientes de cliente, servidor e build para evitar supor que uma configuração seja distribuída a todos.
 
 Escolher uma janela ou monitor concede aos participantes acesso ao conteúdo visível naquela fonte. Revise a prévia e feche informações privadas antes de iniciar. Um espectador pode registrar o conteúdo com ferramentas próprias; o aplicativo não consegue impedir isso.
 

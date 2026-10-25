@@ -12,7 +12,7 @@ import { initializeBackgroundEffect } from './ui/media/background-effect';
 import { RoomPeers } from './media/rtc';
 import { type FilteredAudioPipeline } from './media/audio-capture';
 import { createPreferenceStore } from './state/preference-store';
-import { type AppPage } from './views/design';
+import { renderSidebar, type AppPage } from './views/design';
 import { type AppModal } from './views/modals';
 import { createAppSettingsController } from './features/settings/app-controller';
 import { liveAudioTracks as liveAudio, stopTracks } from './features/capture';
@@ -43,9 +43,26 @@ import {
 import { createInterfaceActions } from './ui/actions/interface-actions';
 import { bindAppActionRouter } from './ui/application/app-action-bindings';
 import { bindApplicationInputEvents } from './ui/application/application-input-bindings';
-import { bindParticipantPhotoPreview } from './ui/application/participant-photo-preview';
+import {
+  bindParticipantPhotoPreview,
+  closeParticipantPhoto,
+} from './ui/application/participant-photo-preview';
 import { createRoomSwitchActions } from './ui/actions/room-switch';
 import { compactProfileAvatar } from './features/profile/profile-avatar';
+import { CHANGELOG, type ChangelogEntry } from './features/whats-new/changelog';
+import { decideWhatsNew, entriesSince } from './features/whats-new/whats-new';
+import { bindExtraActions } from './ui/application/extra-actions';
+import { createAvatarCache } from './features/profile/avatar-cache';
+import { createGroupsFeature } from './features/groups/groups-feature';
+import {
+  groupInitials,
+  renderAddGroupModal,
+  renderGroupHome,
+  renderLeaveGroupModal,
+} from './views/groups';
+import type { RoomParticipant } from '../shared/protocol';
+import { MAX_LOCAL_GROUPS } from '../shared/groups';
+import { DISPLAY_NAME_MAX } from '../shared/validation';
 import { type StreamPreferences, type PeerMetrics } from '../shared/quality';
 
 declare global {
@@ -105,12 +122,29 @@ let config: AppConfig = {
 let loaded = !api;
 let displayName = preferenceStore.displayName();
 let profilePhoto = preferenceStore.profilePhoto();
+// Profile changes stay here until "Salvar perfil"; closing the modal drops them.
+let profileDraft: { name: string; photo: string } | null = null;
+const currentProfileDraft = () =>
+  profileDraft ?? { name: displayName, photo: profilePhoto };
+let afterRender: () => void = () => undefined;
+const avatarCache = createAvatarCache({
+  request: (peerId, avatarId) => {
+    send({ type: 'get-avatar', peerId, avatarId });
+  },
+  onChange: () => render(),
+  reducedMotion: () => matchMedia('(prefers-reduced-motion: reduce)').matches,
+});
+/** Protocol 4 carries the image inline; protocol 5 only its hash. */
+const resolveAvatar = (person: RoomParticipant): string | undefined =>
+  person.avatar ??
+  (person.avatarId
+    ? avatarCache.urlFor(person.peerId, person.avatarId)
+    : undefined);
 let joinCode = '';
 let settingUrl = config.signalingUrl;
 let activePage: AppPage = 'home';
 let previousPage: AppPage = 'home';
 let sidebarCollapsed = preferenceStore.sidebarCollapsed();
-let editingName = false;
 let testingConnection = false;
 let connectionCheck = '';
 let filteredAudioPipeline: FilteredAudioPipeline | null = null;
@@ -126,6 +160,13 @@ let requestRoomSwitch: (target: NonNullable<typeof switchTarget>) => void;
 let confirmRoomSwitch: () => Promise<void>;
 let updateDismissed = false;
 let updatePrompted = false;
+// Renders may run before the groups feature is created further below.
+let groupsReady = false;
+/** The one popover menu open at a time: the profile or the group options. */
+let openMenu: 'profile' | 'group' | null = null;
+let whatsNewChecked = false;
+let whatsNewPending = false;
+let whatsNewEntries: ChangelogEntry[] = [];
 let resumeToken = '';
 let signalRecovering = false;
 let resumeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -174,15 +215,13 @@ let localPublicationId = '';
 let publicationConfirmed = false;
 const isLocalSharing = () => sharing || !!localStream || !!localPublicationId;
 const multiState = (): MultiRoomState | null =>
-  roomState?.protocol === 3 || roomState?.protocol === 4 ? roomState : null;
+  roomState && roomState.protocol >= 3 ? (roomState as MultiRoomState) : null;
 const { publicationWatcher, createPeers, clearWatchMedia, createWatchPeers } =
   createApplicationPeerRuntime({
     getIceServers: () => config.iceServers,
     getPreferences: () => preferences,
     getSessionEpoch: () => sessionEpoch,
-    getEpoch: () => sessionEpoch,
     getMultiState: multiState,
-    getMultiRoom: multiState,
     isRecovering: () => signalRecovering,
     send,
     getRemoteStream: () => remoteStream,
@@ -205,8 +244,7 @@ const { publicationWatcher, createPeers, clearWatchMedia, createWatchPeers } =
     waitForVideo,
     render,
     logFailure: (details) => recordLog('rtc.failed', details),
-    patchWatcherMetrics: () => patchMetrics(),
-    patchPeerMetrics: () => patchMetrics(),
+    patchMetrics: () => patchMetrics(),
     getCurrent: () => peers,
     setCurrent: (value) => {
       peers = value;
@@ -215,9 +253,6 @@ const { publicationWatcher, createPeers, clearWatchMedia, createWatchPeers } =
     getRoomRole: () => room?.role,
     getRemoteSharing: () => remoteSharing,
     getViewers: () => viewers,
-    setReconnecting: (value) => {
-      connectionReconnecting = value;
-    },
     setMetrics: (value) => {
       latestMetrics = value;
     },
@@ -241,6 +276,7 @@ const roomTransport = createAppRoomTransport({
       'error',
       false,
     ),
+  isRecovering: () => signalRecovering,
   render,
 });
 ({ requestRoomSwitch, confirmRoomSwitch } = createRoomSwitchActions({
@@ -368,6 +404,8 @@ const { stopSharing, leaveRoom } = createSessionTerminationController(
       remoteStream = null;
     },
     resetRoomState: (nextNotice) => {
+      closeParticipantPhoto();
+      avatarCache.clear();
       room = null;
       activePage = 'home';
       roomState = null;
@@ -405,6 +443,10 @@ const { applyRoomState } = createAppSnapshotController({
     watchRequest: publicationWatcher.watchRequest,
     watching: publicationWatcher.watching,
     hasPeers: !!peers,
+    connectedSubscribers: peers?.connectedPeers() ?? new Set(),
+    watchHealthy:
+      !!remoteStream &&
+      (publicationWatcher.watchPeers?.connectedPeers().size ?? 0) > 0,
   }),
   getLegacyContext: () => ({
     roomCode: room?.code,
@@ -433,6 +475,17 @@ const { applyRoomState } = createAppSnapshotController({
     resumeToken = snapshot.resumeToken;
     room = nextRoom;
     saveLastRoomCode(nextRoom.code);
+    // Joining an older room drops a GIF avatar; send its JPEG version instead.
+    const self = snapshot.participants.find(
+      (person) => person.peerId === snapshot.selfId,
+    );
+    if (
+      snapshot.reason === 'joined' &&
+      snapshot.protocol === 4 &&
+      profilePhoto &&
+      !self?.avatar
+    )
+      updateRoomProfile(displayName, profilePhoto);
   },
   confirmPublication: () => {
     publicationConfirmed = true;
@@ -566,10 +619,7 @@ const onMessage = createApplicationMessages({
     },
     removePeer: (peerId) => peers?.remove(peerId),
     log: recordLog,
-    leaveRoomClosed: (text, kind, tellServer) =>
-      leaveRoom(text, kind, tellServer),
-    leaveRoomError: (text, kind, tellServer) =>
-      leaveRoom(text, kind, tellServer),
+    leaveRoom: (text, kind, tellServer) => leaveRoom(text, kind, tellServer),
     stopSharing,
     clearWatchMedia,
     clearWatchSelection: () => {
@@ -600,6 +650,7 @@ const { connectRoom } = createConnectionController({
     sessionEpoch,
     resumeToken,
     signalRecovering,
+    roomProtocol: roomState?.protocol,
   }),
   setSocket: (connection) => {
     socket = connection;
@@ -617,7 +668,12 @@ const { connectRoom } = createConnectionController({
   saveDisplayName: (value) => preferenceStore.saveDisplayName(value),
   beginSession: () => ++sessionEpoch,
   isCurrentSession: (epoch) => epoch === sessionEpoch,
-  onMessage,
+  onMessage: (message) => {
+    // Avatars are a side channel; room logic never sees them.
+    if (message.type === 'participant-avatar')
+      void avatarCache.receive(message);
+    else onMessage(message);
+  },
   recordLog,
   render,
   notify,
@@ -791,6 +847,7 @@ const appViewController = createApplicationViewBindings({
     room,
     roomState,
     multi: multiState(),
+    resolveAvatar,
     viewers,
     watchingPublisherId: publicationWatcher.watching?.publisherId,
     watchingRemote: !!publicationWatcher.watching,
@@ -815,18 +872,18 @@ const appViewController = createApplicationViewBindings({
     connectionCheck,
     displayName,
     profilePhoto,
-    editingName,
-    joinCode,
+    profileDraft: currentProfileDraft(),
     modal,
     isRoomOwner: roomState?.ownerId === room?.selfId,
     sources,
     selectedSource,
     sourcePage,
     page: activePage,
-    sidebarCollapsed,
     notice,
     updateDismissed,
     updatePrompted,
+    whatsNewPending,
+    whatsNew: whatsNewEntries,
     includeSystemAudio,
     excludeDiscordAudio,
     returnFocusAction,
@@ -839,10 +896,56 @@ const appViewController = createApplicationViewBindings({
   setUpdatePrompted: (value) => {
     updatePrompted = value;
   },
+  setWhatsNewShown: () => {
+    whatsNewPending = false;
+    preferenceStore.saveLastSeenVersion(config.version);
+  },
   setDeferredRender: (value) => {
     deferredRender = value;
   },
   renderDiagnosticsTrigger: diagnosticsTrigger,
+  renderHome: () =>
+    groupsReady
+      ? renderGroupHome({
+          ...groups.view(),
+          enabled: !!api && loaded && !busy,
+          displayName,
+          currentRoomCode: room?.code ?? null,
+          menuOpen: openMenu === 'group',
+        })
+      : '',
+  renderSidebar: () => {
+    const view = groupsReady ? groups.view() : null;
+    return renderSidebar({
+      page: activePage === 'room' && !room ? 'home' : activePage,
+      hasRoom: !!room,
+      groups: (view?.groups ?? []).map((group) => ({
+        secret: group.secret,
+        name: group.name,
+        initials: groupInitials(group.name),
+        selected: group.secret === view?.selected?.secret,
+        live: !!view?.liveGroups.includes(group.secret),
+      })),
+      canAddGroup: !!view && view.groups.length < MAX_LOCAL_GROUPS,
+      displayName,
+      profilePhoto,
+      version: config.version,
+      profileMenuOpen: openMenu === 'profile',
+    });
+  },
+  renderFeatureModal: (value) => {
+    if (value === 'add-group') {
+      const view = groups.view();
+      return renderAddGroupModal({
+        tab: view.addTab,
+        draftName: view.draftName,
+        draftInvite: view.draftInvite,
+        enabled: !!api && loaded && !busy,
+      });
+    }
+    const leaving = value === 'leave-group' ? groups.view().leaving : null;
+    return leaving ? renderLeaveGroupModal(leaving) : '';
+  },
   updatePlayback,
   syncPreviews,
 });
@@ -873,8 +976,177 @@ const { toggleSidebar, testConnection } = createInterfaceActions({
   }),
 });
 
+function updateRoomProfile(name: string, photo: string): void {
+  if (!room || (roomState?.protocol ?? 0) < 4) return;
+  const epoch = sessionEpoch;
+  void compactProfileAvatar(photo, roomState?.protocol).then((avatar) => {
+    if (room && sessionEpoch === epoch)
+      send({ type: 'update-profile', name, avatar });
+  });
+}
+
+/** Decides once per run, after the real version is known, whether to show the notes. */
+function checkWhatsNew(): void {
+  if (whatsNewChecked || !loaded) return;
+  whatsNewChecked = true;
+  const lastSeen = preferenceStore.lastSeenVersion();
+  const decision = decideWhatsNew({
+    current: config.version,
+    lastSeen,
+    freshInstall: !lastSeen && !preferenceStore.displayName(),
+  });
+  if (decision === 'mark-seen')
+    preferenceStore.saveLastSeenVersion(config.version);
+  if (decision === 'show') {
+    whatsNewEntries = entriesSince(CHANGELOG, config.version, lastSeen);
+    whatsNewPending = whatsNewEntries.length > 0;
+    if (!whatsNewPending) preferenceStore.saveLastSeenVersion(config.version);
+  }
+}
+
+const groups = createGroupsFeature({
+  storage: persistentStorage,
+  getSignalingUrl: () => config.signalingUrl,
+  getDisplayName: () => displayName,
+  render,
+  notify: (message, kind) => notify(message, kind),
+  copyInvite: async (invite) => {
+    if (!api) throw new Error('Indisponível na prévia.');
+    await api.copyGroupInvite(invite);
+  },
+  createRoom: (groupKey) => {
+    if (room) {
+      notify('Saia da sala atual antes de criar outra.', 'error');
+      return;
+    }
+    void connectRoom('create', '', groupKey);
+  },
+  joinRoom: (code) => {
+    if (room) requestRoomSwitch({ kind: 'join', code });
+    else {
+      joinCode = code;
+      void connectRoom('join');
+    }
+  },
+  openLeaveConfirm: () => {
+    returnFocusAction = 'leave-group';
+    modal = 'leave-group';
+    render();
+  },
+  closeModal: () => {
+    modal = null;
+  },
+});
+groupsReady = true;
+
+root.addEventListener('input', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  const field = target.dataset.groupField;
+  if (field === 'name' || field === 'invite')
+    groups.setDraft(field, target.value);
+});
+root.addEventListener('submit', (event) => {
+  const form = (event.target as HTMLElement).dataset.groupForm;
+  if (form !== 'create' && form !== 'join') return;
+  event.preventDefault();
+  void submitGroupForm(form);
+});
+
+/** Creates or joins a group; the welcome screen also asks for the name. */
+async function submitGroupForm(form: 'create' | 'join'): Promise<void> {
+  const name = displayName.trim();
+  if (!name || name.length > DISPLAY_NAME_MAX) {
+    notify(`Digite seu nome com até ${DISPLAY_NAME_MAX} caracteres.`, 'error');
+    root.querySelector<HTMLInputElement>('#display-name')?.focus();
+    return;
+  }
+  if (name !== preferenceStore.displayName())
+    preferenceStore.saveDisplayName(name);
+  const saved =
+    form === 'create' ? await groups.createGroup() : await groups.joinGroup();
+  if (!saved) return;
+  if (modal === 'add-group') modal = null;
+  activePage = 'home';
+  render();
+}
+
+bindExtraActions(root, {
+  'select-group': (button) => {
+    activePage = 'home';
+    modal = null;
+    groups.select(button.dataset.group ?? null);
+  },
+  'add-group': () => {
+    returnFocusAction = 'add-group';
+    groups.setAddTab('join');
+    modal = 'add-group';
+    render();
+  },
+  'add-group-tab': (button) => {
+    groups.setAddTab(button.dataset.tab === 'create' ? 'create' : 'join');
+    render();
+    root
+      .querySelector<HTMLButtonElement>(
+        `#add-group-tab-${groups.view().addTab}`,
+      )
+      ?.focus();
+  },
+  'toggle-profile-menu': () => {
+    openMenu = openMenu === 'profile' ? null : 'profile';
+    render();
+  },
+  'toggle-group-menu': () => {
+    openMenu = openMenu === 'group' ? null : 'group';
+    render();
+  },
+  'create-group-room': () => groups.createRoomInGroup(),
+  'join-group-room': (button) => {
+    if (button.dataset.code) groups.joinListedRoom(button.dataset.code);
+  },
+  'copy-group-invite': () => void groups.copyInvite(),
+  'leave-group': () => {
+    openMenu = null;
+    groups.askLeave();
+  },
+  'confirm-leave-group': () => void groups.confirmLeave(),
+  'cancel-leave-group': () => groups.cancelLeave(),
+  'open-whats-new': () => {
+    whatsNewEntries = entriesSince(CHANGELOG, config.version, null);
+    returnFocusAction = 'open-whats-new';
+    modal = 'whats-new';
+    render();
+  },
+  'close-whats-new': () => {
+    modal = null;
+    render();
+  },
+});
+
+/** Closes the open menu on a click outside it or on an item that acts. */
+function closeMenuAfterClick(event: MouseEvent): void {
+  if (!openMenu) return;
+  const target = event.target as Element;
+  if (target.closest('[data-menu-toggle]')) return;
+  if (target.closest('[data-menu]') && !target.closest('[data-action]')) return;
+  openMenu = null;
+  render();
+}
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !openMenu) return;
+  const toggle =
+    openMenu === 'profile' ? 'toggle-profile-menu' : 'toggle-group-menu';
+  openMenu = null;
+  render();
+  root.querySelector<HTMLButtonElement>(`[data-action="${toggle}"]`)?.focus();
+});
+
 function render(): void {
+  if (modal !== 'profile') profileDraft = null;
+  checkWhatsNew();
+  if (groupsReady) groups.setVisible(activePage === 'home');
   appViewController.render();
+  afterRender();
 }
 
 bindAppActionRouter({
@@ -926,7 +1198,6 @@ bindAppActionRouter({
     if ('switchTarget' in patch) switchTarget = patch.switchTarget!;
     if ('returnFocusAction' in patch)
       returnFocusAction = patch.returnFocusAction!;
-    if ('editingName' in patch) editingName = patch.editingName!;
     if ('notice' in patch) notice = patch.notice!;
     if ('settingUrl' in patch) settingUrl = patch.settingUrl!;
     if ('connectionCheck' in patch) connectionCheck = patch.connectionCheck!;
@@ -937,12 +1208,12 @@ bindAppActionRouter({
   },
 });
 
-bindApplicationInputEvents({
+({ afterRender } = bindApplicationInputEvents({
   document,
   root,
   getState: () => ({
     displayName,
-    profilePhoto,
+    profileDraft: currentProfileDraft(),
     joinCode,
     room,
     systemAudioSupported: config.systemAudioSupported,
@@ -955,6 +1226,10 @@ bindApplicationInputEvents({
   updateState: (patch) => {
     if ('displayName' in patch) displayName = patch.displayName!;
     if ('profilePhoto' in patch) profilePhoto = patch.profilePhoto!;
+    if ('profileDraft' in patch)
+      profileDraft = patch.profileDraft
+        ? { ...currentProfileDraft(), ...patch.profileDraft }
+        : null;
     if ('joinCode' in patch) joinCode = patch.joinCode!;
     if ('settingUrl' in patch) {
       settingUrl = patch.settingUrl!;
@@ -962,7 +1237,6 @@ bindApplicationInputEvents({
     }
     if ('receiveVolume' in patch) receiveVolume = patch.receiveVolume!;
     if ('receiveMuted' in patch) receiveMuted = patch.receiveMuted!;
-    if ('editingName' in patch) editingName = patch.editingName!;
     if ('includeSystemAudio' in patch)
       includeSystemAudio = patch.includeSystemAudio!;
     if ('excludeDiscordAudio' in patch)
@@ -974,14 +1248,7 @@ bindApplicationInputEvents({
   updatePlayback,
   saveDisplayName: (name) => preferenceStore.saveDisplayName(name),
   saveProfilePhoto: (photo) => preferenceStore.saveProfilePhoto(photo),
-  updateRoomProfile: (name, photo) => {
-    if (!room) return;
-    const epoch = sessionEpoch;
-    void compactProfileAvatar(photo).then((avatar) => {
-      if (room && sessionEpoch === epoch)
-        send({ type: 'update-profile', name, avatar });
-    });
-  },
+  updateRoomProfile: (name, photo) => updateRoomProfile(name, photo),
   render,
   notify,
   requestRoomSwitch,
@@ -990,7 +1257,7 @@ bindApplicationInputEvents({
   changeQuality: (isVideoBitrate, prefix) =>
     void applyPreferences(readQualityControls(isVideoBitrate, prefix)),
   cancelSources,
-});
+}));
 
 startApplicationRuntime({
   getState: () => ({
@@ -1026,3 +1293,6 @@ startApplicationRuntime({
   stopTracks,
   notify: (message, kind) => notify(message, kind),
 });
+
+// Registered last so the clicked action runs before the menu closes.
+root.addEventListener('click', closeMenuAfterClick);

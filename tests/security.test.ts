@@ -78,6 +78,10 @@ describe('Isolamento do aplicativo', () => {
     expect(rendererFile(root, 'app://discorja/assets/startup-sigh.wav')).toBe(
       path.join(root, 'assets', 'startup-sigh.wav'),
     );
+    for (const asset of ['Roboto-Regular.ttf', 'loading.gif', 'photo.webp'])
+      expect(rendererFile(root, `app://discorja/assets/${asset}`)).toBe(
+        path.join(root, 'assets', asset),
+      );
     for (const url of [
       'file:///C:/Windows/win.ini',
       'app://other/index.html',
@@ -194,5 +198,42 @@ describe('Isolamento do aplicativo', () => {
     expect(() =>
       sanitizeDiagnostics({ metrics: new Array(101) }, '0.3.0'),
     ).toThrow();
+  });
+});
+
+describe('colar com o botão direito', () => {
+  it('cola só em campos editáveis com algo na área de transferência', async () => {
+    const { pasteOnContextMenu } = await import('../src/electron/security');
+    const field = { isEditable: true, editFlags: { canPaste: true } };
+    expect(pasteOnContextMenu({ ...field, inputFieldType: 'plainText' })).toBe(
+      true,
+    );
+    expect(pasteOnContextMenu({ ...field, isEditable: false })).toBe(false);
+    expect(
+      pasteOnContextMenu({ ...field, editFlags: { canPaste: false } }),
+    ).toBe(false);
+    expect(pasteOnContextMenu({ ...field, inputFieldType: 'password' })).toBe(
+      false,
+    );
+  });
+});
+
+describe('links externos', () => {
+  it('abre somente páginas permitidas, sem variações', async () => {
+    const { allowedExternalUrl } = await import('../src/electron/security');
+    expect(allowedExternalUrl('https://giphy.com/')).toBe('https://giphy.com/');
+    expect(allowedExternalUrl('https://giphy.com')).toBe('https://giphy.com/');
+    expect(allowedExternalUrl('https://github.com/DevCordeiroCf/')).toBe(
+      'https://github.com/DevCordeiroCf',
+    );
+    for (const url of [
+      'http://giphy.com/',
+      'https://giphy.com.evil.test/',
+      'https://giphy.com/?next=https://evil.test',
+      'https://user@giphy.com/',
+      'https://giphy.com/search/cats',
+      'javascript:alert(1)',
+    ])
+      expect(allowedExternalUrl(url)).toBeUndefined();
   });
 });

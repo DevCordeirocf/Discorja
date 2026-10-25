@@ -158,6 +158,8 @@ export function sanitizeLogEvent(input: unknown): LogEvent | null {
       [
         'health',
         'stats',
+        'admin',
+        'admin-page',
         'not-found',
         'handshake',
         'invalid',
@@ -177,6 +179,10 @@ export function sanitizeLogEvent(input: unknown): LogEvent | null {
         'set-publisher',
         'set-moderator',
         'kick',
+        'update-profile',
+        'get-avatar',
+        'subscribe-group',
+        'unsubscribe-group',
       ].includes(fields.operation)
     )
       details.operation = fields.operation;
@@ -195,7 +201,7 @@ export function sanitizeLogEvent(input: unknown): LogEvent | null {
       details.statusCode = fields.statusCode;
     if (
       Number.isInteger(fields.clientProtocol) &&
-      [1, 2, 3].includes(Number(fields.clientProtocol))
+      [1, 2, 3, 4, 5].includes(Number(fields.clientProtocol))
     )
       details.clientProtocol = fields.clientProtocol;
     if (

@@ -9,6 +9,7 @@ export interface RoomPeerCallbacks {
   onRemoteStream: ConstructorParameters<typeof RoomPeers>[2];
   onConnectionState: ConstructorParameters<typeof RoomPeers>[3];
   onMetrics: (metrics: PeerMetrics[]) => void;
+  onQueueOverflow?: (peerId: string) => void;
 }
 
 /** Creates the per-room WebRTC controller and binds its application callbacks. */
@@ -22,6 +23,10 @@ export function createRoomPeers(
     callbacks.sendSignal,
     callbacks.onRemoteStream,
     callbacks.onConnectionState,
-    { preferences, onMetrics: callbacks.onMetrics },
+    {
+      preferences,
+      onMetrics: callbacks.onMetrics,
+      onQueueOverflow: callbacks.onQueueOverflow,
+    },
   );
 }

@@ -6,7 +6,6 @@ COPY scripts/install-electron.mjs scripts/install-electron.mjs
 RUN npm ci
 COPY src/server src/server
 COPY src/shared src/shared
-COPY src/electron/config.ts src/electron/config.ts
 COPY tsconfig.server.json ./
 RUN npm run server:build
 

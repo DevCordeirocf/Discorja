@@ -1,6 +1,6 @@
 # Operação e consolidação — etapa 0.8-A
 
-**Estado:** implementação 0.8.0 concluída localmente, incluindo acessibilidade, diagnóstico de suporte, bitrate ajustável e verificação dos artefatos de atualização. Homologação com o grupo, servidor implantado e atualização entre duas instalações ainda pendentes. Não há serviço pago novo nem SFU nesta entrega. Resultados em [validacao-0.8.0.md](validacao-0.8.0.md).
+**Estado:** implementação 0.8.0 concluída localmente, incluindo acessibilidade, diagnóstico de suporte, bitrate ajustável e verificação dos artefatos de atualização. Homologação com o grupo, servidor implantado e atualização entre duas instalações ainda pendentes. Não há serviço pago novo nem SFU nesta entrega. Resultados em [validacao-0.8.0.md](versões/validacao-0.8.0.md).
 
 ## O que precisa configurar
 
@@ -29,7 +29,7 @@ npm run server:check -- wss://SEU-SERVIDOR
 
 Substitua o endereço. Sem argumento, usa `DISCORJA_SIGNALING_URL` ou o localhost padrão. O comando carrega `.env` se existir, mas não imprime o endpoint nem segredos. **Confira o destino antes de definir `STATS_TOKEN`**: a credencial será enviada a esse servidor por HTTPS.
 
-O diagnóstico consulta `/health` e abre uma conexão WebSocket com Origin do aplicativo para confirmar `hello` no protocolo 3. Não cria sala nem inicia captura. Se houver `STATS_TOKEN` no ambiente administrativo, também verifica `/api/stats`, sem incluir os contadores no relatório. Nunca passe o token como argumento ou na URL.
+O diagnóstico consulta `/health` e abre uma conexão WebSocket com Origin do aplicativo para confirmar `hello` no protocolo de salas atual (5). Não cria sala nem inicia captura. Se houver `STATS_TOKEN` no ambiente administrativo, também verifica `/api/stats`, sem incluir os contadores no relatório. Nunca passe o token como argumento ou na URL.
 
 O resultado tem `health`, `protocol`, `stats`, `notes` e `ok`. `ok: true` e saída 0 indicam aprovação apenas dessas verificações; falha retorna saída 1. `stats: not-requested` é normal sem token. Os outros valores são `available`, `disabled`, `unauthorized` e `failed`.
 

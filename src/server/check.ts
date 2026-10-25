@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
-import { validateSignalingUrl } from '../electron/config.js';
+import { validateSignalingUrl } from '../shared/signaling-url.js';
 import { ROOM_PROTOCOL_VERSION } from '../shared/protocol.js';
+import { MAX_MESSAGE_BYTES } from '../shared/validation.js';
 
 export interface ServiceCheck {
   ok: boolean;
@@ -69,7 +70,7 @@ export async function checkService(
   result.protocol = await new Promise<boolean>((resolve) => {
     const socket = new WebSocket(url, {
       origin: 'app://discorja',
-      maxPayload: 128 * 1024,
+      maxPayload: MAX_MESSAGE_BYTES,
       handshakeTimeout: timeoutMs,
       followRedirects: false,
     });
@@ -103,7 +104,7 @@ export async function checkService(
   });
   if (!result.protocol)
     result.notes.push(
-      'Falha no protocolo 3: confira versão do servidor, Origin e encaminhamento WebSocket.',
+      'Falha no protocolo de salas: confira versão do servidor, Origin e encaminhamento WebSocket.',
     );
   if (statsToken) {
     try {

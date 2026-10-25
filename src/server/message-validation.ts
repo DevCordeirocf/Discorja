@@ -1,89 +1,24 @@
 import {
   ROOM_CODE_ALPHABET,
+  avatarId as validAvatarId,
+  displayName as validName,
+  groupKey as validGroupKey,
+  keys as exactKeys,
+  legacyAvatar,
+  profileAvatar,
+  object as plainObject,
+  peerId as validPeerId,
   roomCode as validRoomCode,
+  signal as validSignal,
   token as validToken,
 } from '../shared/validation.js';
-import type {
-  ClientMessage,
-  IceCandidate,
-  SignalPayload,
-} from '../shared/protocol.js';
+import type { ClientMessage } from '../shared/protocol.js';
 
 export { ROOM_CODE_ALPHABET };
 
-const plainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const exactKeys = (
-  value: Record<string, unknown>,
-  required: string[],
-  optional: string[] = [],
-): boolean =>
-  required.every((key) => Object.hasOwn(value, key)) &&
-  Object.keys(value).every(
-    (key) => required.includes(key) || optional.includes(key),
-  );
-
-const boundedString = (value: unknown, max: number, min = 1): value is string =>
-  typeof value === 'string' && value.length >= min && value.length <= max;
-
-const validName = (value: unknown): value is string =>
-  boundedString(value, 40) &&
-  value.trim().length > 0 &&
-  !/[\u0000-\u001f\u007f]/u.test(value);
-
+/** Older apps send small JPEGs; protocol 5 also accepts checked GIF/WebP. */
 const validAvatar = (value: unknown): value is string =>
-  typeof value === 'string' &&
-  value.length <= 9_000 &&
-  (value === '' || /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/u.test(value));
-
-const validPeerId = (value: unknown): value is string =>
-  boundedString(value, 64) && /^[a-zA-Z0-9-]+$/u.test(value);
-
-function validCandidate(value: unknown): value is IceCandidate {
-  if (
-    !plainObject(value) ||
-    !exactKeys(
-      value,
-      ['candidate'],
-      ['sdpMid', 'sdpMLineIndex', 'usernameFragment'],
-    )
-  )
-    return false;
-  if (!boundedString(value.candidate, 4096, 0)) return false;
-  if (
-    Object.hasOwn(value, 'sdpMid') &&
-    value.sdpMid !== null &&
-    !boundedString(value.sdpMid, 128, 0)
-  )
-    return false;
-  if (
-    Object.hasOwn(value, 'usernameFragment') &&
-    value.usernameFragment !== null &&
-    !boundedString(value.usernameFragment, 256, 0)
-  )
-    return false;
-  return (
-    !Object.hasOwn(value, 'sdpMLineIndex') ||
-    value.sdpMLineIndex === null ||
-    (Number.isInteger(value.sdpMLineIndex) &&
-      Number(value.sdpMLineIndex) >= 0 &&
-      Number(value.sdpMLineIndex) <= 65535)
-  );
-}
-
-function validSignal(value: unknown): value is SignalPayload {
-  if (!plainObject(value)) return false;
-  if (value.type === 'offer' || value.type === 'answer')
-    return (
-      exactKeys(value, ['type', 'sdp']) && boundedString(value.sdp, 56_000)
-    );
-  return (
-    value.type === 'ice' &&
-    exactKeys(value, ['type', 'candidate']) &&
-    validCandidate(value.candidate)
-  );
-}
+  legacyAvatar(value) || profileAvatar(value);
 
 /** Validate and normalize an untrusted WebSocket message from a client. */
 export function parseClientMessage(value: unknown): ClientMessage | undefined {
@@ -158,17 +93,51 @@ export function parseClientMessage(value: unknown): ClientMessage | undefined {
           avatar: value.avatar,
         };
       break;
+    case 'get-avatar':
+      if (
+        exactKeys(value, ['type', 'peerId', 'avatarId']) &&
+        validPeerId(value.peerId) &&
+        validAvatarId(value.avatarId)
+      )
+        return {
+          type: 'get-avatar',
+          peerId: value.peerId,
+          avatarId: value.avatarId,
+        };
+      break;
+    case 'subscribe-group':
+      if (
+        exactKeys(value, ['type', 'groupKey', 'name']) &&
+        validGroupKey(value.groupKey) &&
+        validName(value.name)
+      )
+        return {
+          type: 'subscribe-group',
+          groupKey: value.groupKey,
+          name: value.name.trim(),
+        };
+      break;
+    case 'unsubscribe-group':
+      if (
+        exactKeys(value, ['type', 'groupKey']) &&
+        validGroupKey(value.groupKey)
+      )
+        return { type: 'unsubscribe-group', groupKey: value.groupKey };
+      break;
     case 'create-room':
       if (
-        exactKeys(value, ['type', 'name'], ['roomName', 'avatar', 'code']) &&
+        exactKeys(
+          value,
+          ['type', 'name'],
+          ['roomName', 'avatar', 'code', 'groupKey'],
+        ) &&
         validName(value.name) &&
         (value.roomName === undefined || validName(value.roomName)) &&
         (value.avatar === undefined || validAvatar(value.avatar)) &&
-        (value.code === undefined ||
-          (typeof value.code === 'string' && value.code.length <= 40))
+        (value.code === undefined || validRoomCode(value.code)) &&
+        (value.groupKey === undefined || validGroupKey(value.groupKey))
       ) {
         const code = typeof value.code === 'string' ? value.code : '';
-        if (code && !validRoomCode(code)) break;
         return {
           type: value.type,
           name: value.name.trim(),
@@ -177,6 +146,9 @@ export function parseClientMessage(value: unknown): ClientMessage | undefined {
             ? { roomName: value.roomName.trim() }
             : {}),
           ...(code ? { code } : {}),
+          ...(typeof value.groupKey === 'string'
+            ? { groupKey: value.groupKey }
+            : {}),
         };
       }
       break;
@@ -184,19 +156,16 @@ export function parseClientMessage(value: unknown): ClientMessage | undefined {
       if (
         !exactKeys(value, ['type', 'code', 'name'], ['avatar']) ||
         !validName(value.name) ||
-        !boundedString(value.code, 40) ||
+        !validRoomCode(value.code) ||
         (value.avatar !== undefined && !validAvatar(value.avatar))
       )
         return;
-      const code = value.code;
-      if (validRoomCode(code))
-        return {
-          type: value.type,
-          name: value.name.trim(),
-          code,
-          ...(typeof value.avatar === 'string' ? { avatar: value.avatar } : {}),
-        };
-      break;
+      return {
+        type: value.type,
+        name: value.name.trim(),
+        code: value.code,
+        ...(typeof value.avatar === 'string' ? { avatar: value.avatar } : {}),
+      };
     }
     case 'signal':
       if (
