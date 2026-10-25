@@ -45,15 +45,15 @@ O workflow pode ser iniciado manualmente em **Run workflow**, informando uma tag
 Exemplo para preparar a 1.0.0, depois de revisar e validar as alterações:
 
 ```powershell
-npm version  0.10.0 --no-git-tag-version
+npm version  0.10.1 --no-git-tag-version
 npm run typecheck
 npm run format:check
 npm test
 git add .
-git commit -m "feat(validação): melhora a validação do código da sala e atualiza referências"
+git commit -m "Prepara para a versão 0.10.1"
 git push origin main
-git tag  v0.10.0
-git push origin v0.10.0
+git tag  v0.10.1
+git push origin v0.10.1
 ```
 
 Revise os arquivos antes de adicioná-los. `npm version` sincroniza pacote e lockfile. Mantenha `appId`, repositório e nome do produto estáveis para preservar o caminho de instalação e atualização.
