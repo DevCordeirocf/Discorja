@@ -1,6 +1,6 @@
 # Segurança e operação sem serviços pagos
 
-## Protocolo 5, grupos e painel — 0.10.0
+## Protocolo 5, grupos e painel — 0.11.0
 
 - **Fotos:** o tipo é conferido pelos bytes iniciais (JPEG, GIF, WebP) no app e no servidor, e GIF/WebP acima de 256 × 256 px são recusados, limitando o custo de decodificação. O servidor calcula o `avatarId`; o app só usa a imagem se o hash conferir. A CSP do renderer passou a aceitar `img-src blob:` para exibir as fotos guardadas em memória; scripts continuam restritos a `'self'`. A conversão de GIF usa `gifenc` (MIT, sem dependências), empacotado no renderer.
 - **Grupos:** o convite contém um segredo de 128 bits que nunca sai do app; o servidor recebe apenas o SHA-256 dele e só envia a listagem a quem apresentar a mesma chave. Quem tiver o convite vê salas e códigos do grupo; não há revogação além de criar um novo grupo. Chaves, convites e nomes não entram nos logs. Copiar o convite usa o IPC estreito `group:copy-invite`, que valida o formato antes de escrever na área de transferência.

@@ -199,7 +199,7 @@ try {
   }, resolve('scripts/fixtures/audio.html'));
   const fixture = await fixtureReady;
   await fixture.locator('#prepare').click();
-  // Camera-only requests are allowed for the profile photo editor since 0.10.0;
+  // Camera-only requests are allowed for the profile photo editor since 0.11.0;
   // they are not attempted here so the test never opens a real camera.
   for (const constraint of [{ audio: true }, { video: true, audio: true }]) {
     const result = await host.evaluate(async (options) => {

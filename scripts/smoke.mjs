@@ -383,7 +383,7 @@ try {
     'Update popup shows a new version, can be deferred and reopened without installing',
   );
   // Camera-only requests are allowed for the profile photo editor since
-  // 0.10.0; they are not attempted here so the test never opens a real camera.
+  // 0.11.0; they are not attempted here so the test never opens a real camera.
   const microphone = await bounded(
     host.evaluate(async () => {
       try {

@@ -9,12 +9,12 @@ export interface ChangelogEntry {
 /** Notes shown in "Novidades do Discorja", newest first. Add one per release. */
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
-    version: '0.10.0',
+    version: '0.11.0',
     date: '2026-10-25',
     items: [
       {
         kind: 'novo',
-        text: 'Grupos: crie um grupo para a turma, mande o convite e veja as salas abertas por quem está nele.',
+        text: 'Grupos: crie um grupo para os calvos, mande o convite e veja as salas abertas por quem está nele.',
       },
       {
         kind: 'novo',

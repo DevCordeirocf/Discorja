@@ -2,7 +2,7 @@ import { expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
 
-// Shared steps for the Electron smoke tests: since 0.10.0 every room lives
+// Shared steps for the Electron smoke tests: since 0.11.0 every room lives
 // inside a group, so tests create or join a group before using its rooms.
 // Invites, codes and resume tokens stay in memory and are never printed.
 

@@ -1,6 +1,6 @@
 # Arquitetura e privacidade
 
-## Protocolo 5 na 0.10.0
+## Protocolo 5 na 0.11.0
 
 Fotos de perfil deixam de viajar dentro de cada `room-state`: o snapshot leva só `avatarId` e a imagem é buscada uma vez (`get-avatar`) e guardada como `blob:` no renderer. Grupos usam uma conexão de "lobby" separada, aberta apenas enquanto o Início está na tela; o servidor indexa salas por `groupKey` em memória e nunca recebe o segredo do convite. Quedas curtas da sinalização não fecham conexões WebRTC saudáveis em salas multi-tela: só os links quebrados são renegociados após a retomada. Antes de abrir o WebSocket, o app consulta `/health` por até 60 s para acordar servidores gratuitos suspensos. Detalhes e matriz de compatibilidade em [salas.md](salas.md).
 

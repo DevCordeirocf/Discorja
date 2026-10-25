@@ -1,6 +1,6 @@
 # Salas, participantes e permissões
 
-## Versão 0.10.0: protocolo 5, grupos e fotos animadas
+## Versão 0.11.0: protocolo 5, grupos e fotos animadas
 
 O aplicativo oferece o protocolo 5 e, se o servidor for antigo, negocia o 4 na mesma conexão (`hello 5` → `PROTOCOL_MISMATCH` → `hello 4`). A retomada sempre usa o protocolo da sala.
 
@@ -19,11 +19,11 @@ O aplicativo oferece o protocolo 5 e, se o servidor for antigo, negocia o 4 na m
 
 **Compatibilidade:**
 
-| App ↔ servidor         | Resultado                                                                                                                                       |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0.9.x ↔ servidor 0.10  | Protocolo 4 como antes. Entrar em sala criada por 0.10 mostra "Atualize o aplicativo".                                                          |
-| 0.10 ↔ servidor antigo | Negocia o 4: fotos em JPEG pequeno; o Início avisa que o servidor não suporta grupos e não é possível entrar em salas até atualizar o servidor. |
-| 0.10 ↔ servidor 0.10   | Protocolo 5, fotos animadas e grupos. Ao entrar em sala do protocolo 4, o app fala o 4 e envia a foto em JPEG.                                  |
+| App ↔ servidor                     | Resultado                                                                                                                                       |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.10.x ou anterior ↔ servidor 0.11 | Protocolo 4 como antes. Entrar em sala criada por 0.11 mostra "Atualize o aplicativo".                                                          |
+| 0.11 ↔ servidor antigo             | Negocia o 4: fotos em JPEG pequeno; o Início avisa que o servidor não suporta grupos e não é possível entrar em salas até atualizar o servidor. |
+| 0.11 ↔ servidor 0.11               | Protocolo 5, fotos animadas e grupos. Ao entrar em sala do protocolo 4, o app fala o 4 e envia a foto em JPEG.                                  |
 
 Implante o servidor antes de distribuir o app. Espectadores que perdem a sinalização por menos que `RESUME_GRACE_MS` continuam na lista de inscritos da transmissão, e o vídeo P2P segue enquanto a conexão é retomada.
 
@@ -57,14 +57,14 @@ As regras abaixo descrevem o modelo anterior, mantido apenas para clientes antig
 
 ## Como usar
 
-A partir da 0.10.0, as salas ficam dentro dos grupos: o aplicativo não tem mais entrada por código nem sala fora de grupo.
+A partir da 0.11.0, as salas ficam dentro dos grupos: o aplicativo não tem mais entrada por código nem sala fora de grupo.
 
 1. Configure o mesmo servidor nos aplicativos. Na primeira vez, o **Início** mostra as boas-vindas: informe seu nome e crie um grupo ou cole o convite (`DJG1…`) que recebeu.
 2. A lateral mostra a logo, os seus grupos, o botão **+** (criar ou entrar em outro grupo) e, embaixo, a sua foto. A foto abre **Editar perfil** e **Configurações**.
 3. No **Início**, o grupo escolhido mostra **Ao vivo agora** (salas abertas, com quem está nelas) e **Online agora**. Use **+ Criar sala** para abrir uma sala no grupo e **Entrar** para entrar em uma sala com um clique. **Convidar** copia o convite do grupo; **⋯ › Sair do grupo** remove o grupo do aplicativo.
 4. Durante uma sala, o botão de tela na lateral volta para ela, e o cartão da sala atual mostra **Você está aqui**. Para trocar de sala, entre em outra pelo grupo: o Discorja pede confirmação e encerra a sessão anterior antes de conectar.
 
-O servidor continua aceitando `join-room` com código para manter compatibilidade com aplicativos 0.9.x; o código só deixou de ser digitado e exibido no aplicativo 0.10.
+O servidor continua aceitando `join-room` com código para manter compatibilidade com aplicativos anteriores; o código só deixou de ser digitado e exibido no aplicativo 0.11.
 
 O servidor pode manter **várias salas ativas ao mesmo tempo**, para grupos diferentes. Cada cliente participa de uma sala por vez. A saída encerra as tracks de áudio/vídeo, fecha as conexões WebRTC e a sinalização antes de retornar ao início. Se alguém tentar criar ou entrar em outra sala sem sair primeiro, o Discorja pede confirmação e encerra a sessão anterior antes de tentar conectar.
 

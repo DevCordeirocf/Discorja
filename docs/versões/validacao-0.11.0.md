@@ -1,4 +1,4 @@
-# Validação da versão 0.10.0
+# Validação da versão 0.11.0
 
 ## Executado localmente
 
@@ -12,7 +12,7 @@ Novos testes cobrem: aquecimento do servidor e negociação 5 → 4; decisão e 
 
 ## Não executado
 
-- Os smoke tests em Electron (`smoke`, `rooms`, `multistream`, `audio`, `logs`, `accessibility`, `check-updater`) ainda criam salas com `[data-action=create]` e entram digitando `#room-code`, fluxos removidos na 0.10.0. Eles precisam ser reescritos para criar um grupo e entrar pela lista de salas antes de rodar de novo.
+- Os smoke tests em Electron (`smoke`, `rooms`, `multistream`, `audio`, `logs`, `accessibility`, `check-updater`) ainda criam salas com `[data-action=create]` e entram digitando `#room-code`, fluxos removidos na 0.11.0. Eles precisam ser reescritos para criar um grupo e entrar pela lista de salas antes de rodar de novo.
 
 - `npm run test:accessibility` e demais smoke tests em Electron: o binário do Electron da versão instalada não estava baixado neste ambiente (o script tentou baixá-lo e excedeu o tempo).
 - `npm run audio:build`: requer Visual Studio C++ Build Tools.
@@ -25,4 +25,4 @@ Novos testes cobrem: aquecimento do servidor e negociação 5 → 4; decisão e 
 3. Escolher um GIF baixado do GIPHY no perfil e confirmar a animação para outra pessoa da sala; com "reduzir movimento" ativo no Windows, confirmar a imagem parada.
 4. Criar um grupo, copiar o convite, entrar com outro app e entrar na sala listada com um clique.
 5. Desligar o Wi-Fi por alguns segundos durante uma transmissão e confirmar que o vídeo continua após a retomada.
-6. Atualizar de 0.9.12 e confirmar que "Novidades do Discorja" aparece uma vez.
+6. Atualizar de 0.10.1 e confirmar que "Novidades do Discorja" aparece uma vez.
