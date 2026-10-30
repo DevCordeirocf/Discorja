@@ -43,7 +43,7 @@
     "@types/node": "26.6.5",
     "@types/ws": "8.18.2",
     "electron": "44.9.2",
-    "electron-builder": "26.15.3",
+    "electron-builder": "26.18.0",
     "esbuild": "0.28.2",
     "gifenc": "1.0.3",
     "js-yaml": "4.3.2",
