@@ -35,7 +35,7 @@
     "pack:win": "node scripts/prepare-release.mjs && npm run audio:build && npm run build && electron-builder --config electron-builder.config.cjs --win --dir"
   },
   "dependencies": {
-    "electron-updater": "6.8.9",
+    "electron-updater": "6.8.11",
     "ws": "8.22.0"
   },
   "devDependencies": {
