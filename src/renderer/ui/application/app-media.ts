@@ -3,6 +3,10 @@ import type {
   SendAudioControlState,
 } from '../../views/audio-controls';
 import { updateRoomPlayback, syncRoomPreviews } from '../media/media-playback';
+import {
+  ambientEffectsAllowed,
+  syncAmbientEffects,
+} from '../media/ambient-effects';
 
 type AppMediaOptions = {
   root: HTMLElement;
@@ -22,7 +26,17 @@ type AppMediaOptions = {
 
 export function createAppMedia(options: AppMediaOptions) {
   return {
-    syncPreviews: () =>
+    syncPreviews: () => {
+      syncAmbientEffects(
+        document.documentElement,
+        ambientEffectsAllowed({
+          sharing: options.getSharing(),
+          foreground:
+            options.getNativeForeground() &&
+            document.visibilityState === 'visible' &&
+            (options.hasDesktopApi || document.hasFocus()),
+        }),
+      );
       syncRoomPreviews({
         root: options.root,
         document,
@@ -33,7 +47,8 @@ export function createAppMedia(options: AppMediaOptions) {
         multiRoom: options.getMultiRoom(),
         watching: options.getWatching(),
         roomRole: options.getRoomRole(),
-      }),
+      });
+    },
     updatePlayback: () =>
       updateRoomPlayback(options.root, {
         volume: options.getReceiveVolume(),

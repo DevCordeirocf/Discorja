@@ -153,6 +153,69 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('formato automático', () => {
+  it('ordena H264 primeiro quando o sistema indica codificação eficiente', async () => {
+    const codecs = ['video/VP8', 'video/VP9', 'video/H264'].map((mimeType) => ({
+      mimeType,
+      clockRate: 90_000,
+    }));
+    vi.stubGlobal('RTCRtpSender', { getCapabilities: () => ({ codecs }) });
+    const encodingInfo = vi.fn(
+      async (config: { video: { contentType: string } }) => ({
+        supported: true,
+        powerEfficient: config.video.contentType === 'video/H264',
+      }),
+    );
+    vi.stubGlobal('navigator', { mediaCapabilities: { encodingInfo } });
+    const setCodecPreferences = vi.fn();
+    const getTransceivers = vi.fn(function (this: FakePC) {
+      return this.senders.map((sender) => ({ sender, setCodecPreferences }));
+    });
+    (FakePC.prototype as unknown as Record<string, unknown>).getTransceivers =
+      getTransceivers;
+    try {
+      const { peers } = manager();
+      await peers.offer('a', stream());
+      await peers.offer('b', stream());
+      expect(setCodecPreferences).toHaveBeenCalledTimes(2);
+      expect(
+        setCodecPreferences.mock.calls[0][0].map(
+          (codec: { mimeType: string }) => codec.mimeType,
+        ),
+      ).toEqual(['video/H264', 'video/VP8', 'video/VP9']);
+      // H264 is probed first and the result is shared by every viewer.
+      expect(encodingInfo).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (FakePC.prototype as unknown as Record<string, unknown>)
+        .getTransceivers;
+    }
+  });
+
+  it('mantém a ordem do navegador sem codificador eficiente', async () => {
+    vi.stubGlobal('RTCRtpSender', {
+      getCapabilities: () => ({ codecs: [{ mimeType: 'video/H264' }] }),
+    });
+    vi.stubGlobal('navigator', {
+      mediaCapabilities: {
+        encodingInfo: async () => ({ supported: true, powerEfficient: false }),
+      },
+    });
+    const setCodecPreferences = vi.fn();
+    (FakePC.prototype as unknown as Record<string, unknown>).getTransceivers =
+      function (this: FakePC) {
+        return this.senders.map((sender) => ({ sender, setCodecPreferences }));
+      };
+    try {
+      const { peers } = manager();
+      await peers.offer('a', stream());
+      expect(setCodecPreferences).not.toHaveBeenCalled();
+    } finally {
+      delete (FakePC.prototype as unknown as Record<string, unknown>)
+        .getTransceivers;
+    }
+  });
+});
+
 describe('controle RTC e recuperação', () => {
   it('mantém áudio e vídeo sem stream ID no mesmo MediaStream sem duplicar tracks', async () => {
     class IncomingStream {

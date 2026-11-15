@@ -194,6 +194,22 @@ button:disabled {
     transform: translate3d(var(--drift-x3), var(--drift-y3), 0);
   }
 }
+/* Modo leve (ui/media/ambient-effects.ts): while sharing or in the background,
+   decorative layers stop so the renderer does not composite them next to a game. */
+:root[data-effects='reduced'] .ambient-particle-layer {
+  display: none;
+}
+:root[data-effects='reduced'] .app-shell {
+  transition: none;
+}
+:root[data-effects='reduced'] .animate-waiting-pulse {
+  animation-play-state: paused !important;
+}
+:root[data-effects='reduced'] .modal-overlay,
+:root[data-effects='reduced'] .notice,
+:root[data-effects='reduced'] .participant-photo-overlay {
+  backdrop-filter: none !important;
+}
 .app-shell::before {
   content: '';
   position: fixed;

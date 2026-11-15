@@ -2,12 +2,19 @@ import type { SignalPayload } from '../../shared/protocol';
 import {
   DEFAULT_STREAM_PREFERENCES,
   normalizePreferences,
+  QUALITY_PRESETS,
   type PeerConnectionStatus,
   type PeerMetrics,
   type StreamPreferences,
 } from '../../shared/quality';
 import { AdaptiveQuality, resolutionScale } from './adaptation';
 import { PeerTelemetry } from './telemetry';
+import {
+  mediaCapabilitiesProbe,
+  orderCodecs,
+  pickEfficientCodec,
+  type VideoCodecName,
+} from './codec-preference';
 import { AUDIO_MAX_BITRATE, AUDIO_UPLOAD_RESERVE } from '../../shared/audio';
 
 interface Peer {
@@ -63,6 +70,10 @@ export class RoomPeers {
   private pollTimer?: ReturnType<typeof setTimeout>;
   private pollInFlight = false;
   private epoch = 0;
+  private automaticCodecProbe?: {
+    key: string;
+    result: Promise<VideoCodecName | undefined>;
+  };
 
   constructor(
     private readonly iceServers: RTCIceServer[],
@@ -94,6 +105,36 @@ export class RoomPeers {
       peer.retryParametersAt = 0;
     }
     await this.rebalance();
+  }
+
+  /**
+   * "Automático" prefers a codec the system reports as power efficient, so the
+   * host can encode on the GPU's media engine instead of competing with a game
+   * for CPU. One probe per profile is shared by every viewer.
+   */
+  private automaticCodec(
+    available: readonly string[],
+  ): Promise<VideoCodecName | undefined> {
+    const profile = QUALITY_PRESETS[this.preferences.preset];
+    const target = {
+      width: profile.width,
+      height: profile.height,
+      fps: this.preferences.fps ?? profile.fps,
+      bitrate: this.preferences.videoBitrateMbps
+        ? this.preferences.videoBitrateMbps * 1_000_000
+        : profile.bitrate,
+    };
+    const key = JSON.stringify([target, [...available].sort()]);
+    if (this.automaticCodecProbe?.key !== key) {
+      const probe = mediaCapabilitiesProbe(target);
+      this.automaticCodecProbe = {
+        key,
+        result: probe
+          ? pickEfficientCodec(available, probe)
+          : Promise.resolve(undefined),
+      };
+    }
+    return this.automaticCodecProbe.result;
   }
 
   private create(peerId: string, role: Peer['role']): Peer {
@@ -347,24 +388,18 @@ export class RoomPeers {
           .getTracks()
           .filter((track) => track.readyState !== 'ended'))
           peer.connection.addTrack(track, stream);
-        if (
-          this.preferences.preferredCodec &&
-          typeof RTCRtpSender !== 'undefined'
-        ) {
+        if (typeof RTCRtpSender !== 'undefined') {
           const codecs = RTCRtpSender.getCapabilities('video')?.codecs ?? [];
           const preferred =
-            `video/${this.preferences.preferredCodec}`.toLowerCase();
+            this.preferences.preferredCodec ??
+            (await this.automaticCodec(codecs.map((codec) => codec.mimeType)));
+          if (!this.current(peerId, peer)) return;
+          const mime = preferred && `video/${preferred}`.toLowerCase();
           if (
-            codecs.some((codec) => codec.mimeType.toLowerCase() === preferred)
+            preferred &&
+            codecs.some((codec) => codec.mimeType.toLowerCase() === mime)
           ) {
-            const ordered = [
-              ...codecs.filter(
-                (codec) => codec.mimeType.toLowerCase() === preferred,
-              ),
-              ...codecs.filter(
-                (codec) => codec.mimeType.toLowerCase() !== preferred,
-              ),
-            ];
+            const ordered = orderCodecs(codecs, preferred);
             for (const transceiver of peer.connection.getTransceivers()) {
               if (transceiver.sender.track?.kind === 'video') {
                 try {

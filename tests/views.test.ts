@@ -273,6 +273,8 @@ describe('templates da interface', () => {
     expect(html).toContain('role="switch"');
     expect(html).toContain('&lt;falha&gt;');
     expect(html).not.toContain('<falha>');
+    expect(html).toContain('Acima de 60 QPS exige mais da CPU e da GPU');
+    expect(html).toContain('Automático prefere codificação por hardware');
   });
 
   it('renderiza diagnóstico de anfitrião vazio e escapa nomes de espectadores', () => {

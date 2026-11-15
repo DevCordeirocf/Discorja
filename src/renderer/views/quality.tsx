@@ -93,7 +93,9 @@ export function QualityPanel(view: QualityPanelProps) {
                 Quadros por segundo
               </span>
               <small className={ROW_NOTE}>
-                Mais QPS deixa o movimento mais suave.
+                {fps > 60
+                  ? 'Acima de 60 QPS exige mais da CPU e da GPU; se o jogo perder desempenho, use 60 ou 30.'
+                  : 'Mais QPS deixa o movimento mais suave.'}
               </small>
             </>
           }
@@ -139,7 +141,8 @@ export function QualityPanel(view: QualityPanelProps) {
                 Formato de vídeo
               </label>
               <small className={ROW_NOTE}>
-                Vale a partir da próxima transmissão.
+                Automático prefere codificação por hardware quando o sistema
+                indica suporte. Vale a partir da próxima transmissão.
               </small>
             </>
           }

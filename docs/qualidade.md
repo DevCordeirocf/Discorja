@@ -1,5 +1,16 @@
 # Qualidade de vídeo e estabilidade
 
+## Transmitir enquanto joga — modo leve
+
+Transmitir a tela disputa CPU, GPU e memória de vídeo com o jogo. Em ordem de impacto, os custos no anfitrião são: codificação de vídeo (uma por espectador, porque cada pessoa tem sua própria conexão ponto a ponto), captura e redimensionamento da tela na resolução e nos QPS escolhidos, e a própria interface do Discorja. Durante a transmissão a limitação de segundo plano do Chromium fica desligada para manter medições e recuperação, então efeitos visuais da interface continuariam sendo desenhados mesmo atrás do jogo.
+
+- **Formato Automático prefere hardware.** Com **Formato de vídeo** em Automático, a próxima transmissão consulta `navigator.mediaCapabilities.encodingInfo()` e coloca primeiro o primeiro formato que o sistema indicar como eficiente (`powerEfficient`), na ordem H264, VP9 e AV1. Normalmente isso significa o codificador de mídia da GPU em vez da CPU. A consulta tem prazo curto e é compartilhada entre espectadores; se nenhum formato for indicado como eficiente, ou a consulta falhar, a ordem do navegador é mantida. Os demais formatos continuam na negociação. A indicação não comprova o uso de GPU; confira o codificador efetivo no diagnóstico. Escolher um formato manualmente continua tendo prioridade.
+- **Efeitos pausados.** Enquanto você transmite, ou quando o Discorja não está em primeiro plano, as partículas e o brilho do fundo deixam de ser desenhados, o pulso de espera é pausado e o desfoque de fundo de janelas e avisos é desativado. Isso não altera a captura nem o que os espectadores recebem.
+- **Prévia pausada.** A prévia da própria tela continua suspensa quando a janela perde o foco (veja abaixo).
+- **QPS altos.** A interface avisa que acima de 60 QPS a carga de CPU e GPU aumenta. Para jogar e transmitir, 720p ou 1080p a 30 ou 60 QPS com **Vídeos e jogos** é o ponto de partida mais leve; o padrão continua 720p/30. Menos espectadores também significam menos codificações simultâneas.
+
+Essas medidas reduzem trabalho no anfitrião; não garantem FPS no jogo nem na transmissão. O ganho depende do driver, do codificador disponível, da fonte capturada e de quantas pessoas assistem. Compare o FPS do jogo e o diagnóstico na mesma máquina antes e depois.
+
 ## Bitrate ajustável — 0.8.0
 
 Em **Qualidade da sua transmissão**, o campo **Teto por espectador** aceita de 1 a 100 Mbps. O valor padrão acompanha o perfil: 4 Mbps em 720p/30, 8 Mbps em 1080p/30, 12 Mbps em 1080p/60 e 30 Mbps em 1080p/120. Ao editar, o teto personalizado permanece durante trocas de perfil. Para voltar ao valor padrão do perfil selecionado, digite o valor correspondente no campo. A preferência é salva no computador e pode ser alterada enquanto transmite, sem iniciar nova captura.
@@ -38,7 +49,7 @@ Veja [áudio e Discord](audio.md) para uso e limitações e [validação da 0.4.
 
 O orçamento de envio reserva 15% de folga antes de dividir o vídeo entre espectadores. Isso não é um limite absoluto do tráfego da placa de rede: cabeçalhos, retransmissões, sinalização e outros programas também consomem banda. Os valores efetivos continuam visíveis nas medições.
 
-O controle **Formato na próxima transmissão** permite preferir H264, VP8, VP9 ou AV1, mantendo formatos alternativos na negociação. Automático mantém a escolha do navegador. Uma preferência só é aplicada em uma nova conexão de transmissão; mudar a seleção não troca o codec de um fluxo já negociado. Disponibilidade e uso de hardware dependem dos dois computadores. Compare o codec e o codificador efetivos, CPU/GPU e vídeo recebido; escolher H264 não garante aceleração.
+O controle **Formato na próxima transmissão** permite preferir H264, VP8, VP9 ou AV1, mantendo formatos alternativos na negociação. Automático prefere um formato indicado pelo sistema como eficiente e, sem essa indicação, mantém a escolha do navegador (veja o modo leve acima). Uma preferência só é aplicada em uma nova conexão de transmissão; mudar a seleção não troca o codec de um fluxo já negociado. Disponibilidade e uso de hardware dependem dos dois computadores. Compare o codec e o codificador efetivos, CPU/GPU e vídeo recebido; escolher H264 não garante aceleração.
 
 O diagnóstico agora apresenta codificador/decodificador, indicador de eficiência quando informado, jitter, quadros descartados e congelamentos disponíveis. Ausência de dado aparece como desconhecida; `powerEfficientEncoder` não é uma identificação inequívoca de GPU. **Salvar diagnóstico** abre um diálogo local para exportar somente métricas permitidas, sem identificadores de participantes, nomes, SDP, ICE, endereços ou credenciais.
 

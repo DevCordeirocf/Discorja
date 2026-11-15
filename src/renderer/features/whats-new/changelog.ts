@@ -9,6 +9,24 @@ export interface ChangelogEntry {
 /** Notes shown in "Novidades do Discorja", newest first. Add one per release. */
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '0.13.1',
+    date: '2026-11-15',
+    items: [
+      {
+        kind: 'melhoria',
+        text: 'Transmitir jogando pesa menos: no formato Automático, o app prefere a codificação por hardware quando o sistema indica suporte (H264, VP9 ou AV1).',
+      },
+      {
+        kind: 'melhoria',
+        text: 'Modo leve: enquanto você transmite ou com o Discorja em segundo plano, as animações e os desfoques da interface pausam. O vídeo enviado não muda.',
+      },
+      {
+        kind: 'melhoria',
+        text: 'Transmissão avisa quando o QPS passa de 60, que exige mais do computador. Se o jogo perder desempenho, use 60 ou 30.',
+      },
+    ],
+  },
+  {
     version: '0.13.0',
     date: '2026-11-14',
     items: [

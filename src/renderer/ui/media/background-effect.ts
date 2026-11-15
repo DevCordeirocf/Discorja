@@ -1,3 +1,5 @@
+import { ambientEffectsReduced } from './ambient-effects';
+
 const glowX = '--cursor-glow-x';
 const glowY = '--cursor-glow-y';
 const particleCount = 16;
@@ -53,6 +55,8 @@ export function initializeBackgroundEffect(): void {
 
   const applyPosition = () => {
     frame = 0;
+    // The layer is hidden in the lightweight mode; skip the layout reads.
+    if (ambientEffectsReduced(document.documentElement)) return;
     document.documentElement.style.setProperty(glowX, `${pointerX}px`);
     document.documentElement.style.setProperty(glowY, `${pointerY}px`);
 
