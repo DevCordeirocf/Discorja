@@ -9,7 +9,12 @@ import {
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { sanitizeLogEvent, type LogEvent } from '../shared/logs';
+import {
+  sanitizeLogEvent,
+  sanitizeLogRecord,
+  type LogEvent,
+  type LogRecord,
+} from '../shared/logs';
 
 /** Serialized, bounded writes. A disk failure must never terminate a call. */
 export class DesktopLogs {
@@ -110,7 +115,7 @@ export class DesktopLogs {
   }
   private async readSnapshot() {
     if (this.failed) throw new Error('Não foi possível gravar os logs locais.');
-    const records: Record<string, unknown>[] = [];
+    const records: LogRecord[] = [];
     for (const name of [
       this.file(2),
       this.file(1),
@@ -146,29 +151,14 @@ export class DesktopLogs {
       for (const line of contents.toString('utf8').split('\n')) {
         if (!line) continue;
         try {
-          const raw = JSON.parse(line);
-          const safe = sanitizeLogEvent(raw);
-          if (
-            safe &&
-            typeof raw.timestamp === 'string' &&
-            /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(raw.timestamp) &&
-            typeof raw.runId === 'string' &&
-            /^[a-f0-9-]{36}$/.test(raw.runId)
-          )
-            records.push({
-              schemaVersion: 1,
-              timestamp: raw.timestamp,
-              runId: raw.runId,
-              ...safe,
-            });
+          const safe = sanitizeLogRecord(JSON.parse(line));
+          if (safe) records.push(safe);
         } catch {
           /* Ignore a partial record after an interrupted write. */
         }
       }
     }
-    records.sort((a, b) =>
-      String(a.timestamp).localeCompare(String(b.timestamp)),
-    );
+    records.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     return {
       schemaVersion: 1,
       exportedAt: new Date().toISOString(),

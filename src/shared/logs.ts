@@ -38,6 +38,8 @@ const EVENTS = [
   'connection.heartbeat-timeout',
   'request.received',
   'renderer.audio-startup',
+  'report.sent',
+  'report.failed',
 ] as const;
 
 export type LogEventName = (typeof EVENTS)[number];
@@ -183,6 +185,7 @@ export function sanitizeLogEvent(input: unknown): LogEvent | null {
         'get-avatar',
         'subscribe-group',
         'unsubscribe-group',
+        'report',
       ].includes(fields.operation)
     )
       details.operation = fields.operation;
@@ -274,6 +277,37 @@ export function sanitizeLogEvent(input: unknown): LogEvent | null {
       details.roomId = fields.roomId;
   }
   return { event: candidate.event as LogEventName, details };
+}
+
+/** A stored or transmitted log line: an allowed event plus its envelope. */
+export interface LogRecord extends LogEvent {
+  schemaVersion: 1;
+  timestamp: string;
+  runId: string;
+}
+
+const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const RUN_ID = /^[a-f0-9-]{36}$/;
+
+/** Rejects (null) any record whose envelope is not exactly what the app writes. */
+export function sanitizeLogRecord(input: unknown): LogRecord | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const raw = input as Record<string, unknown>;
+  const safe = sanitizeLogEvent(raw);
+  if (
+    !safe ||
+    typeof raw.timestamp !== 'string' ||
+    !TIMESTAMP.test(raw.timestamp) ||
+    typeof raw.runId !== 'string' ||
+    !RUN_ID.test(raw.runId)
+  )
+    return null;
+  return {
+    schemaVersion: 1,
+    timestamp: raw.timestamp,
+    runId: raw.runId,
+    ...safe,
+  };
 }
 
 export function errorFields(error: unknown): Record<string, unknown> {

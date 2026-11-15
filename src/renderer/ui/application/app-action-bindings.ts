@@ -44,6 +44,14 @@ export interface AppActionBindingContext {
   testConnection(): void;
   render(): void;
   updateState(patch: AppActionStateUpdate): void;
+  bugReport: Pick<
+    RouterCallbacks,
+    | 'openBugReport'
+    | 'cancelBugReport'
+    | 'requestBugReportSend'
+    | 'sendBugReport'
+    | 'backBugReport'
+  >;
 }
 
 export function bindAppActionRouter(context: AppActionBindingContext): void {
@@ -89,5 +97,10 @@ export function bindAppActionRouter(context: AppActionBindingContext): void {
     render: context.render,
     setReceiveMuted: (value) => context.updateState({ receiveMuted: value }),
     setReceiveVolume: (value) => context.updateState({ receiveVolume: value }),
+    openBugReport: context.bugReport.openBugReport,
+    cancelBugReport: context.bugReport.cancelBugReport,
+    requestBugReportSend: context.bugReport.requestBugReportSend,
+    sendBugReport: context.bugReport.sendBugReport,
+    backBugReport: context.bugReport.backBugReport,
   });
 }

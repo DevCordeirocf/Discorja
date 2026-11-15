@@ -52,12 +52,12 @@ O processo principal usa isolamento de contexto e uma ponte de preload com opera
 | `src/electron/preload.ts`            | Expõe apenas as operações tipadas de `DiscorjaAPI` à interface.                                     |
 | `src/electron/config.ts`             | Valida endpoint e lista de servidores ICE do cliente.                                               |
 | `src/renderer/app.ts`                | Coordena estado da janela, eventos e serviços de sala/captura.                                      |
-| `src/renderer/views/`                | Templates puros de início, qualidade, diagnóstico, navegação, configurações, sala, áudio e modais.  |
+| `src/renderer/views/`                | Componentes React (`.tsx`) da interface; só os painéis de perfil e qualidade ainda são strings.     |
 | `src/renderer/ui/`                   | Eventos, acessibilidade, previews, efeitos, helpers HTML e ícones da interface.                     |
 | `src/renderer/media/`                | WebRTC, captura de áudio, adaptação de qualidade e telemetria por peer.                             |
 | `src/renderer/transport/`            | Conexão WebSocket de sinalização e validação das respostas.                                         |
 | `src/renderer/state/`                | Persistência local de preferências, nome e qualidade.                                               |
-| `src/renderer/styles/`               | CSS base e estilos do app, agregados na ordem de cascata definida em `app.css`.                     |
+| `src/renderer/styles/`               | `index.css` une o CSS legado (camada `legacy`) e o Tailwind; `app.css` mantém a ordem por área.     |
 | `src/renderer/features/capture/`     | Seleção, preparação, ativação e publicação da captura, áudio filtrado e ciclo das faixas.           |
 | `src/renderer/features/quality/`     | Leitura de controles, aplicação/rollback e atualização visual das métricas.                         |
 | `src/renderer/features/session/`     | Conexão, snapshots, mensagens, peers WebRTC, membros, recepção de publicações, áudio e recuperação. |
@@ -73,6 +73,21 @@ O processo principal usa isolamento de contexto e uma ponte de preload com opera
 O fluxo de dependências é unidirecional: `shared` não depende das camadas do app; renderer e server podem usar `shared`; somente `main` chama operações privilegiadas do sistema e as expõe pelo preload. O servidor não importa a interface nem o Electron. Seu build pode rodar como processo Node.js ou container Linux. O pacote desktop inclui o processo principal e a interface, sem iniciar um servidor de sinalização embutido.
 
 Para uma mudança nova, coloque markup puro em `renderer/views/`, persistência em `preference-store.ts`, comportamento de interface reutilizável em `ui/` e lógica de produto em `features/<domínio>/`. Deixe `app.ts` coordenar o estado compartilhado e conectar os módulos por interfaces estreitas; evite importar estado da aplicação de dentro de uma feature. Valide mensagens externas em `shared/validation.ts` ou `server/message-validation.ts`. O CSS base está em `style.css`; `app.css` é o ponto de entrada dos estilos de produto e importa arquivos por área em ordem de cascata. Preserve a sequência declarada nesse agregador quando mover regras entre arquivos.
+
+### Migração para React e Tailwind
+
+A interface foi migrada de templates de string para componentes React com Tailwind. Restam como strings só os painéis de Perfil e Transmissão em Configurações (`views/profile-settings.ts` e `views/quality.ts`):
+
+- `ui/application/render-application.ts` renderiza `AppShell` em uma raiz React com `flushSync`, para que os passos depois do render (foco, rolagem, reprodução, métricas, avisos) leiam o DOM já atualizado.
+- A sala usa `StreamVideo` (`views/room-parts.tsx`): o React mantém o mesmo `<video>` entre renders e só troca o `srcObject` quando o stream muda, então a reprodução e a tela cheia não reiniciam. `syncRoomPreviews` ainda pode pausar a prévia local e retomá-la.
+- O diagnóstico (`views/diagnostics.tsx`) renderiza vazios os campos com `data-value` e `data-stat`; `patchMetrics` os preenche a cada medição, sem render. Não coloque conteúdo do React nesses elementos.
+- O volume da transmissão renderiza a cada mudança para atualizar o percentual e o botão de silenciar; nenhum código escreve diretamente em elementos do React.
+- Os painéis ainda em string passam por `LegacyHtml` (`ui/components/legacy-html.tsx`), que reconstrói o markup a cada render como o antigo `innerHTML`. Esses templates continuam responsáveis por escapar valores dinâmicos.
+- Campos de texto e caixas de seleção usam `SyncedInput` (`ui/components/synced-input.tsx`): a digitação chega ao estado pelos ouvintes delegados sem re-renderizar, e cada render reaplica o valor do estado (por exemplo, ao descartar ou limpar um rascunho).
+- Diálogos usam `Modal` e seus blocos em `views/modal.tsx`. Menus flutuantes usam `PopoverMenu` e `MenuItem` (`views/menu.tsx`). Algumas classes sem estilo continuam como ganchos: `modal-overlay`, `participant-card`, `participant-card-media` e `participant-photo-open` para a prévia de foto do participante; `member-menu` para o teclado; `multi-room-grid` para o layout da casca em `app-room-frame.css`; e `rail`, `profile-menu`, `source-option`, `source-groups`, `room-card`, `multi-room-header`, `live-stream-person`, `participant-card-caption`, `video-stage` e `stream-diagnostics` para os testes de smoke.
+- Componentes React mantêm os atributos `data-action`, `id` e `data-section` que o roteador de ações, os testes de smoke e `accessibility.ts` usam. Os eventos continuam delegados na raiz `#app`.
+- `styles/index.css` coloca o CSS legado na camada `legacy`, abaixo dos utilitários. O Tailwind só lê arquivos `.tsx` e não inclui o preflight. As cores do tema apontam para as variáveis existentes (`--bg`, `--surface`, `--purple`…), e `--spacing` é fixado em 4px porque o `:root` usa fonte de 14px. As variantes `compact` (janela até 1180px de largura ou 820px de altura), `short` e `touch` (`hover: none`) estão definidas ali.
+- Ao migrar uma tela, remova do CSS legado as regras que passaram para utilitários. Classes compartilhadas (`button`, `settings-group`, `settings-row`, `text-input`) ficam no CSS até a última tela que as usa ser migrada.
 
 ## Ciclo de uma transmissão
 
@@ -120,7 +135,7 @@ As mensagens são JSON em WebSocket. O contrato tipado está em `src/shared/prot
 | `close-room`                | Anfitrião encerra a sala.                                                          |
 | `leave-room`                | Participante sai; se for anfitrião, a sala termina.                                |
 
-O contrato da tabela corresponde ao protocolo anterior, mantido para transição. No protocolo 2, criação, entrada, retomada e alterações de participantes retornam `room-state`; a negociação de mídia continua em `signal`. As razões de encerramento são `host-left`, `host-closed` e `expired` (os nomes históricos referem-se à saída ou encerramento pelo dono). HTTP expõe `/health` e `/api/stats` quando habilitada por credencial, além do upgrade WebSocket em `/` e `/ws`; não há API HTTP pública de gestão das salas.
+O contrato da tabela corresponde ao protocolo anterior, mantido para transição. No protocolo 2, criação, entrada, retomada e alterações de participantes retornam `room-state`; a negociação de mídia continua em `signal`. As razões de encerramento são `host-left`, `host-closed` e `expired` (os nomes históricos referem-se à saída ou encerramento pelo dono). HTTP expõe `/health`, `/api/stats` quando habilitada por credencial e `POST /api/report` para relatórios de erro por e-mail (desativada sem `REPORT_TO`; veja [implantacao.md](implantacao.md#relatórios-de-erro-por-e-mail)), além do upgrade WebSocket em `/` e `/ws`; não há API HTTP pública de gestão das salas.
 
 O servidor verifica formato, tamanho, campos permitidos e autorização para encaminhar cada sinal. Não permite comunicação arbitrária entre salas ou entre espectadores. Essas verificações não autenticam a identidade informada no campo nome.
 

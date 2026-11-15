@@ -9,6 +9,24 @@ export interface ChangelogEntry {
 /** Notes shown in "Novidades do Discorja", newest first. Add one per release. */
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '0.13.0',
+    date: '2026-11-14',
+    items: [
+      {
+        kind: 'novo',
+        text: 'Relatório de erro: envie os logs por e-mail pelo botão acima do seu perfil, em Configurações › Diagnóstico ou na notificação de erro. Você vê o que será enviado e confirma antes.',
+      },
+      {
+        kind: 'correção',
+        text: 'Quem perdia a conexão depois de um tempo na sala agora volta como a mesma pessoa, sem aparecer duplicado e sem a sala fechar para todos.',
+      },
+      {
+        kind: 'correção',
+        text: 'Configurações abrem direto no lugar, sem os blocos deslizarem pela tela.',
+      },
+    ],
+  },
+  {
     version: '0.12.0',
     date: '2026-10-25',
     items: [

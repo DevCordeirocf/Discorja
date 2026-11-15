@@ -26,6 +26,7 @@ import {
 } from './security';
 import { CaptureAuthorization, displayMediaPermission } from './capture';
 import { DesktopLogs } from './logs';
+import { BugReportDrafts, postBugReport, reportEndpoint } from './bug-report';
 import { errorFields, rendererLogEvent } from '../shared/logs';
 import type { AppConfig, UpdateState } from '../shared/protocol';
 import {
@@ -57,6 +58,8 @@ let logs: DesktopLogs | undefined;
 let logWindowStarted = 0;
 let rendererLogCount = 0;
 let exportingLogs = false;
+let sendingReport = false;
+const reportDrafts = new BugReportDrafts();
 let quitFlushed = false;
 const captureAuthorization = new CaptureAuthorization();
 let knownSources = new Set<string>();
@@ -488,14 +491,14 @@ function registerIpc() {
       });
     }
   });
-  handle('diagnostics:export', async (report: unknown) => {
+  const safeDiagnostics = async (report: unknown) => {
     const { sanitizeDiagnostics } = await import('../shared/diagnostics');
     const rendererMemory = app
       .getAppMetrics()
       .find(
         (metric) => metric.pid === window?.webContents.getOSProcessId(),
       )?.memory;
-    const safe = sanitizeDiagnostics(report, app.getVersion(), {
+    return sanitizeDiagnostics(report, app.getVersion(), {
       platform: process.platform,
       architecture: process.arch,
       electron: process.versions.electron,
@@ -505,6 +508,9 @@ function registerIpc() {
       workingSetKiB: rendererMemory?.workingSetSize,
       privateKiB: rendererMemory?.privateBytes,
     });
+  };
+  handle('diagnostics:export', async (report: unknown) => {
+    const safe = await safeDiagnostics(report);
     const result = await dialog.showSaveDialog(window!, {
       title: 'Salvar diagnóstico',
       defaultPath: 'discorja-diagnostico.json',
@@ -512,6 +518,34 @@ function registerIpc() {
     });
     if (!result.canceled && result.filePath)
       await writeFile(result.filePath, JSON.stringify(safe, null, 2), 'utf8');
+  });
+  // Consent first: the preview is the exact report later sent by id.
+  handle('report:preview', async (diagnostics: unknown) => {
+    if (!logs) throw new Error('Logs indisponíveis.');
+    const { buildBugReport } = await import('../shared/bug-report');
+    return reportDrafts.create(
+      buildBugReport({
+        version: app.getVersion(),
+        logs: await logs.snapshot(),
+        diagnostics:
+          diagnostics === null ? undefined : await safeDiagnostics(diagnostics),
+      }),
+    );
+  });
+  handle('report:send', async (id: unknown, description: unknown) => {
+    if (sendingReport)
+      return { ok: false, message: 'Um relatório já está sendo enviado.' };
+    sendingReport = true;
+    try {
+      const result = await postBugReport(
+        reportEndpoint(signalingUrl),
+        reportDrafts.complete(id, description),
+      );
+      if (result.ok && typeof id === 'string') reportDrafts.discard(id);
+      return result;
+    } finally {
+      sendingReport = false;
+    }
   });
   handle('updates:install', () => {
     if (!updater || updateState.status !== 'downloaded') return;

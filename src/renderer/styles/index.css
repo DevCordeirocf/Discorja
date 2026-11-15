@@ -1,0 +1,76 @@
+/*
+ * Renderer stylesheet entry. The existing CSS lives in the "legacy" layer so
+ * Tailwind utilities used by React components win over its element rules.
+ * Tailwind's preflight is left out on purpose: the legacy base rules stay.
+ */
+@layer theme, legacy, utilities;
+
+/* Keep the shared foundation first; app.css contains product-level overrides. */
+@import './style.css' layer(legacy);
+@import './app.css' layer(legacy);
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+/* Only React components use utilities; legacy markup keeps its own classes. */
+@source '../**/*.tsx';
+
+/* Visual tokens point at the legacy custom properties, so both stay in sync. */
+@theme inline {
+  --color-*: initial;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-purple: var(--purple);
+  --color-mint: var(--mint);
+  --color-accent: var(--accent);
+  --color-white: #fff;
+  --color-black: #000;
+}
+
+@theme {
+  /* :root uses a 14px font size, so spacing is pinned to pixels. */
+  --spacing: 4px;
+
+  --color-panel: #15161b;
+  --color-panel-line: #262731;
+  --color-control: #1d1e25;
+  --color-control-line: #3a3b4a;
+  --color-control-hover: #4a4b5c;
+  --color-selected: #2c263d;
+  --color-on-purple: #1b1530;
+  --color-kbd: #9998aa;
+
+  --animate-rise-in: rise-in 180ms ease-out both;
+  /* "Aguardando o anfitrião" dot in the single-host room. */
+  --animate-waiting-pulse: waiting-pulse 1.8s ease infinite;
+  @keyframes waiting-pulse {
+    50% {
+      box-shadow: 0 0 0 5px #b098cf18;
+      opacity: 0.5;
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@custom-variant short (@media (max-height: 760px));
+/* Devices without hover (touch) show the video controls all the time. */
+@custom-variant touch (@media (hover: none));
+/* Smaller windows: narrower than 1180px or shorter than 820px. */
+@custom-variant compact {
+  @media (max-width: 1180px), (max-height: 820px) {
+    @slot;
+  }
+}

@@ -1,6 +1,7 @@
-import { icon } from '../components/icons';
-import { renderAudioToggleButton } from '../../views/audio-controls';
-import { renderReceiveAudioControls } from '../../views/audio-controls';
+import type {
+  ReceiveAudioControlState,
+  SendAudioControlState,
+} from '../../views/audio-controls';
 import { updateRoomPlayback, syncRoomPreviews } from '../media/media-playback';
 
 type AppMediaOptions = {
@@ -43,22 +44,18 @@ export function createAppMedia(options: AppMediaOptions) {
         filteredAudioAvailable: options.getFilteredAudioAvailable(),
         roomRole: options.getRoomRole(),
       }),
-    renderAudioToggleButton: () =>
-      renderAudioToggleButton({
-        role: options.getRoomRole(),
-        sharing: options.getSharing(),
-        localStream: options.getLocalStream(),
-      }),
-    renderReceiveAudioControls: () =>
-      renderReceiveAudioControls({
-        remoteStream: options.getRemoteStream(),
-        localStream: options.getLocalStream(),
-        multiRoom: options.getMultiRoom(),
-        receiveMuted: options.getReceiveMuted(),
-        receiveVolume: options.getReceiveVolume(),
-        filteredAudioAvailable: options.getFilteredAudioAvailable(),
-      }),
-    diagnosticsTrigger: () =>
-      `<button class="diagnostics-trigger" data-action="show-diagnostics" aria-label="Abrir diagnóstico da conexão" title="Diagnóstico">${icon('network')}</button>`,
+    sendAudioState: (): Omit<SendAudioControlState, 'className'> => ({
+      role: options.getRoomRole(),
+      sharing: options.getSharing(),
+      localStream: options.getLocalStream(),
+    }),
+    receiveAudioState: (): ReceiveAudioControlState => ({
+      remoteStream: options.getRemoteStream(),
+      localStream: options.getLocalStream(),
+      multiRoom: options.getMultiRoom(),
+      receiveMuted: options.getReceiveMuted(),
+      receiveVolume: options.getReceiveVolume(),
+      filteredAudioAvailable: options.getFilteredAudioAvailable(),
+    }),
   };
 }

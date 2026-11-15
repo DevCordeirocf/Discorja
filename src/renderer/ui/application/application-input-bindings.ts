@@ -1,6 +1,9 @@
 import { bindDialogKeyboardEvents } from '../actions/dialog-events';
 import { bindFormEvents } from '../actions/form-events';
-import { bindProfileCamera } from '../../features/profile/profile-camera';
+import {
+  bindProfileCamera,
+  type ProfileCameraState,
+} from '../../features/profile/profile-camera';
 import type { AppPage } from '../../views/design';
 import type { AppModal } from '../../views/modals';
 import { DISPLAY_NAME_MAX } from '../../../shared/validation';
@@ -62,9 +65,8 @@ export function bindApplicationInputEvents(options: {
   saveSettings(): Promise<void>;
   changeQuality(isVideoBitrate: boolean, prefix?: string): void;
   cancelSources(): void;
-}): { afterRender(): void } {
+}): { afterRender(): void; profileCamera(): ProfileCameraState } {
   const state = options.getState;
-  let processingPhoto = false;
   const invalidName = (name: string, field: string): boolean => {
     if (name && name.length <= DISPLAY_NAME_MAX) return false;
     options.notify(
@@ -74,24 +76,9 @@ export function bindApplicationInputEvents(options: {
     options.root.querySelector<HTMLInputElement>(field)?.focus();
     return true;
   };
-  /** Typing does not re-render, so the save bar and preview follow here. */
-  const syncSettingsChanges = (): void => {
-    const current = state();
-    const bar = options.root.querySelector<HTMLElement>('.settings-savebar');
-    if (bar) bar.hidden = !current.profileDirty && !current.serverDirty;
-    const name = current.profileDraft.name.trim();
-    for (const element of options.root.querySelectorAll(
-      '[data-profile-preview-name]',
-    ))
-      element.textContent = name || 'Seu nome';
-    for (const element of options.root.querySelectorAll(
-      '[data-profile-preview-initial], #profile-photo-fallback',
-    ))
-      element.textContent = name.charAt(0).toLocaleUpperCase('pt-BR') || '?';
-  };
   /** Saves the profile draft; false when it is not ready or invalid. */
   const saveProfile = (): boolean => {
-    if (processingPhoto) {
+    if (camera.state().processing) {
       options.notify('Aguarde a foto terminar de carregar.', 'error');
       return false;
     }
@@ -113,20 +100,19 @@ export function bindApplicationInputEvents(options: {
   };
   bindFormEvents(options.root, {
     setDisplayName: (value) => options.updateState({ displayName: value }),
+    // The save bar and the profile preview follow every keystroke.
     setProfileDraftName: (value) => {
       options.updateState({ profileDraft: { name: value } });
-      syncSettingsChanges();
+      options.render();
     },
     setSettingUrl: (value) => {
       options.updateState({ settingUrl: value });
-      syncSettingsChanges();
+      options.render();
     },
-    setReceiveVolume: (value) => {
-      const muted = value === 0;
-      options.updateState({ receiveVolume: value, receiveMuted: muted });
-      return muted;
-    },
+    setReceiveVolume: (value) =>
+      options.updateState({ receiveVolume: value, receiveMuted: value === 0 }),
     updatePlayback: options.updatePlayback,
+    render: options.render,
     submitSettings: () => {
       const { profileDirty, serverDirty } = state();
       if (profileDirty && !saveProfile()) return;
@@ -152,13 +138,7 @@ export function bindApplicationInputEvents(options: {
       options.updateState({ profileDraft: { photo } });
       options.render();
     },
-    onProcessing: (processing) => {
-      processingPhoto = processing;
-      const save = options.root.querySelector<HTMLButtonElement>(
-        '.settings-savebar button[type="submit"]',
-      );
-      if (save) save.disabled = processing;
-    },
+    onChange: options.render,
   });
 
   bindDialogKeyboardEvents({
@@ -192,5 +172,5 @@ export function bindApplicationInputEvents(options: {
         .querySelector<HTMLButtonElement>('[data-action=toggle-profile-menu]')
         ?.focus(),
   });
-  return { afterRender: camera.afterRender };
+  return { afterRender: camera.afterRender, profileCamera: camera.state };
 }

@@ -1,6 +1,6 @@
 {
   "name": "discorja",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": true,
   "description": "Compartilhe uma janela ou tela com seus amigos.",
   "author": "Discorja",
@@ -36,18 +36,25 @@
   },
   "dependencies": {
     "electron-updater": "6.8.9",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "ws": "8.22.0"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
+    "@tailwindcss/vite": "4.3.3",
     "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "@types/ws": "8.18.2",
+    "@vitejs/plugin-react": "6.1.2",
     "electron": "44.9.2",
     "electron-builder": "26.15.3",
     "esbuild": "0.28.2",
     "gifenc": "1.0.3",
     "js-yaml": "4.3.2",
     "prettier": "3.9.10",
+    "tailwindcss": "4.3.3",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "8.3.4",

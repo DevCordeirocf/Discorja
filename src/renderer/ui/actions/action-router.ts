@@ -5,7 +5,11 @@ import type {
 } from '../../../shared/protocol';
 import type { PeerMetrics, StreamPreferences } from '../../../shared/quality';
 import { handleCaptureAction } from '../../features/capture';
-import { exportDiagnostics, exportLogs } from '../../features/diagnostics';
+import {
+  diagnosticsInput,
+  exportDiagnostics,
+  exportLogs,
+} from '../../features/diagnostics';
 import {
   handlePublicationAction,
   handleRoomControlAction,
@@ -88,6 +92,11 @@ export function bindActionRouter(
     render(): void;
     setReceiveMuted(value: boolean): void;
     setReceiveVolume(value: number): void;
+    openBugReport(diagnostics: unknown): void;
+    cancelBugReport(): void;
+    requestBugReportSend(): void;
+    sendBugReport(): void;
+    backBugReport(): void;
   },
 ): void {
   root.addEventListener('click', (event) => {
@@ -201,42 +210,28 @@ export function bindActionRouter(
           notifyError: (message) => actions.notify(message, 'error'),
         });
         break;
-      case 'export-diagnostics': {
-        const now = Date.now();
+      case 'export-diagnostics':
         void exportDiagnostics(
           state.api,
-          {
-            preferences: state.preferences,
-            metrics: [...state.latestMetrics, ...state.incomingMetrics]
-              .filter((metric) => now - metric.timestamp <= 8000)
-              .map((metric) => ({
-                ...metric,
-                ageMs: Math.max(0, now - metric.timestamp),
-              })),
-            session: {
-              signaling: state.signalRecovering
-                ? 'recovering'
-                : state.room
-                  ? 'connected'
-                  : state.busy === 'room'
-                    ? 'connecting'
-                    : 'idle',
-              publishing: state.sharing,
-              watching: Boolean(state.watching),
-              publications:
-                state.multi?.publications.length ?? (state.sharing ? 1 : 0),
-              participants:
-                state.roomState && state.roomState.protocol >= 3
-                  ? state.roomState.participants.length
-                  : state.roomState?.protocol === 2
-                    ? state.roomState.participants.length
-                    : 0,
-            },
-          },
+          diagnosticsInput(state),
           actions.notify,
         );
         break;
-      }
+      case 'open-bug-report':
+        actions.openBugReport(diagnosticsInput(state));
+        break;
+      case 'cancel-bug-report':
+        actions.cancelBugReport();
+        break;
+      case 'send-bug-report':
+        actions.requestBugReportSend();
+        break;
+      case 'confirm-bug-report':
+        actions.sendBugReport();
+        break;
+      case 'back-bug-report':
+        actions.backBugReport();
+        break;
       case 'export-logs':
         void exportLogs(state.api, actions.notify);
         break;

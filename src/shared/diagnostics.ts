@@ -1,6 +1,6 @@
-import { normalizePreferences } from './quality';
-import { object } from './validation';
-import { ROOM_PROTOCOL_VERSION } from './protocol';
+import { normalizePreferences } from './quality.js';
+import { object } from './validation.js';
+import { ROOM_PROTOCOL_VERSION } from './protocol.js';
 
 export interface DiagnosticEnvironment {
   platform: string;

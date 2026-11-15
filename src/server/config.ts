@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { LogEvent } from '../shared/logs.js';
+import type { ReportLimits, ReportMailer } from './report.js';
 import { MAX_MESSAGE_BYTES } from '../shared/validation.js';
 
 export interface RateLimit {
@@ -27,6 +28,9 @@ export interface SignalingOptions {
    * Render so each user gets their own IP limits; 0 trusts only the socket.
    */
   trustProxyHops?: number;
+  /** Forwards `POST /api/report` by e-mail; without it the route answers 503. */
+  reportMailer?: ReportMailer;
+  reportLimits?: Partial<ReportLimits>;
   /** Injectable clock for deterministic expiry tests. */
   now?: () => number;
 }

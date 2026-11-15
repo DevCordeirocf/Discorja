@@ -5,11 +5,9 @@ import type {
   RoomState,
   UpdateState,
 } from '../../../shared/protocol';
-import {
-  QUALITY_PRESETS,
-  type PeerMetrics,
-  type StreamPreferences,
-} from '../../../shared/quality';
+import type { PeerMetrics, StreamPreferences } from '../../../shared/quality';
+import type { ReactNode } from 'react';
+import type { ProfileCameraState } from '../../features/profile/profile-camera';
 import type { AppModal } from '../../views/modals';
 import type { ChangelogEntry } from '../../features/whats-new/changelog';
 import type { AppPage } from '../../views/design';
@@ -56,6 +54,7 @@ export interface ApplicationViewReadContext {
   displayName: string;
   profilePhoto: string;
   profileDraft: { name: string; photo: string };
+  profileCamera: ProfileCameraState;
   modal: AppModal;
   sources: CaptureSource[];
   selectedSource: string;
@@ -122,15 +121,28 @@ function toAppViewState(state: ApplicationViewReadContext): AppViewState {
     displayName: state.displayName,
     profilePhoto: state.profilePhoto,
     profileDraft: state.profileDraft,
+    profileCamera: state.profileCamera,
     modal: state.modal,
     whatsNew: state.whatsNew,
     isRoomOwner: state.roomState?.ownerId === state.room?.selfId,
     sources: state.sources,
     selectedSource: state.selectedSource,
     sourcePage: state.sourcePage,
+    captureAudio: {
+      include: state.includeSystemAudio,
+      exclude: state.excludeDiscordAudio,
+      supported: state.config.systemAudioSupported,
+    },
     hasRoom: !!state.room,
-    audioControl: '',
-    playerAudioControl: '',
+    sendAudio: { sharing: false, localStream: null },
+    receiveAudio: {
+      remoteStream: null,
+      multiRoom: false,
+      localStream: null,
+      receiveMuted: false,
+      receiveVolume: 1,
+      filteredAudioAvailable: false,
+    },
     participantViews: [...state.viewers].map(([id, viewer]) => ({
       id,
       ...viewer,
@@ -160,19 +172,9 @@ function toApplicationRenderState(
     remoteStream: state.remoteStream,
     roomRole: state.room?.role,
     connectionReconnecting: state.connectionReconnecting,
-    applyingPreferences: state.applyingPreferences,
-    maxPublishersReached:
-      !!state.multi &&
-      state.multi.publications.length >= state.multi.maxPublishers,
-    includeSystemAudio: state.includeSystemAudio,
-    systemAudioSupported: state.config.systemAudioSupported,
-    excludeDiscordAudio: state.excludeDiscordAudio,
     returnFocusAction: state.returnFocusAction,
     connectionIssue: state.connectionIssue,
     sharing: state.sharing,
-    qualityPreset: state.preferences.preset,
-    qualityFps:
-      state.preferences.fps ?? QUALITY_PRESETS[state.preferences.preset].fps,
   };
 }
 
@@ -180,16 +182,15 @@ export function createApplicationViewBindings(options: {
   root: HTMLDivElement;
   announcements: HTMLElement;
   getState(): ApplicationViewReadContext;
-  renderReceiveAudioControls(): string;
-  renderAudioToggleButton(): string;
+  sendAudioState(): AppViewState['sendAudio'];
+  receiveAudioState(): AppViewState['receiveAudio'];
   setModal(value: 'update' | 'whats-new'): void;
   setUpdatePrompted(value: boolean): void;
   setWhatsNewShown(): void;
   setDeferredRender(value: boolean): void;
-  renderDiagnosticsTrigger(): string;
-  renderHome(): string;
-  renderSidebar(): string;
-  renderFeatureModal(modal: AppModal): string;
+  renderHome(): ReactNode;
+  renderSidebar(): ReactNode;
+  renderFeatureModal(modal: AppModal): ReactNode;
   updatePlayback(): void;
   syncPreviews(): void;
 }): {
@@ -203,12 +204,10 @@ export function createApplicationViewBindings(options: {
       const state = toAppViewState(getState());
       return {
         ...state,
-        audioControl: options.renderAudioToggleButton(),
-        playerAudioControl: options.renderReceiveAudioControls(),
+        sendAudio: options.sendAudioState(),
+        receiveAudio: options.receiveAudioState(),
       };
     },
-    renderReceiveAudioControls: options.renderReceiveAudioControls,
-    renderAudioToggleButton: options.renderAudioToggleButton,
     renderFeatureModal: options.renderFeatureModal,
   });
 
@@ -228,9 +227,6 @@ export function createApplicationViewBindings(options: {
         renderRoom: views.renderRoom,
         renderSidebar: options.renderSidebar,
         renderModal: views.renderModal,
-        renderDiagnosticsTrigger: options.renderDiagnosticsTrigger,
-        renderReceiveAudioControls: options.renderReceiveAudioControls,
-        renderAudioToggleButton: options.renderAudioToggleButton,
         updatePlayback: options.updatePlayback,
         syncPreviews: options.syncPreviews,
         patchMetrics: views.patchMetrics,

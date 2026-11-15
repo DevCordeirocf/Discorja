@@ -16,7 +16,7 @@ Este arquivo orienta agentes e colaboradores ao alterar o Discorja. Preserve mud
 - `src/renderer/app.ts` e `index.html` são os pontos de entrada do renderer. Organize interface em `views/`, `ui/` e `styles/`; mídia/WebRTC em `media/`; conexão WebSocket em `transport/`; persistência em `state/`; e regras de produto em `features/<domínio>/`. Features recebem dependências por parâmetros e não importam o estado global do app.
 - O renderer não deve importar módulos privilegiados do Electron nem receber segredos.
 - `src/server/` valida e processa conexões externas. Mantenha validação, configuração e ciclo de vida separados; o servidor não deve depender do renderer ou do Electron.
-- `src/renderer/styles/app.css` agrega os estilos por área. Preserve a ordem de importação e os tokens visuais existentes ao dividir ou mover CSS.
+- `src/renderer/styles/index.css` é a entrada de estilos (CSS legado em camada + Tailwind) e `src/renderer/styles/app.css` agrega os estilos legados por área. Preserve a ordem de importação e os tokens visuais existentes ao dividir ou mover CSS. Telas novas ou migradas usam React (`.tsx`) com Tailwind; veja `docs/arquitetura.md`.
 
 ## Segurança e privacidade
 

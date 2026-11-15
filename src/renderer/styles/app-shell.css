@@ -123,9 +123,6 @@ body {
   -webkit-user-select: text;
   user-select: text;
 }
-.app-shell .room-code {
-  user-select: none;
-}
 button,
 input,
 select {
@@ -552,10 +549,10 @@ button:disabled {
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
-  transition:
-    margin-left 320ms cubic-bezier(0.4, 0, 0.2, 1),
-    width 320ms cubic-bezier(0.4, 0, 0.2, 1);
 }
+/* No layout transitions here: React keeps this element between pages, so a
+   transition would slide the content when Configurações changes margin and
+   padding. */
 .app-main {
   width: 100%;
   max-width: none;
@@ -564,5 +561,4 @@ button:disabled {
   overflow: hidden;
   padding: 48px;
   margin: 0;
-  transition: padding 320ms cubic-bezier(0.4, 0, 0.2, 1);
 }

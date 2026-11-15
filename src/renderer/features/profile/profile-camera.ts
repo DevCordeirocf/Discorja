@@ -8,77 +8,50 @@ const PHOTO_SIZE = 256;
 const MAX_FILE_SIZE = 16 * 1024 * 1024;
 const CAMERA_ACTIVE_STATUS = 'Câmera ativa · prévia com grade pixelada.';
 
+/** What Configurações › Perfil shows about the camera and the photo. */
+export interface ProfileCameraState {
+  /** The pixelated preview is live. */
+  active: boolean;
+  /** Waiting for camera access. */
+  starting: boolean;
+  /** A GIF or WebP is being converted, so saving waits for it. */
+  processing: boolean;
+  status: string;
+}
+
 export function bindProfileCamera(options: {
   root: HTMLElement;
   onPhoto(photo: string): void;
-  /** True while a GIF is being converted, so saving waits for it. */
-  onProcessing?(processing: boolean): void;
-}): { afterRender(): void } {
+  /** The camera state changed; the app renders it. */
+  onChange(): void;
+}): { state(): ProfileCameraState; afterRender(): void } {
   let stream: MediaStream | null = null;
   let frame = 0;
-  // The app re-renders with innerHTML, so the live camera elements are kept
-  // here and moved back into the new markup instead of stopping the camera.
+  // React keeps the panel's <video> and <canvas> while Perfil stays open.
   let liveVideo: HTMLVideoElement | null = null;
-  let liveCanvas: HTMLCanvasElement | null = null;
-
-  const profileImage = (): HTMLImageElement | null =>
-    options.root.querySelector<HTMLImageElement>('#profile-photo-image');
-  const fallback = (): HTMLElement | null =>
-    options.root.querySelector<HTMLElement>('#profile-photo-fallback');
-  const preview = (): HTMLElement | null =>
-    options.root.querySelector<HTMLElement>('#profile-photo-preview');
-  const status = (): HTMLElement | null =>
-    options.root.querySelector<HTMLElement>('#profile-camera-status');
-
-  const showCameraControls = (active: boolean): void => {
-    preview()?.classList.toggle('camera-active', active);
-    const image = profileImage();
-    const hasImage = !active && Boolean(image?.getAttribute('src'));
-    if (image) image.hidden = !hasImage;
-    if (fallback()) fallback()!.hidden = active || hasImage;
-    const capture = options.root.querySelector<HTMLButtonElement>(
-      '[data-action="profile-capture"]',
-    );
-    // "Tirar foto" only exists while the camera is open.
-    if (capture) {
-      capture.disabled = !active;
-      capture.hidden = !active;
-    }
-    const stop = options.root.querySelector<HTMLButtonElement>(
-      '[data-action="profile-stop-camera"]',
-    );
-    if (stop) stop.hidden = !active;
-    const start = options.root.querySelector<HTMLButtonElement>(
-      '[data-action="profile-start-camera"]',
-    );
-    if (start) {
-      start.hidden = active;
-      start.disabled = false;
-    }
+  const state: ProfileCameraState = {
+    active: false,
+    starting: false,
+    processing: false,
+    status: '',
+  };
+  const update = (patch: Partial<ProfileCameraState>): void => {
+    Object.assign(state, patch);
+    options.onChange();
   };
 
-  const stopCamera = (): void => {
+  const preview = (): HTMLElement | null =>
+    options.root.querySelector<HTMLElement>('#profile-photo-preview');
+
+  /** Stops the camera; `notify` is false when a render follows anyway. */
+  const stopCamera = (notify = true): void => {
     cancelAnimationFrame(frame);
     stream?.getTracks().forEach((track) => track.stop());
     stream = null;
     if (liveVideo) liveVideo.srcObject = null;
-    liveCanvas?.setAttribute('hidden', '');
     liveVideo = null;
-    liveCanvas = null;
-    options.root
-      .querySelector<HTMLCanvasElement>('#profile-camera-canvas')
-      ?.setAttribute('hidden', '');
-    showCameraControls(false);
-  };
-
-  const showPhoto = (photo: string): void => {
-    const image = profileImage();
-    if (image) {
-      if (photo) image.src = photo;
-      else image.removeAttribute('src');
-      image.hidden = !photo;
-    }
-    if (fallback()) fallback()!.hidden = !!photo;
+    Object.assign(state, { active: false, starting: false });
+    if (notify) options.onChange();
   };
 
   const processImageFile = async (file: File): Promise<string> => {
@@ -93,8 +66,7 @@ export function bindProfileCamera(options: {
         'Formato não suportado. Use JPG, PNG, WebP ou GIF (não MP4).',
       );
     if (kind.type === 'gif' || kind.type === 'webp') {
-      const message = status();
-      if (message) message.textContent = 'Processando a animação…';
+      update({ status: 'Processando a animação…' });
       try {
         return await processAnimatedFile(file, `image/${kind.type}`);
       } catch (error) {
@@ -131,12 +103,7 @@ export function bindProfileCamera(options: {
   };
 
   const startCamera = async (): Promise<void> => {
-    const button = options.root.querySelector<HTMLButtonElement>(
-      '[data-action="profile-start-camera"]',
-    );
-    const message = status();
-    if (button) button.disabled = true;
-    if (message) message.textContent = 'Aguardando acesso à câmera…';
+    update({ starting: true, status: 'Aguardando acesso à câmera…' });
     try {
       let cameraStream: MediaStream;
       try {
@@ -178,11 +145,11 @@ export function bindProfileCamera(options: {
       const context = canvas?.getContext('2d', { alpha: false });
       if (!video || !canvas || !context || !canvas.isConnected) {
         cameraStream.getTracks().forEach((track) => track.stop());
+        Object.assign(state, { starting: false, status: '' });
         return;
       }
       stream = cameraStream;
       liveVideo = video;
-      liveCanvas = canvas;
       video.srcObject = stream;
       canvas.width = GRID_WIDTH;
       canvas.height = GRID_HEIGHT;
@@ -195,21 +162,19 @@ export function bindProfileCamera(options: {
       if (!pixelContext) {
         cameraStream.getTracks().forEach((track) => track.stop());
         stream = null;
-        if (button) button.disabled = false;
-        if (message)
-          message.textContent = 'Não foi possível preparar a prévia da câmera.';
+        update({
+          starting: false,
+          status: 'Não foi possível preparar a prévia da câmera.',
+        });
         return;
       }
       const previousLuma = new Float32Array(GRID_WIDTH * GRID_HEIGHT);
       const elevations = new Float32Array(GRID_WIDTH * GRID_HEIGHT);
       let hasPreviousFrame = false;
-      canvas.hidden = false;
-      showCameraControls(true);
+      update({ active: true, starting: false });
       await video.play();
       if (!stream) return;
-      showCameraControls(true);
-      const activeStatus = status();
-      if (activeStatus) activeStatus.textContent = CAMERA_ACTIVE_STATUS;
+      update({ status: CAMERA_ACTIVE_STATUS });
 
       const drawFrame = (): void => {
         if (!stream) {
@@ -310,15 +275,15 @@ export function bindProfileCamera(options: {
       };
       frame = requestAnimationFrame(drawFrame);
     } catch (error) {
-      stopCamera();
-      if (button) button.disabled = false;
-      if (message)
-        message.textContent =
+      stopCamera(false);
+      update({
+        status:
           error instanceof DOMException && error.name === 'NotAllowedError'
             ? 'Permita o acesso à câmera para tirar uma foto.'
             : error instanceof DOMException && error.name === 'NotReadableError'
               ? 'A câmera está ocupada ou indisponível. Feche outros apps que a estejam usando e tente novamente.'
-              : 'Não foi possível abrir a câmera neste dispositivo.';
+              : 'Não foi possível abrir a câmera neste dispositivo.',
+      });
     }
   };
 
@@ -334,7 +299,9 @@ export function bindProfileCamera(options: {
     } else if (action === 'profile-start-camera') {
       void startCamera();
     } else if (action === 'profile-capture') {
-      const canvas = liveCanvas;
+      const canvas = options.root.querySelector<HTMLCanvasElement>(
+        '#profile-camera-canvas',
+      );
       if (!canvas || !stream || button?.disabled) return;
       const image = document.createElement('canvas');
       image.width = PHOTO_SIZE;
@@ -355,14 +322,16 @@ export function bindProfileCamera(options: {
         PHOTO_SIZE,
       );
       const photo = image.toDataURL('image/jpeg', 0.9);
-      stopCamera();
+      stopCamera(false);
+      // onPhoto renders the new photo; the camera status no longer applies.
+      state.status = '';
       options.onPhoto(photo);
     } else if (action === 'profile-stop-camera') {
-      stopCamera();
-      if (status()) status()!.textContent = 'Câmera desligada.';
+      stopCamera(false);
+      update({ status: 'Câmera desligada.' });
     } else if (action === 'profile-remove-photo') {
-      stopCamera();
-      showPhoto('');
+      stopCamera(false);
+      state.status = '';
       options.onPhoto('');
     }
   });
@@ -376,46 +345,36 @@ export function bindProfileCamera(options: {
     )
       return;
     const file = input.files[0];
-    options.onProcessing?.(true);
+    update({ processing: true });
     void processImageFile(file)
       .then((photo) => {
-        stopCamera();
-        options.onProcessing?.(false);
+        stopCamera(false);
+        // onPhoto renders the new photo with the cleared state.
+        Object.assign(state, { processing: false, status: '' });
         options.onPhoto(photo);
       })
       .catch((error: unknown) => {
-        const message = status();
-        if (message)
-          message.textContent =
+        update({
+          processing: false,
+          status:
             error instanceof Error
               ? error.message
-              : 'Não foi possível carregar essa foto.';
+              : 'Não foi possível carregar essa foto.',
+        });
       })
       .finally(() => {
-        options.onProcessing?.(false);
         input.value = '';
       });
   });
 
   return {
+    state: () => ({ ...state }),
     afterRender: () => {
-      if (!stream || !liveVideo || !liveCanvas) return;
-      if (!preview()) {
-        stopCamera();
-        return;
+      // Leaving Perfil removes the preview; the camera stops with it.
+      if (stream && !preview()) {
+        stopCamera(false);
+        state.status = '';
       }
-      const video = options.root.querySelector<HTMLVideoElement>(
-        '#profile-camera-video',
-      );
-      const canvas = options.root.querySelector<HTMLCanvasElement>(
-        '#profile-camera-canvas',
-      );
-      if (video && video !== liveVideo) video.replaceWith(liveVideo);
-      if (canvas && canvas !== liveCanvas) canvas.replaceWith(liveCanvas);
-      liveCanvas.hidden = false;
-      showCameraControls(true);
-      const message = status();
-      if (message) message.textContent = CAMERA_ACTIVE_STATUS;
     },
   };
 }

@@ -115,7 +115,7 @@ Se o transmissor sair ou for removido, a permissão volta ao dono com a publica�
 
 - O dono sair, trocar de sala ou encerrar a sala fecha essa sala para todos, inclusive se outra pessoa estiver transmitindo. Não há transferência automática de propriedade nesta versão.
 - Um moderador não mantém uma sala aberta depois da saída definitiva do dono. Sua permissão administrativa vale enquanto for membro dela.
-- Uma perda temporária de sinalização usa o período de retomada já configurado no servidor. O servidor conserva os papéis e só aceita o token de uma sessão desconectada e ainda válida. O token é rotacionado ao retomar.
+- Uma perda temporária de sinalização usa o período de retomada já configurado no servidor. O servidor conserva os papéis e só aceita o token de uma sessão ainda válida. Se o app perceber a queda antes do servidor (por exemplo, quando o proxy mantém o lado do servidor aberto até o heartbeat falhar), a nova conexão assume a sessão e a antiga é encerrada, sem deixar participante duplicado. O token é rotacionado ao retomar.
 - A retomada reutiliza somente captura ainda autorizada; mudança de transmissor durante a desconexão revoga a captura anterior. Sair ou ser removido invalida a retomada.
 - As salas continuam em memória. Reinício do servidor e expiração encerram os convites; o histórico local não recria uma sala.
 

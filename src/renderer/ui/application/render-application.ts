@@ -1,6 +1,8 @@
 import type { UpdateState } from '../../../shared/protocol';
-import { QUALITY_PRESETS } from '../../../shared/quality';
-import { renderAppShell } from '../../views/app-shell';
+import { createElement, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
+import { createRoot, type Root } from 'react-dom/client';
+import { AppShell } from '../../views/app-shell';
 import {
   focusable,
   rememberInteraction,
@@ -28,16 +30,20 @@ export interface ApplicationRenderState {
   remoteStream: MediaStream | null;
   roomRole: 'host' | 'viewer' | undefined;
   connectionReconnecting: boolean;
-  applyingPreferences: boolean;
-  maxPublishersReached: boolean;
-  includeSystemAudio: boolean;
-  systemAudioSupported: boolean;
-  excludeDiscordAudio: boolean;
   returnFocusAction: string;
   connectionIssue: string;
   sharing: boolean;
-  qualityPreset: keyof typeof QUALITY_PRESETS;
-  qualityFps: number;
+}
+
+const reactRoots = new WeakMap<HTMLElement, Root>();
+
+function reactRoot(element: HTMLElement): Root {
+  let root = reactRoots.get(element);
+  if (!root) {
+    root = createRoot(element);
+    reactRoots.set(element, root);
+  }
+  return root;
 }
 
 export function renderApplication(options: {
@@ -48,14 +54,11 @@ export function renderApplication(options: {
   setUpdatePrompted(value: boolean): void;
   setWhatsNewShown(): void;
   setDeferredRender(value: boolean): void;
-  renderHome(): string;
-  renderSettings(): string;
-  renderRoom(): string;
-  renderSidebar(): string;
-  renderModal(): string;
-  renderDiagnosticsTrigger(): string;
-  renderReceiveAudioControls(): string;
-  renderAudioToggleButton(): string;
+  renderHome(): ReactNode;
+  renderSettings(): ReactNode;
+  renderRoom(): ReactNode;
+  renderSidebar(): ReactNode;
+  renderModal(): ReactNode;
   updatePlayback(): void;
   syncPreviews(): void;
   patchMetrics(): void;
@@ -71,8 +74,9 @@ export function renderApplication(options: {
   const state = autoModal
     ? { ...options.state, modal: autoModal }
     : options.state;
-  const oldVideo = root.querySelector<HTMLVideoElement>('#stream-video');
-  const oldPreview = root.querySelector<HTMLVideoElement>('#local-preview');
+  // React keeps the room video element across renders; while it is in
+  // fullscreen, renders wait so the player is left untouched.
+  const video = root.querySelector<HTMLVideoElement>('#stream-video');
   const nextStream = state.multiRoom
     ? state.watchingRemote
       ? state.remoteStream
@@ -80,9 +84,12 @@ export function renderApplication(options: {
     : state.roomRole === 'host'
       ? state.localStream
       : state.remoteStream;
-  const keepVideo =
-    !!oldVideo && !!nextStream && oldVideo.srcObject === nextStream;
-  if (keepVideo && document.fullscreenElement === oldVideo) {
+  if (
+    video &&
+    nextStream &&
+    video.srcObject === nextStream &&
+    document.fullscreenElement === video
+  ) {
     options.setDeferredRender(true);
     options.patchMetrics();
     return;
@@ -99,90 +106,22 @@ export function renderApplication(options: {
   );
   const hadModal = !!root.querySelector('[role="dialog"]');
   const page = state.page === 'room' && !state.hasRoom ? 'home' : state.page;
-  root.innerHTML = renderAppShell({
+  const shellProps = {
     page,
     hasDesktopApi: state.hasDesktopApi,
     notice: state.notice,
     sidebar: options.renderSidebar(),
     home: options.renderHome(),
-    settings: options.renderSettings,
-    room: state.hasRoom ? options.renderRoom() : '',
+    settings: page === 'settings' ? options.renderSettings() : null,
+    room: state.hasRoom ? options.renderRoom() : null,
     modal: options.renderModal(),
-  });
-  const panel = root.querySelector<HTMLElement>('.broadcast-panel');
-  if (panel && state.hasRoom) {
-    if (!state.multiRoom) {
-      panel
-        .querySelector('.video-stage')
-        ?.insertAdjacentHTML('beforeend', options.renderDiagnosticsTrigger());
-      panel
-        .querySelector('.video-stage')
-        ?.insertAdjacentHTML('beforeend', options.renderReceiveAudioControls());
-      panel
-        .querySelector('.broadcast-controls')
-        ?.insertAdjacentHTML('beforeend', options.renderAudioToggleButton());
-    }
-    const chooseButton = panel.querySelector<HTMLButtonElement>(
-      '[data-action="choose-source"]',
-    );
-    if (chooseButton)
-      chooseButton.disabled =
-        !!state.busy ||
-        state.applyingPreferences ||
-        state.recovering ||
-        (state.multiRoom && !state.sharing && state.maxPublishersReached);
-    if (
-      state.connectionReconnecting &&
-      state.roomRole === 'viewer' &&
-      state.remoteStream
-    ) {
-      const banner = document.createElement('div');
-      banner.className = 'video-reconnecting';
-      banner.textContent = 'Reconectando ao vídeo…';
-      panel.querySelector('.video-stage')?.append(banner);
-      const status = panel.querySelector<HTMLElement>('.status-pill');
-      if (status?.lastChild) status.lastChild.textContent = 'RECONECTANDO';
-    }
-    if (!nextStream && !state.multiRoom) {
-      const sourceLabel = panel.querySelector(
-        '.broadcast-controls > span:first-child > span',
-      );
-      if (sourceLabel)
-        sourceLabel.textContent =
-          state.roomRole === 'host'
-            ? `Perfil ${QUALITY_PRESETS[state.qualityPreset].width} × ${QUALITY_PRESETS[state.qualityPreset].height} · ${state.qualityFps} QPS · sem áudio`
-            : 'Vídeo compartilhado · sem áudio';
-    }
-  }
-  if (state.modal === 'sources') {
-    const optionsElement = document.createElement('div');
-    optionsElement.className = 'audio-capture-options';
-    optionsElement.innerHTML = `<label><input id="include-system-audio" type="checkbox" ${state.includeSystemAudio ? 'checked' : ''} ${!state.systemAudioSupported || state.busy ? 'disabled' : ''}> Áudio do computador</label>${!state.systemAudioSupported ? '<small>Disponível no Windows.</small>' : ''}${state.includeSystemAudio ? `<label><input id="exclude-discord-audio" type="checkbox" ${state.excludeDiscordAudio ? 'checked' : ''} ${state.busy ? 'disabled' : ''}> Excluir o Discord</label>${state.excludeDiscordAudio ? '<small>Você continuará ouvindo a call.</small>' : '<p class="settings-warning">O áudio inclui o Discord e outros aplicativos.</p>'}` : ''}`;
-    root.querySelector('.source-audio-slot')?.replaceWith(optionsElement);
-  }
+  };
+  // Commit synchronously: the steps below read the freshly rendered DOM.
+  flushSync(() => reactRoot(root).render(createElement(AppShell, shellProps)));
   const shell = root.querySelector<HTMLElement>('.app-shell');
   if (shell)
     shell.inert =
       !!state.modal || !!document.querySelector('.participant-photo-overlay');
-  const placeholder = root.querySelector<HTMLVideoElement>('#stream-video');
-  if (keepVideo && oldVideo && placeholder) placeholder.replaceWith(oldVideo);
-  else if (placeholder && nextStream) {
-    placeholder.srcObject = nextStream;
-    void placeholder.play().catch(() => undefined);
-  }
-  if (!keepVideo && oldVideo) oldVideo.srcObject = null;
-  const previewPlaceholder =
-    root.querySelector<HTMLVideoElement>('#local-preview');
-  if (
-    previewPlaceholder &&
-    oldPreview &&
-    oldPreview.srcObject === state.localStream
-  )
-    previewPlaceholder.replaceWith(oldPreview);
-  if (oldPreview && !root.contains(oldPreview)) {
-    oldPreview.pause();
-    oldPreview.srcObject = null;
-  }
   options.updatePlayback();
   options.syncPreviews();
   options.patchMetrics();

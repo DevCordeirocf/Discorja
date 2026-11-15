@@ -15,6 +15,18 @@ São mantidos `discorja.log`, `discorja.1.log` e `discorja.2.log`, com até 512 
 
 As gravações comuns são assíncronas e serializadas, sem registrar frames ou cada pacote de vídeo. A fila comporta até 100 registros pendentes. `droppedRecords` conta descartes da fila e falhas de gravação na execução atual; limites de frequência também podem suprimir eventos. Se o disco não permitir gravar, a chamada continua funcionando; a exportação informa a falha enquanto ela persistir. Não se promete histórico completo após falta de energia ou encerramento forçado.
 
+## Enviar os logs por e-mail
+
+Também dá para mandar os logs sem anexar arquivo: use **Configurações → Diagnóstico → Enviar relatório**, o ícone de alerta logo acima do perfil na barra lateral (**Enviar relatório de erro**) ou o botão **Enviar relatório por e-mail** que aparece em toda notificação de erro.
+
+1. O diálogo mostra em **Ver o que será enviado** o conteúdo exato do relatório: os mesmos registros saneados de `discorja-logs.json` e, se a opção estiver marcada, o diagnóstico de "Salvar diagnóstico".
+2. Descreva o que aconteceu (opcional, até 1000 caracteres). Códigos de sala, convites, endereços e tokens reconhecidos viram `[removido]`.
+3. **Enviar relatório** pede uma confirmação ("Enviar relatório ao mantenedor?"). **Voltar** retorna à edição sem perder a descrição; **Confirmar envio** manda os dados ao servidor de sinalização configurado, que os encaminha ao e-mail do mantenedor com o JSON em anexo. O botão fica desativado ("Enviando…") até a resposta, e uma notificação confirma o envio ou informa a falha.
+
+O relatório tem até 256 KiB. Se o histórico for maior, os registros mais antigos ficam de fora e `logs.omittedRecords` informa quantos. O e-mail depende de o servidor ter `REPORT_TO` configurado (veja [implantação](implantacao.md#relatórios-de-erro-por-e-mail)) e respeita limites de envio. Se o envio falhar, use **Salvar logs** e mande o arquivo por outro meio.
+
+No servidor, o envio registra apenas `report.sent` ou `report.failed` (com status e código previsto do erro) e um `request.received` com `operation: report`, sem o conteúdo.
+
 ## O que fica registrado
 
 Cada registro contém `schemaVersion`, `timestamp` UTC, `runId`, `event` e campos permitidos em `details`. `version` identifica a compilação; `session` diferencia tentativas de sala dentro da mesma execução do app. O servidor usa outro `runId`, próprio do processo, e um `roomId` aleatório para correlacionar seus eventos; ele não corresponde ao convite da sala.

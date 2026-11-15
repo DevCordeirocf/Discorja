@@ -54,7 +54,7 @@ Há limite de 30 consultas por minuto por endereço TCP, inclusive consultas sem
 
 ## Retomada após queda breve
 
-O servidor guarda a associação de uma conexão interrompida por até `RESUME_GRACE_MS` (padrão 20 segundos, máximo 60 segundos; zero desabilita). O app 0.3.0 tenta retomar por até 18 segundos com espera progressiva e token temporário mantido em memória. O servidor valida a associação existente e gira o token após uso, sem aceitar papel escolhido pelo cliente. Saída voluntária, expulsão, encerramento e expiração revogam a associação.
+O servidor guarda a associação de uma conexão interrompida por até `RESUME_GRACE_MS` (padrão 20 segundos, máximo 60 segundos; zero desabilita). O app 0.3.0 tenta retomar por até 18 segundos com espera progressiva e token temporário mantido em memória. O servidor valida a associação existente e gira o token após uso, sem aceitar papel escolhido pelo cliente. Se a conexão antiga ainda parecer aberta no servidor (queda que o proxy ainda não repassou), o token válido faz a nova conexão assumir a sessão e a antiga é encerrada; antes disso a retomada era recusada e a pessoa voltava como participante duplicado. Saída voluntária, expulsão, encerramento e expiração revogam a associação.
 
 Durante a recuperação, os peers são recriados; o anfitrião pode reutilizar somente a captura já autorizada e ainda ativa. Não há nova escolha de janela automática. Se o prazo acabar ou o servidor perder o estado, a captura para e é necessário entrar novamente. Reiniciar/reimplantar o servidor perde salas em memória: não existe migração entre processos. Clientes antigos continuam usando o fluxo básico, sem retomada.
 
@@ -149,6 +149,38 @@ Por padrão, o limite de tentativas usa o IP da conexão TCP e ignora `X-Forward
 Há ainda limites por conexão: 200 mensagens a cada dez segundos, 12 tentativas de criar/entrar em salas por minuto, 6 alterações de perfil por minuto, 40 pedidos de foto por minuto e 20 inscrições em grupos por minuto (60 por IP). Mensagens têm limite de 128 KiB. Esses valores são definidos no servidor; não invente variáveis de ambiente para alterá-los.
 
 Valide o ritmo de conexões e reconexões esperado pelo grupo no proxy escolhido e configure também sua proteção de tráfego. A entrada mais à esquerda de `X-Forwarded-For` pode ser forjada pelo cliente; por isso, com `TRUST_PROXY_HOPS=1`, só a última entrada é usada.
+
+## Relatórios de erro por e-mail
+
+Pelo app, o usuário envia os logs ao mantenedor em **Configurações → Diagnóstico → Enviar relatório**, pelo o ícone de alerta logo acima do perfil na barra lateral ou pelo botão **Enviar relatório por e-mail** de qualquer notificação de erro. O envio exige uma segunda confirmação no próprio diálogo. O processo principal do app faz `POST /api/report` no mesmo servidor de sinalização configurado (`wss://` vira `https://`). O servidor valida o relatório e o encaminha por e-mail. Nenhum segredo fica no aplicativo: a credencial do provedor de e-mail existe só no servidor.
+
+Sem `REPORT_TO`, a rota responde `503 REPORTS_DISABLED` e o app avisa que o servidor não aceita relatórios. Escolha **um** provedor:
+
+| Variável                                   | Função                                                                                                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `REPORT_TO`                                | Endereço do mantenedor que recebe os relatórios. Ativa a rota.                                                                                          |
+| `REPORT_FROM`                              | Remetente aceito pelo provedor (domínio verificado ou o remetente de teste do provedor).                                                                |
+| `REPORT_RESEND_API_KEY`                    | Chave da API HTTPS do Resend. Funciona na Render gratuita, que só libera a saída por HTTPS (porta 443).                                                 |
+| `REPORT_SMTP_HOST` / `REPORT_SMTP_PORT`    | Servidor SMTP. A porta `465` usa TLS implícito; qualquer outra (padrão `587`) exige STARTTLS. O certificado é sempre verificado e não há envio sem TLS. |
+| `REPORT_SMTP_USER` / `REPORT_SMTP_PASS`    | Credenciais SMTP (AUTH PLAIN dentro do TLS). Defina as duas ou nenhuma.                                                                                 |
+| `REPORT_MAX_PER_IP` / `REPORT_MAX_PER_DAY` | Limites: padrão 3 relatórios por hora por IP e 50 por dia na instância, para não esgotar a cota gratuita do provedor.                                   |
+
+Configurações incompletas ou conflitantes (as duas opções juntas, endereço inválido, usuário sem senha) interrompem a inicialização. As mensagens citam a variável, nunca o valor. Na inicialização, o processo informa apenas se os relatórios estão ativos e qual tipo de envio foi escolhido.
+
+Limites das opções gratuitas (confira os termos atuais de cada serviço):
+
+- **Render gratuita:** desde setembro de 2025, os serviços web gratuitos bloqueiam a saída para as portas SMTP 25, 465 e 587. Use `REPORT_RESEND_API_KEY` (HTTPS). SMTP só funciona em hospedagem própria, VPS ou plano pago, e um plano pago não é necessário para o Discorja.
+- **Resend gratuito:** 100 e-mails por dia e 3.000 por mês. Sem domínio próprio verificado, o remetente de teste `onboarding@resend.dev` entrega apenas ao endereço da própria conta, o que basta para o mantenedor. Ao atingir a cota, o envio falha e o app mostra a falha.
+- **SMTP de uma conta pessoal** (ex.: Gmail com senha de app em `smtp.gmail.com`, porta 465): sujeito aos limites diários e às regras da conta. Use uma conta dedicada, nunca a senha principal.
+
+Regras da rota:
+
+- Aceita só `POST`, com `Content-Type: application/json` e o cabeçalho `X-Discorja-Report: 1`. Um navegador precisaria de uma pré-verificação CORS, que o servidor recusa. Uma `Origin` fora de `ALLOWED_ORIGINS` também é recusada.
+- O corpo é limitado a 256 KiB: acima disso a resposta é `413`, mesmo no meio da leitura.
+- A validação é estrita. Chaves desconhecidas, eventos fora da lista de logs ou envelopes inválidos recusam o relatório inteiro (`400`). Os detalhes passam de novo por `sanitizeLogEvent` e o diagnóstico por `sanitizeDiagnostics`.
+- Excesso de envios responde `429` com `Retry-After`. Falha do provedor responde `502 SEND_FAILED`.
+- Os contadores por IP seguem `TRUST_PROXY_HOPS`, ocupam no máximo `maxTrackedIps` entradas e são limpos ao expirar.
+- Ao encerrar o processo, os envios em andamento terminam antes de o servidor fechar.
 
 ## Painel administrativo
 

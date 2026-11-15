@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { createElement, type ComponentProps } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { GROUP_INVITE } from '../src/shared/groups';
 import {
@@ -13,11 +15,18 @@ import {
   type LobbyConnection,
 } from '../src/renderer/features/groups/group-lobby';
 import {
+  AddGroupModal,
+  GroupHome,
   groupInitials,
-  renderAddGroupModal,
-  renderGroupHome,
 } from '../src/renderer/views/groups';
 import type { ServerMessage } from '../src/shared/protocol';
+
+type GroupHomeProps = ComponentProps<typeof GroupHome>['view'];
+const renderGroupHome = (view: GroupHomeProps) =>
+  renderToStaticMarkup(createElement(GroupHome, { view }));
+const renderAddGroupModal = (
+  view: ComponentProps<typeof AddGroupModal>['view'],
+) => renderToStaticMarkup(createElement(AddGroupModal, { view }));
 
 function memoryStorage() {
   const data = new Map<string, string>();
@@ -322,9 +331,7 @@ describe('início com grupos', () => {
     publications: 1,
     members: ['Ana', '<b>'],
   };
-  const view = (
-    overrides: Partial<Parameters<typeof renderGroupHome>[0]> = {},
-  ): Parameters<typeof renderGroupHome>[0] => ({
+  const view = (overrides: Partial<GroupHomeProps> = {}): GroupHomeProps => ({
     groups: [group],
     selected: group,
     listing: { rooms: [room], online: ['Ana', 'Caio'], avatars: ['', ''] },
@@ -371,7 +378,7 @@ describe('início com grupos', () => {
       }),
     );
     expect(full).toMatch(
-      /data-action="join-group-room"[^>]*disabled>Sala cheia/u,
+      /data-action="join-group-room"[^>]*disabled="">Sala cheia/u,
     );
   });
 
@@ -379,11 +386,11 @@ describe('início com grupos', () => {
     const html = renderGroupHome(
       view({ onlinePhotos: ['blob:discorja/"x"', ''] }),
     );
-    expect(html).toContain(
-      '<span class="stack-avatar has-photo" aria-hidden="true"><img src="blob:discorja/&quot;x&quot;" alt=""></span>Ana',
+    expect(html).toMatch(
+      /<span class="[^"]*" aria-hidden="true"><img class="[^"]*" src="blob:discorja\/&quot;x&quot;" alt=""\/><\/span>(?:<[^>]+>)*Ana/u,
     );
     expect(html).toMatch(
-      /<span class="stack-avatar tone-1" aria-hidden="true">C<\/span>Caio/u,
+      /<span class="[^"]*" aria-hidden="true">C<\/span>(?:<[^>]+>)*Caio/u,
     );
   });
 

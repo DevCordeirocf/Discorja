@@ -6,17 +6,28 @@ import type {
   RoomState,
   UpdateState,
 } from '../../../shared/protocol';
-import type { PeerMetrics, StreamPreferences } from '../../../shared/quality';
-import { renderDiagnostics } from '../../views/diagnostics';
-import { renderModal, type AppModal } from '../../views/modals';
-import { renderQualityPanel } from '../../views/quality';
-import { renderProfileSettings } from '../../views/profile-settings';
 import {
-  renderSettingsView,
-  type SettingsSection,
-} from '../../views/settings-view';
-import { renderSingleRoom } from '../../views/single-room';
-import { renderStage } from '../../views/stage';
+  QUALITY_PRESETS,
+  type PeerMetrics,
+  type StreamPreferences,
+} from '../../../shared/quality';
+import { createElement, type ReactNode } from 'react';
+import { DiagnosticsPanel } from '../../views/diagnostics';
+import type {
+  ReceiveAudioControlState,
+  SendAudioControlState,
+} from '../../views/audio-controls';
+import {
+  ModalView,
+  type AppModal,
+  type CaptureAudioView,
+} from '../../views/modals';
+import { QualityPanel } from '../../views/quality';
+import { ProfileSettings } from '../../views/profile-settings';
+import type { ProfileCameraState } from '../../features/profile/profile-camera';
+import { SettingsView, type SettingsSection } from '../../views/settings-view';
+import { SingleRoom } from '../../views/single-room';
+import { Stage } from '../../views/stage';
 import { patchMetrics } from '../../features/quality';
 import type { ChangelogEntry } from '../../features/whats-new/changelog';
 
@@ -71,15 +82,17 @@ export interface AppViewState {
   displayName: string;
   profilePhoto: string;
   profileDraft: { name: string; photo: string };
+  profileCamera: ProfileCameraState;
   modal: AppModal;
   whatsNew: ChangelogEntry[];
   isRoomOwner: boolean;
   sources: CaptureSource[];
   selectedSource: string;
   sourcePage: 'screen' | 'window';
+  captureAudio: CaptureAudioView;
   hasRoom: boolean;
-  playerAudioControl: string;
-  audioControl: string;
+  sendAudio: Omit<SendAudioControlState, 'className'>;
+  receiveAudio: ReceiveAudioControlState;
   participantViews: Array<{
     id: string;
     name: string;
@@ -92,21 +105,17 @@ export interface AppViewState {
 export function createAppViews(deps: {
   getState(): AppViewState;
   root: HTMLElement;
-  renderReceiveAudioControls(): string;
-  renderAudioToggleButton(): string;
-  renderFeatureModal?(modal: AppModal): string;
+  renderFeatureModal?(modal: AppModal): ReactNode;
 }): {
-  renderQualityPanel(): string;
-  renderDiagnostics(): string;
   patchMetrics(): void;
-  renderSettingsPage(): string;
-  renderRoom(): string;
-  renderModal(): string;
+  renderSettingsPage(): ReactNode;
+  renderRoom(): ReactNode;
+  renderModal(): ReactNode;
 } {
   const state = deps.getState;
-  const diagnostics = (s: AppViewState): string => {
-    if (!s.room) return '';
-    return renderDiagnostics({
+  const diagnostics = (s: AppViewState): ReactNode => {
+    if (!s.room) return null;
+    return createElement(DiagnosticsPanel, {
       room: {
         role: s.room.role,
         hostId: s.room.hostId,
@@ -121,18 +130,6 @@ export function createAppViews(deps: {
     });
   };
   return {
-    renderQualityPanel: () => {
-      const s = state();
-      return renderQualityPanel({
-        preferences: s.preferences,
-        pendingPreferences: s.pendingPreferences,
-        disabled: s.disabled,
-        applying: s.applyingPreferences,
-        sharing: s.sharing,
-        status: s.qualityStatus,
-      });
-    },
-    renderDiagnostics: () => diagnostics(state()),
     patchMetrics: () => {
       const s = state();
       patchMetrics(deps.root, {
@@ -152,7 +149,7 @@ export function createAppViews(deps: {
     },
     renderSettingsPage: () => {
       const s = state();
-      return renderSettingsView({
+      return createElement(SettingsView, {
         section: s.settingsSection,
         config: s.config,
         update: s.update,
@@ -163,9 +160,10 @@ export function createAppViews(deps: {
         connectionStatus: s.connectionStatus,
         backTo: s.settingsBackTo,
         dirty: s.settingsDirty,
-        qualityControls:
+        photoProcessing: s.profileCamera.processing,
+        qualityPanel:
           s.settingsSection === 'transmissao'
-            ? renderQualityPanel({
+            ? createElement(QualityPanel, {
                 preferences: s.preferences,
                 pendingPreferences: s.pendingPreferences,
                 disabled: s.disabled,
@@ -173,59 +171,77 @@ export function createAppViews(deps: {
                 sharing: s.sharing,
                 status: s.qualityStatus,
               })
-            : '',
-        profileControls:
+            : null,
+        profilePanel:
           s.settingsSection === 'perfil'
-            ? renderProfileSettings(s.profileDraft)
-            : '',
+            ? createElement(ProfileSettings, {
+                draft: s.profileDraft,
+                camera: s.profileCamera,
+              })
+            : null,
       });
     },
     renderRoom: () => {
       const s = state();
-      if (!s.room) return '';
+      if (!s.room) return null;
+      const busy = s.busy || s.applyingPreferences || s.signalRecovering;
+      const reconnectingVideo =
+        s.connectionReconnecting &&
+        s.room.role === 'viewer' &&
+        !!s.remoteStream;
       if (s.multi)
-        return renderStage({
+        return createElement(Stage, {
           state: s.multi,
           avatarUrl: s.resolveAvatar,
           watching: s.watchingPublisherId ?? null,
           sharing: s.sharing,
+          stream: s.watchingPublisherId ? s.remoteStream : s.localStream,
           hasRemote: !!s.remoteStream,
           hasLocal: !!s.localStream,
-          busy: s.busy || s.applyingPreferences || s.signalRecovering,
+          busy,
           issue: s.connectionIssue,
           recovering: s.connectionReconnecting || s.signalRecovering,
-          audioControl: s.audioControl,
-          playerAudioControl: s.playerAudioControl,
+          reconnectingVideo,
+          sendAudio: s.sendAudio,
+          receiveAudio: s.receiveAudio,
         });
-      return renderSingleRoom({
+      const preset = QUALITY_PRESETS[s.preferences.preset];
+      return createElement(SingleRoom, {
         room: s.room,
         roomState: s.roomState?.protocol === 2 ? s.roomState : null,
+        stream: s.room.role === 'host' ? s.localStream : s.remoteStream,
         sharedSourceName: s.sharedSourceName,
+        idleSourceLabel:
+          s.room.role === 'host'
+            ? `Perfil ${preset.width} × ${preset.height} · ${s.preferences.fps ?? preset.fps} QPS · sem áudio`
+            : 'Vídeo compartilhado · sem áudio',
         sharing: s.sharing,
         remoteSharing: s.remoteSharing,
-        hasLocalVideo: !!s.localStream,
-        hasRemoteVideo: !!s.remoteStream,
         connectionIssue: s.connectionIssue,
-        busy: s.busy,
+        reconnectingVideo,
+        busy,
         displayName: s.displayName,
         viewers: s.participantViews,
+        sendAudio: s.sendAudio,
+        receiveAudio: s.receiveAudio,
       });
     },
     renderModal: () => {
       const s = state();
-      return renderModal({
+      return createElement(ModalView, {
         modal: s.modal,
         isRoomOwner: s.isRoomOwner,
         update: s.update,
         version: s.config.version,
         hasRoom: s.hasRoom,
-        renderDiagnostics: () => diagnostics(s),
+        diagnostics: diagnostics(s),
         whatsNew: s.whatsNew,
         renderFeatureModal: deps.renderFeatureModal,
         sources: s.sources,
         selectedSource: s.selectedSource,
         busy: s.busyKind,
         sourcePage: s.sourcePage,
+        captureAudio: s.captureAudio,
       });
     },
   };

@@ -1,11 +1,10 @@
-import { icon } from '../components/icons';
-
 export interface FormEventActions {
   setDisplayName(value: string): void;
   setProfileDraftName(value: string): void;
   setSettingUrl(value: string): void;
-  setReceiveVolume(value: number): boolean;
+  setReceiveVolume(value: number): void;
   updatePlayback(): void;
+  render(): void;
   submitSettings(): void;
   changeSystemAudio(enabled: boolean): void;
   changeExcludeAudio(enabled: boolean): void;
@@ -23,23 +22,10 @@ export function bindFormEvents(
     if (target.id === 'profile-name') actions.setProfileDraftName(target.value);
     if (target.id === 'signaling-url') actions.setSettingUrl(target.value);
     if (target.id !== 'receive-volume') return;
-    const muted = actions.setReceiveVolume(Number(target.value) / 100);
-    const output = root.querySelector<HTMLOutputElement>(
-      '#receive-volume-value',
-    );
-    if (output) output.value = `${target.value}%`;
+    actions.setReceiveVolume(Number(target.value) / 100);
     actions.updatePlayback();
-    const muteButton = root.querySelector<HTMLButtonElement>(
-      '[data-action="toggle-receive-audio"]',
-    );
-    if (!muteButton) return;
-    const label = muted
-      ? 'Ativar o áudio da transmissão'
-      : 'Silenciar o áudio da transmissão';
-    muteButton.setAttribute('aria-pressed', String(!muted));
-    muteButton.setAttribute('aria-label', label);
-    muteButton.title = label;
-    muteButton.innerHTML = icon(muted ? 'volume-muted' : 'volume');
+    // The percentage and the mute button follow the new volume.
+    actions.render();
   });
 
   root.addEventListener('submit', (event) => {

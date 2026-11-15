@@ -221,6 +221,9 @@ export interface UpdateState {
   message?: string;
 }
 
+/** Outcome of `sendBugReport`; the message is fixed text in Portuguese. */
+export type BugReportResult = { ok: true } | { ok: false; message: string };
+
 export interface DiscorjaAPI {
   framelessWindow: boolean;
   minimizeWindow(): Promise<void>;
@@ -246,6 +249,13 @@ export interface DiscorjaAPI {
   downloadUpdate(): Promise<void>;
   getUpdateState(): Promise<UpdateState>;
   exportDiagnostics(report: unknown): Promise<void>;
+  /**
+   * Build the report shown for consent: sanitized logs plus, when given, the
+   * same diagnostics input as `exportDiagnostics`. Nothing is sent yet.
+   */
+  previewBugReport(diagnostics: unknown): Promise<{ id: string; json: string }>;
+  /** Send the previewed draft, with the typed description, to the signaling service. */
+  sendBugReport(id: string, description: string): Promise<BugReportResult>;
   installUpdate(): Promise<void>;
   onUpdate(callback: (state: UpdateState) => void): () => void;
 }

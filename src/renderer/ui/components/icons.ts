@@ -37,6 +37,11 @@ const paths: Record<string, string> = {
     '<path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 6m0-6-5 6"/>',
 };
 
+/** Inner SVG markup of a named icon; unknown names fall back to the screen icon. */
+export function iconPaths(name: string): string {
+  return paths[name] ?? paths.screen;
+}
+
 export function icon(name: string, className = ''): string {
-  return `<svg class="icon ${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] ?? paths.screen}</svg>`;
+  return `<svg class="icon ${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPaths(name)}</svg>`;
 }

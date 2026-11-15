@@ -1,5 +1,15 @@
 # Segurança e operação sem serviços pagos
 
+## Relatórios de erro por e-mail
+
+- Nada é enviado sem confirmação. O usuário abre o diálogo, vê o JSON exato que vai sair do computador (logs saneados e, se marcado, o diagnóstico), clica em **Enviar relatório** e confirma uma segunda vez em **Confirmar envio**. Só essa segunda ação chega à rede, e o botão fica desativado até a resposta, para não enviar duas vezes.
+- O processo principal guarda esse rascunho por 15 minutos. O renderer só o identifica pelo id e acrescenta a descrição: não pode trocar o conteúdo, escolher o destino nem ler os arquivos de log.
+- O IPC é estreito: `report:preview` aceita apenas a mesma entrada de "Salvar diagnóstico" (ou `null`), e `report:send` aceita um id e uma descrição de até 1000 caracteres. Os dois passam pela validação do remetente, e o destino é sempre o servidor de sinalização configurado.
+- A descrição livre perde os caracteres de controle. Trechos com cara de código de sala, convite `DJG1`, endereço (`http`, `ws`, `turn`, IP) ou token viram `[removido]`, no app e de novo no servidor. Essa remoção é heurística, por isso o diálogo pede para não colar esses dados.
+- O servidor não registra o corpo, a descrição, os endereços de e-mail nem a resposta do provedor: só `report.sent` / `report.failed`, com status e código previsto.
+- A credencial do provedor (`REPORT_RESEND_API_KEY` ou `REPORT_SMTP_PASS`) fica só no ambiente do servidor; o app não recebe segredo nenhum. O SMTP exige TLS com certificado verificado.
+- Limites contra abuso: 256 KiB por relatório, 3 por hora por IP, 50 por dia por instância, e recusa de requisições de navegador (cabeçalho próprio + `Origin`). Veja [implantação](implantacao.md#relatórios-de-erro-por-e-mail).
+
 ## Fotos em "Online agora" — 0.12.0
 
 - A foto do lobby passa pela mesma validação das fotos do protocolo 5 (formato, bytes iniciais e tamanho) e só é guardada em memória enquanto a conexão do Início está aberta. O servidor entrega uma imagem somente a quem segue o grupo e somente se ela pertencer a alguém inscrito no grupo ou numa sala aberta dele; pedidos fora disso são ignorados, com limite de 40 por minuto e de 6 trocas de foto por minuto. O app confere o hash antes de exibir. Fotos e chaves não entram nos logs.

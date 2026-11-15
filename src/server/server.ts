@@ -18,6 +18,8 @@ import {
   ROOM_CODE_ALPHABET,
 } from './message-validation.js';
 import { adminPage } from './admin-page.js';
+import { createReportHandler, DEFAULT_REPORT_LIMITS } from './report.js';
+import { BUG_REPORT_PATH } from '../shared/bug-report.js';
 import { legacyAvatar } from '../shared/validation.js';
 import { sniffImage } from '../shared/image-magic.js';
 import {
@@ -178,6 +180,13 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     string,
     { subscribers: Set<Client>; rooms: Set<Room>; timer?: NodeJS.Timeout }
   >();
+  const reports = createReportHandler({
+    mailer: options.reportMailer,
+    limits: { ...DEFAULT_REPORT_LIMITS, ...options.reportLimits },
+    maxTrackedIps,
+    now,
+    log,
+  });
   const startedAt = now();
   const totals = { roomsCreated: 0, joins: 0, peakConnections: 0 };
   let closing = false;
@@ -522,7 +531,9 @@ export function createSignalingServer(options: SignalingOptions = {}): {
             ? 'admin'
             : pathname === '/admin'
               ? 'admin-page'
-              : 'not-found';
+              : pathname === BUG_REPORT_PATH
+                ? 'report'
+                : 'not-found';
     response.once('finish', () =>
       logRequest('http', operation, {
         method: request.method,
@@ -617,6 +628,16 @@ export function createSignalingServer(options: SignalingOptions = {}): {
           generatedAt: new Date(now()).toISOString(),
         }),
       );
+      return;
+    }
+    if (request.url === BUG_REPORT_PATH) {
+      const origin = request.headers.origin;
+      reports.handle(request, response, {
+        ip: clientIp(request),
+        closing,
+        // The desktop main process sends no Origin; browsers always do.
+        originAllowed: origin === undefined || origins.has(origin),
+      });
       return;
     }
     if (request.method === 'GET' && request.url === '/health') {
@@ -937,14 +958,21 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         }
         const previous = sessions.get(message.token);
         const room = previous?.room;
+        // The app often notices a dropped link before the server does: a
+        // proxy can keep the server side of a dead socket open until the
+        // heartbeat fails. The secret token proves it is the same session,
+        // so the new socket takes over instead of leaving a ghost member
+        // behind and forcing a rejoin under a new identity.
+        const stale = !!previous && previous.disconnectedAt === undefined;
         if (
           client.room ||
+          !grace ||
           !previous ||
           !room ||
           room.protocol !== client.protocol ||
-          previous.disconnectedAt === undefined ||
-          now() - previous.disconnectedAt >= grace ||
-          previous.socket.readyState === WebSocket.OPEN
+          (!stale &&
+            (previous.disconnectedAt === undefined ||
+              now() - previous.disconnectedAt >= grace))
         ) {
           error(
             client,
@@ -967,6 +995,12 @@ export function createSignalingServer(options: SignalingOptions = {}): {
         else room.viewers.set(client.id, client);
         if (room.owner === previous) room.owner = client;
         sessions.set(client.resumeToken, client);
+        if (stale) {
+          // Its close handler then finds no session or room and only cleans up.
+          previous.watching = null;
+          previous.signals.clear();
+          previous.socket.terminate();
+        }
         if (room.protocol !== 1) {
           roomState(room, client, 'resumed');
           for (const member of members(room))
@@ -1561,6 +1595,7 @@ export function createSignalingServer(options: SignalingOptions = {}): {
     expireRooms();
     for (const [ip, counter] of statsRequests)
       if (now() - counter.start >= 60_000) statsRequests.delete(ip);
+    reports.prune();
     for (const client of clients.values())
       for (const [key, counter] of client.signals)
         if (now() - counter.start >= 10_000) client.signals.delete(key);

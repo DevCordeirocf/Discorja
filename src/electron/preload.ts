@@ -48,6 +48,10 @@ const api: DiscorjaAPI = {
   downloadUpdate: () => ipcRenderer.invoke('updates:download'),
   exportDiagnostics: (report) =>
     ipcRenderer.invoke('diagnostics:export', report),
+  previewBugReport: (diagnostics) =>
+    ipcRenderer.invoke('report:preview', diagnostics),
+  sendBugReport: (id, description) =>
+    ipcRenderer.invoke('report:send', id, description),
   installUpdate: () => ipcRenderer.invoke('updates:install'),
   onUpdate: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, state: UpdateState) =>

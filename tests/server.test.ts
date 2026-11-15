@@ -289,6 +289,54 @@ describe('Salas do protocolo 2', () => {
     attacker.send({ type: 'resume-room', token: resumed.resumeToken });
     expect((await attacker.next('error')).code).toBe('RESUME_REJECTED');
   });
+  it('retoma antes de o servidor notar a queda sem duplicar o participante', async () => {
+    const { url } = await start({ resumeGraceMs: 20000 });
+    const owner = await modern(url, 5),
+      member = await modern(url, 5);
+    const room = await modernRoom(owner);
+    const joined = await modernJoin(member, room.code);
+    await state(owner, (value) => value.participants.length === 2);
+    // The old socket is still open on the server, as behind a proxy that
+    // has not yet propagated the drop.
+    const returned = await modern(url, 5);
+    const ghostClosed = new Promise<void>((resolve) =>
+      member.socket.once('close', () => resolve()),
+    );
+    returned.send({ type: 'resume-room', token: joined.resumeToken });
+    const resumed = await state(
+      returned,
+      (value) => value.reason === 'resumed',
+    );
+    expect(resumed.selfId).toBe(joined.selfId);
+    expect(resumed.participants).toHaveLength(2);
+    await ghostClosed;
+    const after = await state(
+      owner,
+      (value) =>
+        value.participants.length === 2 &&
+        value.participants.every((entry) => entry.connected),
+    );
+    expect(
+      after.participants.filter((entry) => entry.peerId === joined.selfId),
+    ).toHaveLength(1);
+    // The owner can also take over its own room the same way.
+    const ownerAgain = await modern(url, 5);
+    ownerAgain.send({ type: 'resume-room', token: room.resumeToken });
+    const ownerResumed = await state(
+      ownerAgain,
+      (value) => value.reason === 'resumed',
+    );
+    expect(ownerResumed.ownerId).toBe(room.selfId);
+    // The ghost closing must not end the room.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(returned.inbox.some((value) => value.type === 'room-closed')).toBe(
+      false,
+    );
+    // A consumed token cannot take the session back.
+    const attacker = await modern(url, 5);
+    attacker.send({ type: 'resume-room', token: joined.resumeToken });
+    expect((await attacker.next('error')).code).toBe('RESUME_REJECTED');
+  });
   it('mantém salas e protocolos isolados e fecha a sala quando o dono sai', async () => {
     const { url } = await start();
     const owner = await modern(url),

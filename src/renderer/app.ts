@@ -12,7 +12,8 @@ import { initializeBackgroundEffect } from './ui/media/background-effect';
 import { RoomPeers } from './media/rtc';
 import { type FilteredAudioPipeline } from './media/audio-capture';
 import { createPreferenceStore } from './state/preference-store';
-import { renderSidebar, type AppPage } from './views/design';
+import { type AppPage } from './views/design';
+import { Sidebar } from './views/sidebar';
 import { type AppModal } from './views/modals';
 import { type SettingsSection } from './views/settings-view';
 import { createAppSettingsController } from './features/settings/app-controller';
@@ -43,7 +44,10 @@ import {
 } from './ui/feedback/renderer-logging';
 import { createInterfaceActions } from './ui/actions/interface-actions';
 import { bindAppActionRouter } from './ui/application/app-action-bindings';
+import { bindBugReportFields, createBugReport } from './features/bug-report';
+import { BugReportModal } from './views/bug-report';
 import { bindApplicationInputEvents } from './ui/application/application-input-bindings';
+import type { ProfileCameraState } from './features/profile/profile-camera';
 import {
   bindParticipantPhotoPreview,
   closeParticipantPhoto,
@@ -56,11 +60,12 @@ import { bindExtraActions } from './ui/application/extra-actions';
 import { createAvatarCache } from './features/profile/avatar-cache';
 import { createGroupsFeature } from './features/groups/groups-feature';
 import {
+  AddGroupModal,
+  GroupHome,
+  LeaveGroupModal,
   groupInitials,
-  renderAddGroupModal,
-  renderGroupHome,
-  renderLeaveGroupModal,
 } from './views/groups';
+import { createElement } from 'react';
 import type { RoomParticipant } from '../shared/protocol';
 import { MAX_LOCAL_GROUPS } from '../shared/groups';
 import { DISPLAY_NAME_MAX } from '../shared/validation';
@@ -128,6 +133,12 @@ let profileDraft: { name: string; photo: string } | null = null;
 const currentProfileDraft = () =>
   profileDraft ?? { name: displayName, photo: profilePhoto };
 let afterRender: () => void = () => undefined;
+let profileCamera: () => ProfileCameraState = () => ({
+  active: false,
+  starting: false,
+  processing: false,
+  status: '',
+});
 const avatarCache = createAvatarCache({
   request: (peerId, avatarId) => {
     send({ type: 'get-avatar', peerId, avatarId });
@@ -334,13 +345,8 @@ const appMedia = createAppMedia({
   getReceiveVolume: () => receiveVolume,
   getFilteredAudioAvailable: () => !!filteredAudioPipeline,
 });
-const {
-  syncPreviews,
-  updatePlayback,
-  renderAudioToggleButton,
-  renderReceiveAudioControls,
-  diagnosticsTrigger,
-} = appMedia;
+const { syncPreviews, updatePlayback, sendAudioState, receiveAudioState } =
+  appMedia;
 
 const stopFilteredAudioPipeline = createFilteredAudioStopper({
   api,
@@ -875,6 +881,7 @@ const appViewController = createApplicationViewBindings({
     displayName,
     profilePhoto,
     profileDraft: currentProfileDraft(),
+    profileCamera: profileCamera(),
     modal,
     isRoomOwner: roomState?.ownerId === room?.selfId,
     sources,
@@ -893,8 +900,8 @@ const appViewController = createApplicationViewBindings({
     excludeDiscordAudio,
     returnFocusAction,
   }),
-  renderReceiveAudioControls,
-  renderAudioToggleButton,
+  sendAudioState,
+  receiveAudioState,
   setModal: (value) => {
     modal = value;
   },
@@ -908,20 +915,21 @@ const appViewController = createApplicationViewBindings({
   setDeferredRender: (value) => {
     deferredRender = value;
   },
-  renderDiagnosticsTrigger: diagnosticsTrigger,
   renderHome: () =>
     groupsReady
-      ? renderGroupHome({
-          ...groups.view(),
-          enabled: !!api && loaded && !busy,
-          displayName,
-          currentRoomCode: room?.code ?? null,
-          menuOpen: openMenu === 'group',
+      ? createElement(GroupHome, {
+          view: {
+            ...groups.view(),
+            enabled: !!api && loaded && !busy,
+            displayName,
+            currentRoomCode: room?.code ?? null,
+            menuOpen: openMenu === 'group',
+          },
         })
-      : '',
+      : null,
   renderSidebar: () => {
     const view = groupsReady ? groups.view() : null;
-    return renderSidebar({
+    return createElement(Sidebar, {
       page: activePage === 'room' && !room ? 'home' : activePage,
       hasRoom: !!room,
       groups: (view?.groups ?? []).map((group) => ({
@@ -939,17 +947,21 @@ const appViewController = createApplicationViewBindings({
     });
   },
   renderFeatureModal: (value) => {
+    if (value === 'bug-report')
+      return createElement(BugReportModal, { view: bugReport.view() });
     if (value === 'add-group') {
       const view = groups.view();
-      return renderAddGroupModal({
-        tab: view.addTab,
-        draftName: view.draftName,
-        draftInvite: view.draftInvite,
-        enabled: !!api && loaded && !busy,
+      return createElement(AddGroupModal, {
+        view: {
+          tab: view.addTab,
+          draftName: view.draftName,
+          draftInvite: view.draftInvite,
+          enabled: !!api && loaded && !busy,
+        },
       });
     }
     const leaving = value === 'leave-group' ? groups.view().leaving : null;
-    return leaving ? renderLeaveGroupModal(leaving) : '';
+    return leaving ? createElement(LeaveGroupModal, { group: leaving }) : null;
   },
   updatePlayback,
   syncPreviews,
@@ -1175,6 +1187,20 @@ function render(): void {
   afterRender();
 }
 
+const bugReport = createBugReport({
+  api: () => api,
+  notify: (message, kind) => notify(message, kind),
+  render,
+  openModal: () => {
+    modal = 'bug-report';
+  },
+  closeModal: () => {
+    if (modal === 'bug-report') modal = null;
+  },
+  isOpen: () => modal === 'bug-report',
+});
+bindBugReportFields(root, bugReport);
+
 bindAppActionRouter({
   root,
   getState: () => ({
@@ -1215,6 +1241,16 @@ bindAppActionRouter({
   toggleSidebar,
   testConnection: () => void testConnection(),
   render,
+  bugReport: {
+    openBugReport: (diagnostics) => {
+      returnFocusAction = 'open-bug-report';
+      bugReport.open(diagnostics);
+    },
+    cancelBugReport: () => bugReport.cancel(),
+    requestBugReportSend: () => bugReport.requestSend(),
+    sendBugReport: () => void bugReport.send(),
+    backBugReport: () => bugReport.back(),
+  },
   updateState: (patch) => {
     if ('sourcePage' in patch) sourcePage = patch.sourcePage!;
     if ('selectedSource' in patch) selectedSource = patch.selectedSource!;
@@ -1235,7 +1271,7 @@ bindAppActionRouter({
   },
 });
 
-({ afterRender } = bindApplicationInputEvents({
+({ afterRender, profileCamera } = bindApplicationInputEvents({
   document,
   root,
   getState: () => ({

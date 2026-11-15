@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { CHANGELOG } from '../src/renderer/features/whats-new/changelog';
 import {
@@ -6,7 +8,7 @@ import {
   decideWhatsNew,
   entriesSince,
 } from '../src/renderer/features/whats-new/whats-new';
-import { renderWhatsNewModal } from '../src/renderer/views/whats-new';
+import { WhatsNewModal } from '../src/renderer/views/whats-new';
 
 const packageVersion: string = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
@@ -88,16 +90,18 @@ describe('Novidades do Discorja', () => {
   });
 
   it('escapa o texto e nomeia o diálogo', () => {
-    const html = renderWhatsNewModal({
-      version: '1.0.0',
-      entries: [
-        {
-          version: '1.0.0',
-          date: '2026-10-24',
-          items: [{ kind: 'novo', text: '<b>Grupos</b>' }],
-        },
-      ],
-    });
+    const html = renderToStaticMarkup(
+      createElement(WhatsNewModal, {
+        version: '1.0.0',
+        entries: [
+          {
+            version: '1.0.0',
+            date: '2026-10-24',
+            items: [{ kind: 'novo', text: '<b>Grupos</b>' }],
+          },
+        ],
+      }),
+    );
     expect(html).toContain('role="dialog"');
     expect(html).toContain('aria-labelledby="whats-new-title"');
     expect(html).toContain('&lt;b&gt;Grupos&lt;/b&gt;');

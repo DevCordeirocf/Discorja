@@ -1,4 +1,5 @@
 import { createSignalingServer } from './server.js';
+import { reportMailerFromEnv } from './report-mailer.js';
 import { randomUUID } from 'node:crypto';
 import { ROOM_PROTOCOL_VERSION } from '../shared/protocol.js';
 import { readFileSync } from 'node:fs';
@@ -45,7 +46,10 @@ if (port > 65535) throw new Error('PORT precisa estar entre 0 e 65535.');
 const host = process.env.HOST ?? '127.0.0.1';
 const roomTtlMs = integerEnv('ROOM_TTL_MS', 4 * 60 * 60 * 1000);
 const resumeGraceMs = integerEnv('RESUME_GRACE_MS', 20_000, 0);
+const reports = reportMailerFromEnv(process.env);
 const service = createSignalingServer({
+  reportMailer: reports.mailer,
+  reportLimits: reports.limits,
   onLog: log,
   allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',')
     .map((origin) => origin.trim())
@@ -74,6 +78,11 @@ service.server.listen(port, host, () => {
     details: { roomTtlMs, resumeGraceMs, protocol: ROOM_PROTOCOL_VERSION },
   });
   const address = service.server.address();
+  console.info(
+    reports.mailer
+      ? `Relatórios por e-mail ativados (${reports.mailer.kind}).`
+      : 'Relatórios por e-mail desativados (REPORT_TO não definido).',
+  );
   console.info(
     `Sinalização Discorja disponível em ${host}:${typeof address === 'object' && address ? address.port : port}.`,
   );

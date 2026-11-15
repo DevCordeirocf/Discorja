@@ -15,48 +15,12 @@
   min-height: 0;
   overflow: hidden;
 }
-.room-main:not(:has(.multi-room-grid)) .room-grid {
-  min-height: 0;
-  overflow: hidden;
-}
 #room-view:has(.multi-room-grid) {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-}
-.page-heading {
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  margin-bottom: 40px;
-  transition:
-    max-width 320ms cubic-bezier(0.4, 0, 0.2, 1),
-    margin-bottom 320ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-.page-heading h1 {
-  font-size: 26px;
-  line-height: 34px;
-  font-weight: 500;
-  margin: 0;
-  letter-spacing: 0;
-}
-.connection-badge {
-  flex-shrink: 0;
-  padding: 8px;
-  border-radius: 8px;
-  background: var(--raised);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 500;
-}
-.connection-badge.connected {
-  color: var(--mint);
-  background: #1d302b;
 }
 .is-collapsed .sidebar {
   width: 80px;
@@ -157,7 +121,6 @@
   padding: 24px;
 }
 .is-collapsed .home-page,
-.is-collapsed .page-heading,
 .is-collapsed .settings-page {
   max-width: 1104px;
   margin-left: auto;
